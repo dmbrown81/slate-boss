@@ -1,0 +1,201 @@
+import { useState, useCallback, useEffect } from 'react';
+import type { Screen, Lineup, Player, ContestResult, ModifierKey, UserProfile, TournamentType, RunSummary } from './types';
+import { TIER_ENTRY_FEE } from './types';
+import { generateSlate } from './lib/slateGenerator';
+import { runContest } from './lib/simulation';
+import { loadProfile, saveProfile, updateStreak, applyContestResult, todayDateStr } from './lib/storage';
+import { DEFAULT_TOURNAMENT_TYPE } from './lib/payout';
+import HomeScreen from './components/HomeScreen';
+import LineupBuilder from './components/LineupBuilder';
+import SweatScreen from './components/SweatScreen';
+import ResultsScreen from './components/ResultsScreen';
+import CareerScreen from './components/CareerScreen';
+import RunOverScreen from './components/RunOverScreen';
+
+const DAILY_TOURNAMENT_KEY = 'slateboss_daily_tournament';
+
+function loadDailyTournament(): TournamentType {
+  try {
+    return (localStorage.getItem(DAILY_TOURNAMENT_KEY) as TournamentType) ?? DEFAULT_TOURNAMENT_TYPE;
+  } catch {
+    return DEFAULT_TOURNAMENT_TYPE;
+  }
+}
+
+function saveDailyTournament(t: TournamentType) {
+  try { localStorage.setItem(DAILY_TOURNAMENT_KEY, t); } catch { /* noop */ }
+}
+
+export default function App() {
+  const [screen, setScreen] = useState<Screen>('home');
+  const [profile, setProfile] = useState<UserProfile>(() => loadProfile());
+  const [contestResult, setContestResult] = useState<ContestResult | null>(null);
+  const [lockedLineup, setLockedLineup] = useState<Lineup | null>(null);
+  const [isCareerMode, setIsCareerMode] = useState(false);
+  const [selectedTournament, setSelectedTournament] = useState<TournamentType>(() => loadDailyTournament());
+  const [runSummary, setRunSummary] = useState<RunSummary | null>(null);
+
+  const today = todayDateStr();
+  const slate = isCareerMode && profile.run.isActive
+    ? generateSlate(`career-${profile.run.runNumber}-week-${profile.run.currentWeek}`, { week: profile.run.currentWeek })
+    : generateSlate(today);
+
+  useEffect(() => { saveProfile(profile); }, [profile]);
+
+  const handleTournamentChange = useCallback((t: TournamentType) => {
+    setSelectedTournament(t);
+    if (!isCareerMode) saveDailyTournament(t);
+  }, [isCareerMode]);
+
+  const handlePlayDaily = useCallback(() => {
+    setIsCareerMode(false);
+    setScreen('builder');
+  }, []);
+
+  const handleCareer = useCallback(() => {
+    setScreen('career');
+  }, []);
+
+  const handleStartRun = useCallback((modifier: ModifierKey | null) => {
+    setProfile((prev) => {
+      const runNumber = prev.run.runNumber + 1;
+      return {
+        ...prev,
+        run: {
+          ...prev.run,
+          runNumber,
+          bankroll: 15,
+          tier: 1,
+          slatesRemaining: 10,
+          currentWeek: 1,
+          equippedModifier: modifier,
+          isActive: true,
+          lastTournamentType: DEFAULT_TOURNAMENT_TYPE,
+          peakBankroll: 15,
+          slateCashed: 0,
+        },
+      };
+    });
+    setIsCareerMode(true);
+    setSelectedTournament(DEFAULT_TOURNAMENT_TYPE);
+    setScreen('builder');
+  }, []);
+
+  const handleContinueRun = useCallback(() => {
+    setIsCareerMode(true);
+    setSelectedTournament(profile.run.lastTournamentType ?? DEFAULT_TOURNAMENT_TYPE);
+    setScreen('builder');
+  }, [profile.run.lastTournamentType]);
+
+  const handleEnterContest = useCallback((lineup: Lineup, _players: Player[]) => {
+    const entryFee = isCareerMode ? TIER_ENTRY_FEE[profile.run.tier] : 1;
+    const modifier = isCareerMode ? profile.run.equippedModifier : null;
+    const result = runContest(lineup, slate, entryFee, modifier, selectedTournament);
+    setContestResult(result);
+    setLockedLineup(lineup);
+    setScreen('sweat');
+  }, [slate, isCareerMode, profile, selectedTournament]);
+
+  const handleSweatDone = useCallback(() => {
+    setScreen('results');
+    if (!contestResult) return;
+
+    setProfile((prev) => {
+      let profBeforeResult = isCareerMode ? prev : updateStreak(prev);
+      const { next, runJustEnded } = applyContestResult(profBeforeResult, contestResult, isCareerMode);
+      if (runJustEnded) setRunSummary(runJustEnded);
+      return next;
+    });
+  }, [contestResult, isCareerMode]);
+
+  const handleBackHome = useCallback(() => {
+    setScreen('home');
+    setContestResult(null);
+    setLockedLineup(null);
+  }, []);
+
+  const handleGoCareerFromResults = useCallback(() => {
+    if (runSummary) {
+      setScreen('run_over');
+    } else {
+      setScreen('career');
+    }
+    setContestResult(null);
+    setLockedLineup(null);
+  }, [runSummary]);
+
+  const handleRunOverNewRun = useCallback(() => {
+    setRunSummary(null);
+    setScreen('career');
+  }, []);
+
+  const handleRunOverHome = useCallback(() => {
+    setRunSummary(null);
+    setScreen('home');
+  }, []);
+
+  const entryFee = isCareerMode ? TIER_ENTRY_FEE[profile.run.tier] : 1;
+
+  switch (screen) {
+    case 'home':
+      return <HomeScreen profile={profile} onPlayDaily={handlePlayDaily} onCareer={handleCareer} />;
+
+    case 'builder':
+      return (
+        <LineupBuilder
+          slate={slate}
+          onEnterContest={handleEnterContest}
+          onBack={() => setScreen(isCareerMode ? 'career' : 'home')}
+          isCareer={isCareerMode}
+          entryFee={entryFee}
+          selectedTournament={selectedTournament}
+          onTournamentChange={handleTournamentChange}
+        />
+      );
+
+    case 'sweat':
+      if (!contestResult || !lockedLineup) return null;
+      return (
+        <SweatScreen
+          result={contestResult}
+          lineup={lockedLineup}
+          onDone={handleSweatDone}
+        />
+      );
+
+    case 'results':
+      if (!contestResult) return null;
+      return (
+        <ResultsScreen
+          result={contestResult}
+          streak={profile.dailyStreak}
+          onHome={handleBackHome}
+          onCareer={handleGoCareerFromResults}
+        />
+      );
+
+    case 'career':
+      return (
+        <CareerScreen
+          profile={profile}
+          onStartRun={handleStartRun}
+          onContinueRun={handleContinueRun}
+          onHome={() => setScreen('home')}
+        />
+      );
+
+    case 'run_over':
+      if (!runSummary) { setScreen('career'); return null; }
+      return (
+        <RunOverScreen
+          summary={runSummary}
+          bestRunScore={profile.run.bestRunScore}
+          onNewRun={handleRunOverNewRun}
+          onHome={handleRunOverHome}
+        />
+      );
+
+    default:
+      return null;
+  }
+}
