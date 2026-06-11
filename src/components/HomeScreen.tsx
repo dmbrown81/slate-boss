@@ -121,7 +121,7 @@ export default function HomeScreen({ profile, onPlayDaily, onCareer }: Props) {
             background: '#0a0a0a', border: '1px solid #1e1e1e', borderRadius: 8,
             padding: '8px 10px', marginBottom: 10,
           }}>
-            <div style={{ fontSize: 10, color: '#555', marginBottom: 2 }}>YESTERDAY'S RESULT</div>
+            <div style={{ fontSize: 10, color: '#555', marginBottom: 2 }}>LATEST RESULT</div>
             <div style={{ fontSize: 13, color: '#ccc' }}>
               {profile.lastDailyResult.userScore.toFixed(1)} pts
               <span style={{ color: '#555' }}> · </span>

@@ -67,7 +67,7 @@ export default function HelpModal({ onClose }: Props) {
               fontSize: 18,
             }}
           >
-            x
+            ×
           </button>
         </div>
 

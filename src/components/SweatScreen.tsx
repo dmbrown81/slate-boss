@@ -13,7 +13,8 @@ const PHASE_ORDER: Phase[] = ['q1', 'q2', 'q3', 'final'];
 const PHASE_LABELS: Record<Phase, string> = {
   q1: 'End of Q1', q2: 'Halftime', q3: 'End of Q3', final: 'Final',
 };
-const PHASE_DELAY = 3200;
+const PHASE_DELAY = 4400;
+const LINE_INTERVAL = 650;
 
 // Flavor lines for various score ranges per position, keyed by tone
 const FLAVOR: Record<string, string[]> = {
@@ -166,7 +167,8 @@ export default function SweatScreen({ result, lineup, onDone }: Props) {
   const [phaseIdx, setPhaseIdx] = useState(0);
   const [displayedTicker, setDisplayedTicker] = useState<string[]>([]);
   const [done, setDone] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lineTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const phaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tickLineRef = useRef(0);
 
   const currentPhase = PHASE_ORDER[phaseIdx];
@@ -183,12 +185,12 @@ export default function SweatScreen({ result, lineup, onDone }: Props) {
       if (tickLineRef.current < lines.length) {
         const line = lines[tickLineRef.current++];
         setDisplayedTicker((prev) => [...prev.slice(-5), line]);
-        timerRef.current = setTimeout(addLine, 700);
+        lineTimerRef.current = setTimeout(addLine, LINE_INTERVAL);
       }
     };
     addLine();
 
-    timerRef.current = setTimeout(() => {
+    phaseTimerRef.current = setTimeout(() => {
       if (phaseIdx < PHASE_ORDER.length - 1) {
         setPhaseIdx((x) => x + 1);
       } else {
@@ -196,7 +198,10 @@ export default function SweatScreen({ result, lineup, onDone }: Props) {
       }
     }, PHASE_DELAY);
 
-    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+    return () => {
+      if (lineTimerRef.current) clearTimeout(lineTimerRef.current);
+      if (phaseTimerRef.current) clearTimeout(phaseTimerRef.current);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phaseIdx, done]);
 
@@ -211,7 +216,14 @@ export default function SweatScreen({ result, lineup, onDone }: Props) {
 
   const userTotal = lineupPlayers.reduce((sum, p) => sum + getScore(p.id, done ? 'final' : currentPhase), 0);
   const rank = result.quarterRanks[done ? 3 : Math.min(phaseIdx, 3)];
-  const cashLine = Math.ceil(result.totalEntrants * 0.2);
+  // Cash line depends on contest format — a Double-Up pays the top half,
+  // a Winner Take All pays only 1st.
+  const tKey = result.tournament.key;
+  const cashLine = tKey === 'winner_take_all' ? 1
+    : tKey === 'double_up' ? Math.floor(result.totalEntrants * 0.5)
+    : tKey === 'large_gpp' ? Math.floor(result.totalEntrants * 0.18)
+    : Math.floor(result.totalEntrants * 0.2);
+  const cashLabel = tKey === 'winner_take_all' ? '1st wins it all' : `Cash line: top ${cashLine}`;
 
   return (
     <div style={{ minHeight: '100vh', background: '#0a0a0a', display: 'flex', flexDirection: 'column' }}>
@@ -239,7 +251,7 @@ export default function SweatScreen({ result, lineup, onDone }: Props) {
             border: `1px solid ${rank <= cashLine ? '#27ae6044' : '#2a2a2a'}`,
             borderRadius: 4, padding: '2px 6px',
           }}>
-            {rank <= cashLine ? '💰 Cashing' : `Cash line: top ${cashLine}`}
+            {rank <= cashLine ? '💰 Cashing' : cashLabel}
           </div>
         </div>
 
@@ -253,10 +265,10 @@ export default function SweatScreen({ result, lineup, onDone }: Props) {
               transition: 'width 0.8s ease',
             }} />
           </div>
-          {/* Cash line marker */}
+          {/* Cash line marker — position matches this contest's payout structure */}
           <div style={{
             position: 'absolute', top: 0, bottom: 0,
-            left: `${80}%`, // top 20% cash = 80% of bar from left
+            left: `${(1 - cashLine / result.totalEntrants) * 100}%`,
             width: 1, background: '#27ae6066',
           }} />
         </div>

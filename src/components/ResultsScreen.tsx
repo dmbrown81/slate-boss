@@ -34,6 +34,7 @@ function GradeCard({ grade, label, sentence }: { grade: string; label: string; s
 export default function ResultsScreen({ result, streak, onHome, onCareer }: Props) {
   const [copied, setCopied] = useState(false);
   const cashed = result.payout > 0;
+  const won = result.userRank === 1;
   const net = result.payout - result.entryFee;
 
   const copy = () => {
@@ -53,11 +54,16 @@ export default function ResultsScreen({ result, streak, onHome, onCareer }: Prop
     <div style={{ minHeight: '100vh', background: '#0a0a0a', paddingBottom: 40 }}>
       {/* Header */}
       <div style={{
-        background: cashed ? '#0d2a1a' : '#1a0a0a',
-        borderBottom: `2px solid ${cashed ? '#27ae60' : '#1e1e1e'}`,
+        background: won ? '#241a02' : cashed ? '#0d2a1a' : '#1a0a0a',
+        borderBottom: `2px solid ${won ? '#f59e0b' : cashed ? '#27ae60' : '#1e1e1e'}`,
         padding: '20px 16px', textAlign: 'center',
       }}>
         <div style={{ fontSize: 13, color: '#666', marginBottom: 6 }}>{APP_NAME} · {result.tournament.name}</div>
+        {won && (
+          <div style={{ fontSize: 22, fontWeight: 800, color: '#f59e0b', marginBottom: 4 }}>
+            🏆 YOU WON THE WHOLE THING
+          </div>
+        )}
         <div style={{ fontSize: 42, fontWeight: 800, color: '#fff' }}>
           {result.userScore.toFixed(1)}
           <span style={{ fontSize: 16, color: '#555', marginLeft: 4 }}>pts</span>
@@ -65,9 +71,13 @@ export default function ResultsScreen({ result, streak, onHome, onCareer }: Prop
         <div style={{ fontSize: 20, fontWeight: 700, color: cashed ? '#27ae60' : '#888', marginTop: 4 }}>
           {ordinal(result.userRank)} of {result.totalEntrants}
         </div>
-        {cashed && (
-          <div style={{ fontSize: 16, color: '#27ae60', marginTop: 6 }}>
-            +${result.payout.toFixed(2)} fake payout
+        {cashed ? (
+          <div style={{ fontSize: 16, color: '#27ae60', marginTop: 6, fontWeight: 700 }}>
+            💰 +${result.payout.toFixed(2)} <span style={{ fontSize: 11, color: '#27ae6099', fontWeight: 400 }}>play money</span>
+          </div>
+        ) : (
+          <div style={{ fontSize: 12, color: '#666', marginTop: 6 }}>
+            Outside the cash line — run it back.
           </div>
         )}
         {streak > 1 && (
