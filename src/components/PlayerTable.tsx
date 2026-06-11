@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import type { Player, Position } from '../types';
 
-type SortKey = 'salary' | 'displayedProjection' | 'value' | 'ownership' | 'boomChance' | 'volatility';
+type SortKey = 'salary' | 'displayedProjection' | 'value' | 'floor' | 'ceiling' | 'ownership' | 'boomChance' | 'volatility';
 
 interface Props {
   players: Player[];
@@ -50,22 +50,26 @@ export default function PlayerTable({ players, onAdd, onRemove, onSelectPlayer, 
     else { setSortKey(key); setSortDir('desc'); }
   };
 
-  const SortBtn = ({ k, label }: { k: SortKey; label: string }) => (
-    <button
-      onClick={() => handleSort(k)}
-      style={{
-        background: sortKey === k ? '#2a6ef5' : 'transparent',
-        border: '1px solid #333',
-        color: '#ccc',
-        padding: '2px 6px',
-        borderRadius: 4,
-        fontSize: 11,
-        cursor: 'pointer',
-        whiteSpace: 'nowrap',
-      }}
-    >
-      {label} {sortKey === k ? (sortDir === 'desc' ? '↓' : '↑') : ''}
-    </button>
+  const sortMark = (key: SortKey) => sortKey === key ? (sortDir === 'desc' ? '↓' : '↑') : '';
+
+  const sortableHeader = (key: SortKey, label: string, align: 'left' | 'right' = 'left') => (
+    <th style={{ padding: '4px 6px', fontWeight: 400, textAlign: align }}>
+      <button
+        onClick={() => handleSort(key)}
+        style={{
+          background: 'transparent',
+          border: 'none',
+          color: sortKey === key ? '#4fc3f7' : '#777',
+          fontSize: 11,
+          cursor: 'pointer',
+          padding: 0,
+          fontWeight: sortKey === key ? 800 : 500,
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {label} {sortMark(key)}
+      </button>
+    </th>
   );
 
   return (
@@ -97,32 +101,22 @@ export default function PlayerTable({ players, onAdd, onRemove, onSelectPlayer, 
         ))}
       </div>
 
-      {/* Sort bar */}
-      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-        <span style={{ color: '#666', fontSize: 11, alignSelf: 'center' }}>Sort:</span>
-        <SortBtn k="salary" label="Salary" />
-        <SortBtn k="displayedProjection" label="Proj" />
-        <SortBtn k="value" label="Value" />
-        <SortBtn k="ownership" label="Own%" />
-        <SortBtn k="boomChance" label="Boom" />
-        <SortBtn k="volatility" label="Risk" />
-      </div>
-
       {/* Table */}
       <div style={{ overflowX: 'auto', fontSize: 12 }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 620 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 660 }}>
           <thead>
             <tr style={{ borderBottom: '1px solid #2a2a2a', color: '#666', textAlign: 'left' }}>
               <th style={{ padding: '4px 6px', fontWeight: 400 }}>Player</th>
               <th style={{ padding: '4px 6px', fontWeight: 400 }}>Pos</th>
               <th style={{ padding: '4px 6px', fontWeight: 400 }}>Team</th>
               <th style={{ padding: '4px 6px', fontWeight: 400 }}>Game</th>
-              <th style={{ padding: '4px 6px', fontWeight: 400, textAlign: 'right' }}>Sal</th>
-              <th style={{ padding: '4px 6px', fontWeight: 400, textAlign: 'right' }}>Proj</th>
-              <th style={{ padding: '4px 6px', fontWeight: 400, textAlign: 'right' }}>Floor</th>
-              <th style={{ padding: '4px 6px', fontWeight: 400, textAlign: 'right' }}>Ceil</th>
-              <th style={{ padding: '4px 6px', fontWeight: 400, textAlign: 'right' }}>Own%</th>
-              <th style={{ padding: '4px 6px', fontWeight: 400, textAlign: 'right' }}>Boom</th>
+              {sortableHeader('salary', 'Sal', 'right')}
+              {sortableHeader('displayedProjection', 'Proj', 'right')}
+              {sortableHeader('value', 'Val', 'right')}
+              {sortableHeader('floor', 'Floor', 'right')}
+              {sortableHeader('ceiling', 'Ceil', 'right')}
+              {sortableHeader('ownership', 'Own%', 'right')}
+              {sortableHeader('boomChance', 'Boom', 'right')}
               <th style={{ padding: '4px 6px', fontWeight: 400 }}></th>
             </tr>
           </thead>
@@ -152,6 +146,9 @@ export default function PlayerTable({ players, onAdd, onRemove, onSelectPlayer, 
                   </td>
                   <td style={{ padding: '5px 6px', textAlign: 'right', color: '#4fc3f7', fontWeight: 600 }}>
                     {player.displayedProjection.toFixed(1)}
+                  </td>
+                  <td style={{ padding: '5px 6px', textAlign: 'right', color: '#888' }}>
+                    {(player.displayedProjection / (player.salary / 1000)).toFixed(1)}
                   </td>
                   <td style={{ padding: '5px 6px', textAlign: 'right', color: '#888' }}>
                     {player.floor.toFixed(1)}

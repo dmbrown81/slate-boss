@@ -8,6 +8,7 @@ import NewsToast from './NewsToast';
 import PlayerDetailModal from './PlayerDetailModal';
 import StackingTool from './StackingTool';
 import LineupCoach from './LineupCoach';
+import HelpModal from './HelpModal';
 import { APP_NAME } from '../config';
 import { TOURNAMENTS } from '../lib/payout';
 
@@ -35,6 +36,7 @@ export default function LineupBuilder({
   const [pendingNews, setPendingNews] = useState<NewsEvent[]>([]);
   const [shownNews, setShownNews] = useState<Set<string>>(new Set());
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
+  const [showHelp, setShowHelp] = useState(false);
   const startTime = useRef(Date.now());
 
   // News event timing
@@ -84,13 +86,29 @@ export default function LineupBuilder({
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
           <button onClick={onBack} style={{ background: 'none', border: 'none', color: '#555', cursor: 'pointer', fontSize: 18 }}>←</button>
-          <div>
+          <div style={{ flex: 1 }}>
             <div style={{ fontSize: 15, fontWeight: 700, color: '#fff' }}>
               {APP_NAME} · Slate #{slate.slateNumber}
               <span style={{ fontSize: 11, color: '#777', marginLeft: 8 }}>Week {slate.week}</span>
               {isCareer && <span style={{ fontSize: 11, color: '#f59e0b', marginLeft: 8 }}>CAREER · ${entryFee} entry</span>}
             </div>
           </div>
+          <button
+            onClick={() => setShowHelp(true)}
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 999,
+              border: '1px solid #333',
+              background: '#111',
+              color: '#aaa',
+              cursor: 'pointer',
+              fontWeight: 800,
+            }}
+            aria-label="Open glossary"
+          >
+            ?
+          </button>
         </div>
 
         {/* Modifier banner */}
@@ -145,6 +163,19 @@ export default function LineupBuilder({
 
       {/* Player table — scrollable area */}
       <div style={{ flex: 1, overflow: 'auto', padding: '10px 12px' }}>
+        <div style={{
+          background: '#111',
+          border: '1px solid #242424',
+          borderRadius: 8,
+          padding: '9px 10px',
+          marginBottom: 10,
+          color: '#aaa',
+          fontSize: 12,
+          lineHeight: 1.4,
+        }}>
+          <span style={{ color: '#fff', fontWeight: 800 }}>Your job:</span> fill QB, 2 RB, 2 WR, TE, FLEX, and DST under $50k.
+          Tap a player for details, use <span style={{ color: '#4fc3f7' }}>+</span> to add, and watch Avg/Slot so you do not run out of salary.
+        </div>
         <StackingTool
           lineup={lineup}
           players={players}
@@ -178,6 +209,7 @@ export default function LineupBuilder({
       ))}
 
       <PlayerDetailModal player={selectedPlayer} onClose={() => setSelectedPlayer(null)} />
+      {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
     </div>
   );
 }

@@ -1,9 +1,11 @@
+import { useState } from 'react';
 import type { UserProfile } from '../types';
 import { APP_NAME } from '../config';
 import { currentTitle } from '../lib/progression';
 import { hasPlayedToday, todayDateStr } from '../lib/storage';
 import { slateNumber } from '../lib/rng';
 import { generateSlate } from '../lib/slateGenerator';
+import HelpModal from './HelpModal';
 
 interface Props {
   profile: UserProfile;
@@ -12,6 +14,7 @@ interface Props {
 }
 
 export default function HomeScreen({ profile, onPlayDaily, onCareer }: Props) {
+  const [showHelp, setShowHelp] = useState(false);
   const today = todayDateStr();
   const slateNum = slateNumber(today);
   const played = hasPlayedToday(profile);
@@ -26,6 +29,38 @@ export default function HomeScreen({ profile, onPlayDaily, onCareer }: Props) {
       <div style={{ textAlign: 'center' }}>
         <div style={{ fontSize: 28, fontWeight: 800, color: '#fff', letterSpacing: -0.5 }}>{APP_NAME}</div>
         <div style={{ fontSize: 12, color: '#555', marginTop: 2 }}>Daily Lineup Strategy Game</div>
+      </div>
+
+      <div style={{
+        background: '#0d1a2a',
+        border: '1px solid #2a6ef555',
+        borderRadius: 10,
+        padding: '10px 12px',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
+          <div>
+            <div style={{ fontSize: 13, color: '#fff', fontWeight: 800 }}>What am I trying to do?</div>
+            <div style={{ fontSize: 11, color: '#9db8e8' }}>
+              Build a lineup under the salary cap, then beat the field in a contest.
+            </div>
+          </div>
+          <button
+            onClick={() => setShowHelp(true)}
+            style={{
+              background: '#2a6ef5',
+              color: '#fff',
+              border: 'none',
+              borderRadius: 7,
+              padding: '7px 9px',
+              fontSize: 11,
+              fontWeight: 800,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Help
+          </button>
+        </div>
       </div>
 
       {/* Profile pill */}
@@ -173,6 +208,8 @@ export default function HomeScreen({ profile, onPlayDaily, onCareer }: Props) {
       }}>
         Fictional fantasy sports strategy game. No real money. No prizes. No deposits. No withdrawals.
       </div>
+
+      {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
     </div>
   );
 }
