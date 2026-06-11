@@ -1,6 +1,37 @@
 import { useState } from 'react';
 import type { ContestResult } from '../types';
 import { APP_NAME } from '../config';
+import { cashLineRank } from '../lib/payout';
+
+// The line every DFS player checks first: how close was the cash, and who's to blame.
+function nearMissInfo(result: ContestResult): { text: string; tone: 'sweat' | 'clutch' } | null {
+  const allScores = [...result.field.map((e) => e.totalScore), result.userScore].sort((a, b) => b - a);
+  const cashRank = cashLineRank(result.totalEntrants, result.tournament.key);
+  const cashScore = allScores[cashRank - 1];
+
+  if (result.payout === 0) {
+    const gap = cashScore - result.userScore;
+    if (result.tournament.key === 'winner_take_all') {
+      const behindWinner = allScores[0] - result.userScore;
+      if (behindWinner <= 15) return { text: `You finished ${behindWinner.toFixed(1)} points behind the winner. Brutal.`, tone: 'sweat' };
+      return null;
+    }
+    if (gap > 12) return null;
+    const worstScore = result.userEntry.scores.find((s) => s.playerId === result.worstPlayer.id);
+    const shortfall = worstScore ? result.worstPlayer.displayedProjection - worstScore.final : 0;
+    const blame = shortfall > gap
+      ? ` ${result.worstPlayer.name} (${result.worstPlayer.position}) came in ${shortfall.toFixed(1)} under projection — that was the cash.`
+      : '';
+    return { text: `You missed the cash by ${gap.toFixed(1)} points.${blame}`, tone: 'sweat' };
+  }
+
+  // Cashed — was it a photo finish?
+  const bubbleScore = allScores[cashRank] ?? null;
+  if (bubbleScore !== null && result.userScore - bubbleScore <= 3 && result.tournament.key !== 'winner_take_all') {
+    return { text: `You cleared the cash line by just ${(result.userScore - bubbleScore).toFixed(1)} points. That's a sweat.`, tone: 'clutch' };
+  }
+  return null;
+}
 
 interface Props {
   result: ContestResult;
@@ -36,6 +67,7 @@ export default function ResultsScreen({ result, streak, onHome, onCareer }: Prop
   const cashed = result.payout > 0;
   const won = result.userRank === 1;
   const net = result.payout - result.entryFee;
+  const nearMiss = nearMissInfo(result);
 
   const copy = () => {
     navigator.clipboard.writeText(result.shareCard).then(() => {
@@ -86,6 +118,17 @@ export default function ResultsScreen({ result, streak, onHome, onCareer }: Prop
       </div>
 
       <div style={{ padding: '16px' }}>
+        {nearMiss && (
+          <div style={{
+            background: nearMiss.tone === 'clutch' ? '#071d14' : '#1f1208',
+            border: `1px solid ${nearMiss.tone === 'clutch' ? '#1f6f47' : '#6f3a10'}`,
+            borderRadius: 8, padding: '10px 12px', marginBottom: 12,
+            color: nearMiss.tone === 'clutch' ? '#8ee0b3' : '#f5a34c',
+            fontSize: 13, fontWeight: 600, lineHeight: 1.4,
+          }}>
+            {nearMiss.tone === 'clutch' ? '😅 ' : '😤 '}{nearMiss.text}
+          </div>
+        )}
         <div style={{
           background: '#111',
           border: '1px solid #1e1e1e',

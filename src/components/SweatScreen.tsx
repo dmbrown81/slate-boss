@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import type { ContestResult, Lineup, Player } from '../types';
 import { ROSTER_SLOTS } from '../types';
+import { cashLineRank } from '../lib/payout';
 
 interface Props {
   result: ContestResult;
@@ -219,10 +220,7 @@ export default function SweatScreen({ result, lineup, onDone }: Props) {
   // Cash line depends on contest format — a Double-Up pays the top half,
   // a Winner Take All pays only 1st.
   const tKey = result.tournament.key;
-  const cashLine = tKey === 'winner_take_all' ? 1
-    : tKey === 'double_up' ? Math.floor(result.totalEntrants * 0.5)
-    : tKey === 'large_gpp' ? Math.floor(result.totalEntrants * 0.18)
-    : Math.floor(result.totalEntrants * 0.2);
+  const cashLine = cashLineRank(result.totalEntrants, tKey);
   const cashLabel = tKey === 'winner_take_all' ? '1st wins it all' : `Cash line: top ${cashLine}`;
 
   return (

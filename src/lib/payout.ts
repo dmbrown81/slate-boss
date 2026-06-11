@@ -76,6 +76,14 @@ export function computePayout(rank: number, totalEntrants: number, entryFee: num
   return 0;
 }
 
+// Worst rank that still cashes in this contest format
+export function cashLineRank(totalEntrants: number, type: TournamentType): number {
+  if (type === 'winner_take_all') return 1;
+  if (type === 'double_up') return Math.floor(totalEntrants * 0.5);
+  if (type === 'large_gpp') return Math.floor(totalEntrants * 0.18);
+  return Math.floor(totalEntrants * 0.2);
+}
+
 export function isCash(rank: number, totalEntrants: number, type: TournamentType): boolean {
   if (type === 'double_up') return rank / totalEntrants <= 0.5;
   if (type === 'winner_take_all') return rank === 1;
