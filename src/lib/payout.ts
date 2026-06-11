@@ -36,9 +36,19 @@ export const TOURNAMENTS: Record<TournamentType, TournamentConfig> = {
 };
 
 export const DEFAULT_TOURNAMENT_TYPE: TournamentType = 'mini_gpp';
+export const TOURNAMENT_ORDER: TournamentType[] = ['double_up', 'mini_gpp', 'large_gpp', 'winner_take_all'];
+export const STARTER_TOURNAMENT_TYPES: TournamentType[] = ['double_up', 'mini_gpp'];
 
 export function getTournament(type: TournamentType): TournamentConfig {
   return TOURNAMENTS[type] ?? TOURNAMENTS[DEFAULT_TOURNAMENT_TYPE];
+}
+
+export function isTournamentType(value: string | null): value is TournamentType {
+  return Boolean(value && value in TOURNAMENTS);
+}
+
+export function isStarterTournament(type: TournamentType): boolean {
+  return STARTER_TOURNAMENT_TYPES.includes(type);
 }
 
 export function computePayout(rank: number, totalEntrants: number, entryFee: number, type: TournamentType): number {

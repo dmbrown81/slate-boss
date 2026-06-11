@@ -10,7 +10,7 @@ import StackingTool from './StackingTool';
 import LineupCoach from './LineupCoach';
 import HelpModal from './HelpModal';
 import { APP_NAME } from '../config';
-import { TOURNAMENTS } from '../lib/payout';
+import { isStarterTournament, TOURNAMENT_ORDER, TOURNAMENTS } from '../lib/payout';
 
 interface Props {
   slate: Slate;
@@ -73,6 +73,7 @@ export default function LineupBuilder({
 
   const selectedIds = new Set(getLineupPlayers(lineup).map((p) => p.id));
   const tournament = TOURNAMENTS[selectedTournament];
+  const isStarterContest = isStarterTournament(selectedTournament);
   const avgLeft = averageSalaryLeftPerOpenSlot(lineup);
   const slotsOpen = openSlotCount(lineup);
 
@@ -132,9 +133,13 @@ export default function LineupBuilder({
               appearance: 'none', WebkitAppearance: 'none',
             }}
           >
-            {Object.values(TOURNAMENTS).map((t) => (
-              <option key={t.key} value={t.key}>{t.name} · {t.difficulty}</option>
-            ))}
+            {TOURNAMENT_ORDER.map((key) => {
+              const t = TOURNAMENTS[key];
+              const label = isStarterTournament(key) ? 'Starter friendly' : 'Advanced';
+              return (
+                <option key={t.key} value={t.key}>{t.name} · {label}</option>
+              );
+            })}
           </select>
           <div style={{
             fontSize: 11, color: '#555', whiteSpace: 'nowrap',
@@ -143,6 +148,19 @@ export default function LineupBuilder({
           }}>
             ${entryFee} <span style={{ color: '#4fc3f7' }}>· {tournament.prizeSummary.split('·')[0].trim()}</span>
           </div>
+        </div>
+        <div style={{
+          marginTop: 5,
+          color: isStarterContest ? '#8ee0b3' : '#f5a34c',
+          fontSize: 11,
+          background: isStarterContest ? '#071d14' : '#1f1208',
+          border: `1px solid ${isStarterContest ? '#1f6f47' : '#6f3a10'}`,
+          borderRadius: 6,
+          padding: '5px 7px',
+        }}>
+          {isStarterContest
+            ? 'Good starter contest: you can learn the game without needing a perfect first-place lineup.'
+            : 'Advanced contest: higher ceiling, more frustration risk. Use when you want a big-swing sweat.'}
         </div>
 
         {/* Stats bar */}

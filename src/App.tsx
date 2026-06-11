@@ -4,7 +4,7 @@ import { TIER_ENTRY_FEE } from './types';
 import { generateSlate } from './lib/slateGenerator';
 import { runContest } from './lib/simulation';
 import { loadProfile, saveProfile, updateStreak, applyContestResult, todayDateStr } from './lib/storage';
-import { DEFAULT_TOURNAMENT_TYPE } from './lib/payout';
+import { DEFAULT_TOURNAMENT_TYPE, isTournamentType } from './lib/payout';
 import HomeScreen from './components/HomeScreen';
 import LineupBuilder from './components/LineupBuilder';
 import SweatScreen from './components/SweatScreen';
@@ -16,7 +16,8 @@ const DAILY_TOURNAMENT_KEY = 'slateboss_daily_tournament';
 
 function loadDailyTournament(): TournamentType {
   try {
-    return (localStorage.getItem(DAILY_TOURNAMENT_KEY) as TournamentType) ?? DEFAULT_TOURNAMENT_TYPE;
+    const saved = localStorage.getItem(DAILY_TOURNAMENT_KEY);
+    return isTournamentType(saved) ? saved : DEFAULT_TOURNAMENT_TYPE;
   } catch {
     return DEFAULT_TOURNAMENT_TYPE;
   }
