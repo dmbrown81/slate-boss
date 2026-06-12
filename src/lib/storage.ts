@@ -1,8 +1,9 @@
-import type { UserProfile, RunState, ContestResult, ContestTier, RunSummary } from '../types';
+import type { Achievement, UnlockReward, UserProfile, RunState, ContestResult, ContestTier, RunSummary, Lineup } from '../types';
 import { TIER_PROMOTION_BANKROLL, TIER_ENTRY_FEE } from '../types';
+import { evaluateAchievements } from './achievements';
 
-const STORAGE_VERSION = 2;
-const KEY = 'slateboss_v2';
+const STORAGE_VERSION = 3;
+const KEY = 'slateboss_v3';
 
 const DEFAULT_RUN: RunState = {
   runNumber: 0,
@@ -31,6 +32,9 @@ export const DEFAULT_PROFILE: UserProfile = {
   bestFinishRank: 999,
   totalWinnings: 0,
   unlockedModifiers: ['scout', 'anchor_defense', 'correlated'],
+  achievementIds: [],
+  unlockIds: [],
+  achievementPoints: 0,
   run: DEFAULT_RUN,
   careerRunHistory: [],
 };
@@ -40,16 +44,22 @@ export function loadProfile(): UserProfile {
     const raw = localStorage.getItem(KEY);
     if (!raw) {
       // Try migrating from v1
-      const old = localStorage.getItem('slateboss_v1');
+      const old = localStorage.getItem('slateboss_v2') ?? localStorage.getItem('slateboss_v1');
       if (old) {
         const parsed = JSON.parse(old);
         return {
           ...DEFAULT_PROFILE,
+          ...parsed,
+          version: STORAGE_VERSION,
           xp: parsed.xp ?? 0,
           level: parsed.level ?? 1,
           totalContestsPlayed: parsed.totalContestsPlayed ?? 0,
           totalCashed: parsed.totalCashed ?? 0,
           totalWinnings: parsed.totalWinnings ?? 0,
+          achievementIds: parsed.achievementIds ?? [],
+          unlockIds: parsed.unlockIds ?? [],
+          achievementPoints: parsed.achievementPoints ?? 0,
+          run: { ...DEFAULT_RUN, ...(parsed.run ?? {}) },
         };
       }
       return { ...DEFAULT_PROFILE };
@@ -59,6 +69,9 @@ export function loadProfile(): UserProfile {
     return {
       ...DEFAULT_PROFILE,
       ...parsed,
+      achievementIds: parsed.achievementIds ?? [],
+      unlockIds: parsed.unlockIds ?? [],
+      achievementPoints: parsed.achievementPoints ?? 0,
       run: { ...DEFAULT_RUN, ...(parsed.run ?? {}) },
     };
   } catch {
@@ -100,8 +113,9 @@ export function updateStreak(profile: UserProfile): UserProfile {
 export function applyContestResult(
   profile: UserProfile,
   result: ContestResult,
-  isCareer: boolean
-): { next: UserProfile; runJustEnded: RunSummary | null } {
+  isCareer: boolean,
+  lineup: Lineup
+): { next: UserProfile; runJustEnded: RunSummary | null; newAchievements: Achievement[]; newUnlocks: UnlockReward[] } {
   const { payout, xpGained, userRank } = result;
   const newXP = profile.xp + xpGained;
   const newLevel = Math.floor(newXP / 200) + 1;
@@ -145,7 +159,7 @@ export function applyContestResult(
     }
   }
 
-  const next: UserProfile = {
+  const profileAfterContest: UserProfile = {
     ...profile,
     xp: newXP,
     level: newLevel,
@@ -160,5 +174,50 @@ export function applyContestResult(
       : profile.careerRunHistory,
   };
 
-  return { next, runJustEnded };
+  const { newAchievements, newUnlocks } = evaluateAchievements({
+    profileBefore: profile,
+    profileAfter: profileAfterContest,
+    result,
+    lineup,
+    isCareer,
+    runJustEnded,
+  });
+
+  const newAchievementIds = newAchievements.map((achievement) => achievement.id);
+  const newUnlockIds = newUnlocks.map((unlock) => unlock.id);
+  const newAchievementPoints = newAchievements.reduce((sum, achievement) => sum + achievement.points, 0);
+
+  const next: UserProfile = {
+    ...profileAfterContest,
+    achievementIds: [...new Set([...(profileAfterContest.achievementIds ?? []), ...newAchievementIds])],
+    unlockIds: [...new Set([...(profileAfterContest.unlockIds ?? []), ...newUnlockIds])],
+    achievementPoints: (profileAfterContest.achievementPoints ?? 0) + newAchievementPoints,
+    xp: profileAfterContest.xp + newAchievementPoints,
+    level: Math.floor((profileAfterContest.xp + newAchievementPoints) / 200) + 1,
+  };
+
+  // Backfill collection milestone achievements unlocked by the first achievement batch.
+  const collectionBackfill = evaluateAchievements({
+    profileBefore: profileAfterContest,
+    profileAfter: next,
+    result,
+    lineup,
+    isCareer,
+    runJustEnded,
+  });
+  const backfillAchievements = collectionBackfill.newAchievements.filter((achievement) => !next.achievementIds.includes(achievement.id));
+  const backfillUnlocks = collectionBackfill.newUnlocks.filter((unlock) => !next.unlockIds.includes(unlock.id));
+
+  if (backfillAchievements.length || backfillUnlocks.length) {
+    const backfillPoints = backfillAchievements.reduce((sum, achievement) => sum + achievement.points, 0);
+    next.achievementIds = [...new Set([...next.achievementIds, ...backfillAchievements.map((achievement) => achievement.id)])];
+    next.unlockIds = [...new Set([...next.unlockIds, ...backfillUnlocks.map((unlock) => unlock.id)])];
+    next.achievementPoints += backfillPoints;
+    next.xp += backfillPoints;
+    next.level = Math.floor(next.xp / 200) + 1;
+    newAchievements.push(...backfillAchievements);
+    newUnlocks.push(...backfillUnlocks);
+  }
+
+  return { next, runJustEnded, newAchievements, newUnlocks };
 }

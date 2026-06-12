@@ -6,6 +6,8 @@ import { hasPlayedToday, todayDateStr } from '../lib/storage';
 import { slateNumber } from '../lib/rng';
 import { generateSlate } from '../lib/slateGenerator';
 import HelpModal from './HelpModal';
+import AchievementsModal from './AchievementsModal';
+import { ACHIEVEMENTS, UNLOCKS } from '../lib/achievements';
 
 interface Props {
   profile: UserProfile;
@@ -15,6 +17,7 @@ interface Props {
 
 export default function HomeScreen({ profile, onPlayDaily, onCareer }: Props) {
   const [showHelp, setShowHelp] = useState(false);
+  const [showAchievements, setShowAchievements] = useState(false);
   const today = todayDateStr();
   const slateNum = slateNumber(today);
   const played = hasPlayedToday(profile);
@@ -202,6 +205,29 @@ export default function HomeScreen({ profile, onPlayDaily, onCareer }: Props) {
         ))}
       </div>
 
+      <button
+        onClick={() => setShowAchievements(true)}
+        style={{
+          background: '#111',
+          border: '1px solid #2a2a2a',
+          borderRadius: 10,
+          padding: '11px 12px',
+          color: '#ccc',
+          cursor: 'pointer',
+          textAlign: 'left',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
+          <div>
+            <div style={{ fontSize: 13, color: '#fff', fontWeight: 800 }}>Achievements & Unlocks</div>
+            <div style={{ fontSize: 11, color: '#666' }}>
+              {profile.achievementIds?.length ?? 0}/{ACHIEVEMENTS.length} achievements · {profile.unlockIds?.length ?? 0}/{UNLOCKS.length} unlocks
+            </div>
+          </div>
+          <div style={{ color: '#f59e0b', fontSize: 16, fontWeight: 800 }}>{profile.achievementPoints ?? 0}</div>
+        </div>
+      </button>
+
       <div style={{
         fontSize: 10, color: '#2a2a2a', textAlign: 'center', lineHeight: 1.5,
         marginTop: 'auto', paddingTop: 4,
@@ -210,6 +236,7 @@ export default function HomeScreen({ profile, onPlayDaily, onCareer }: Props) {
       </div>
 
       {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
+      {showAchievements && <AchievementsModal profile={profile} onClose={() => setShowAchievements(false)} />}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { ContestResult } from '../types';
+import type { Achievement, ContestResult, UnlockReward } from '../types';
 import { APP_NAME } from '../config';
 import { cashLineRank } from '../lib/payout';
 
@@ -38,6 +38,8 @@ interface Props {
   streak: number;
   onHome: () => void;
   onCareer: () => void;
+  newAchievements: Achievement[];
+  newUnlocks: UnlockReward[];
 }
 
 const GRADE_COLOR: Record<string, string> = {
@@ -62,7 +64,7 @@ function GradeCard({ grade, label, sentence }: { grade: string; label: string; s
   );
 }
 
-export default function ResultsScreen({ result, streak, onHome, onCareer }: Props) {
+export default function ResultsScreen({ result, streak, onHome, onCareer, newAchievements, newUnlocks }: Props) {
   const [copied, setCopied] = useState(false);
   const cashed = result.payout > 0;
   const won = result.userRank === 1;
@@ -118,6 +120,40 @@ export default function ResultsScreen({ result, streak, onHome, onCareer }: Prop
       </div>
 
       <div style={{ padding: '16px' }}>
+        {(newAchievements.length > 0 || newUnlocks.length > 0) && (
+          <div style={{
+            background: '#0d1a2a',
+            border: '1px solid #2a6ef5',
+            borderRadius: 10,
+            padding: '10px 12px',
+            marginBottom: 12,
+          }}>
+            <div style={{ color: '#fff', fontSize: 14, fontWeight: 800, marginBottom: 7 }}>
+              New Progress
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {newAchievements.slice(0, 5).map((achievement) => (
+                <div key={achievement.id} style={{ background: '#111', border: '1px solid #263b61', borderRadius: 7, padding: '7px 8px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                    <span style={{ color: '#fff', fontSize: 12, fontWeight: 800 }}>{achievement.name}</span>
+                    <span style={{ color: '#f59e0b', fontSize: 11 }}>+{achievement.points}</span>
+                  </div>
+                  <div style={{ color: '#9db8e8', fontSize: 11 }}>{achievement.description}</div>
+                </div>
+              ))}
+              {newAchievements.length > 5 && (
+                <div style={{ color: '#9db8e8', fontSize: 11 }}>+{newAchievements.length - 5} more achievements</div>
+              )}
+              {newUnlocks.map((unlock) => (
+                <div key={unlock.id} style={{ background: '#1a1405', border: '1px solid #6f4d10', borderRadius: 7, padding: '7px 8px' }}>
+                  <div style={{ color: '#f5c542', fontSize: 12, fontWeight: 800 }}>Unlock: {unlock.name}</div>
+                  <div style={{ color: '#c9a85d', fontSize: 11 }}>{unlock.description}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {nearMiss && (
           <div style={{
             background: nearMiss.tone === 'clutch' ? '#071d14' : '#1f1208',

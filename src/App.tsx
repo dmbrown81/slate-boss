@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import type { Screen, Lineup, Player, ContestResult, ModifierKey, UserProfile, TournamentType, RunSummary } from './types';
+import type { Achievement, Screen, Lineup, Player, ContestResult, ModifierKey, UserProfile, TournamentType, RunSummary, UnlockReward } from './types';
 import { TIER_ENTRY_FEE } from './types';
 import { generateSlate } from './lib/slateGenerator';
 import { runContest } from './lib/simulation';
@@ -35,6 +35,8 @@ export default function App() {
   const [isCareerMode, setIsCareerMode] = useState(false);
   const [selectedTournament, setSelectedTournament] = useState<TournamentType>(() => loadDailyTournament());
   const [runSummary, setRunSummary] = useState<RunSummary | null>(null);
+  const [recentAchievements, setRecentAchievements] = useState<Achievement[]>([]);
+  const [recentUnlocks, setRecentUnlocks] = useState<UnlockReward[]>([]);
 
   const today = todayDateStr();
   const slate = isCareerMode && profile.run.isActive
@@ -103,16 +105,21 @@ export default function App() {
 
     setProfile((prev) => {
       let profBeforeResult = isCareerMode ? prev : updateStreak(prev);
-      const { next, runJustEnded } = applyContestResult(profBeforeResult, contestResult, isCareerMode);
+      if (!lockedLineup) return profBeforeResult;
+      const { next, runJustEnded, newAchievements, newUnlocks } = applyContestResult(profBeforeResult, contestResult, isCareerMode, lockedLineup);
       if (runJustEnded) setRunSummary(runJustEnded);
+      setRecentAchievements(newAchievements);
+      setRecentUnlocks(newUnlocks);
       return next;
     });
-  }, [contestResult, isCareerMode]);
+  }, [contestResult, isCareerMode, lockedLineup]);
 
   const handleBackHome = useCallback(() => {
     setScreen('home');
     setContestResult(null);
     setLockedLineup(null);
+    setRecentAchievements([]);
+    setRecentUnlocks([]);
   }, []);
 
   const handleGoCareerFromResults = useCallback(() => {
@@ -123,6 +130,8 @@ export default function App() {
     }
     setContestResult(null);
     setLockedLineup(null);
+    setRecentAchievements([]);
+    setRecentUnlocks([]);
   }, [runSummary]);
 
   const handleRunOverNewRun = useCallback(() => {
@@ -172,6 +181,8 @@ export default function App() {
           streak={profile.dailyStreak}
           onHome={handleBackHome}
           onCareer={handleGoCareerFromResults}
+          newAchievements={recentAchievements}
+          newUnlocks={recentUnlocks}
         />
       );
 

@@ -151,6 +151,26 @@ export interface ContestResult {
   quarterRanks: [number, number, number, number];
 }
 
+export type AchievementCategory = 'starter' | 'contest' | 'lineup' | 'sweat' | 'career' | 'collection';
+export type AchievementRarity = 'bronze' | 'silver' | 'gold' | 'diamond';
+
+export interface Achievement {
+  id: string;
+  name: string;
+  description: string;
+  category: AchievementCategory;
+  rarity: AchievementRarity;
+  points: number;
+  unlockId?: string;
+}
+
+export interface UnlockReward {
+  id: string;
+  name: string;
+  description: string;
+  kind: 'boon' | 'cosmetic' | 'mode' | 'title';
+}
+
 export interface LineupGrades {
   value: string;
   valueSentence: string;
@@ -218,6 +238,9 @@ export interface UserProfile {
   bestFinishRank: number;
   totalWinnings: number;
   unlockedModifiers: ModifierKey[];
+  achievementIds: string[];
+  unlockIds: string[];
+  achievementPoints: number;
   run: RunState;
   careerRunHistory: RunSummary[];
 }
