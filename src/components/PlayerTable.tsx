@@ -3,6 +3,7 @@ import type { Player, Position, TournamentType } from '../types';
 
 type SortKey = 'salary' | 'displayedProjection' | 'value' | 'floor' | 'ceiling' | 'ownership' | 'boomChance' | 'volatility';
 type ViewMode = 'beginner' | 'advanced';
+type PositionFilter = Position | 'ALL' | 'FLEX';
 
 interface Props {
   players: Player[];
@@ -14,9 +15,13 @@ interface Props {
   tournamentType: TournamentType;
 }
 
-const POSITIONS: Array<Position | 'ALL'> = ['ALL', 'QB', 'RB', 'WR', 'TE', 'DST'];
+const POSITIONS: PositionFilter[] = ['ALL', 'QB', 'RB', 'WR', 'TE', 'FLEX', 'DST'];
 
 const formIcon = (f: Player['form']) => f === 'hot' ? '🔥' : f === 'cold' ? '🧊' : '';
+
+function isFlexEligible(player: Player): boolean {
+  return player.position === 'RB' || player.position === 'WR' || player.position === 'TE';
+}
 
 function safetyLabel(player: Player): { label: string; color: string } {
   const spread = player.ceiling - player.floor;
@@ -44,7 +49,7 @@ function whyPick(player: Player, tournamentType: TournamentType): string {
 }
 
 export default function PlayerTable({ players, onAdd, onRemove, onSelectPlayer, selectedIds, remainingSalary, tournamentType }: Props) {
-  const [posFilter, setPosFilter] = useState<Position | 'ALL'>('ALL');
+  const [posFilter, setPosFilter] = useState<PositionFilter>('ALL');
   const [sortKey, setSortKey] = useState<SortKey>('displayedProjection');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [search, setSearch] = useState('');
@@ -52,7 +57,8 @@ export default function PlayerTable({ players, onAdd, onRemove, onSelectPlayer, 
 
   const sorted = useMemo(() => {
     let list = players;
-    if (posFilter !== 'ALL') list = list.filter((p) => p.position === posFilter);
+    if (posFilter === 'FLEX') list = list.filter(isFlexEligible);
+    else if (posFilter !== 'ALL') list = list.filter((p) => p.position === posFilter);
     if (search) {
       const term = search.toLowerCase();
       list = list.filter((p) =>

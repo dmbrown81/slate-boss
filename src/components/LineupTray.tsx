@@ -9,7 +9,7 @@ interface Props {
 }
 
 const SLOT_LABELS: Record<RosterSlot, string> = {
-  QB: 'QB', RB1: 'RB', RB2: 'RB', WR1: 'WR', WR2: 'WR', TE: 'TE', FLEX: 'FLEX', DST: 'DST',
+  QB: 'QB', RB1: 'RB', RB2: 'RB', WR1: 'WR', WR2: 'WR', TE: 'TE', FLEX: 'FLEX RB/WR/TE', DST: 'DST',
 };
 
 export default function LineupTray({ lineup, onRemove, onEnterContest }: Props) {
