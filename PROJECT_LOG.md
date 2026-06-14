@@ -59,3 +59,11 @@ External reviews from ChatGPT, Gemini, and Claude converged on the same product 
 - Guided step-by-step first slate (pick QB → add a combo → finish).
 - Functional career boons (Bubble Shield, Value Finder, Stack Meter+).
 - Mobile/PWA readiness: 100vh→100dvh, safe-area insets, larger tap targets, manifest/icons, run the sim off the main thread.
+
+### Opponent archetypes + first-slate coaching
+
+- Replaced the old chalk/contrarian opponent split with contest-aware field archetypes: safe chalk, balanced, QB combo, contrarian, stars-and-scrubs, casual, and sharp.
+- Field mix now changes by contest type. Safe 50/50 fields are more stable/chalky; tournaments include more combos, contrarian builds, and sharp lineups.
+- Added a lightweight first-slate coach panel in the builder: pick a QB, add a QB Combo, then fill remaining slots safely.
+- Beginner cards can now show a Coach pick tag for the current first-slate step.
+- Balance harness sample after archetypes shows Safe 50/50 builds now separate more cleanly from random lineups while tournaments are less automatic.

@@ -13,6 +13,8 @@ interface Props {
   selectedIds: Set<string>;
   remainingSalary: number;
   tournamentType: TournamentType;
+  guideTeam?: string | null;
+  guidePosition?: 'QB' | 'COMBO' | null;
 }
 
 const POSITIONS: PositionFilter[] = ['ALL', 'QB', 'RB', 'WR', 'TE', 'FLEX', 'DST'];
@@ -48,7 +50,7 @@ function whyPick(player: Player, tournamentType: TournamentType): string {
   return 'Solid projection: useful if the rest of your lineup has enough upside.';
 }
 
-export default function PlayerTable({ players, onAdd, onRemove, onSelectPlayer, selectedIds, remainingSalary, tournamentType }: Props) {
+export default function PlayerTable({ players, onAdd, onRemove, onSelectPlayer, selectedIds, remainingSalary, tournamentType, guideTeam = null, guidePosition = null }: Props) {
   const [posFilter, setPosFilter] = useState<PositionFilter>('ALL');
   const [sortKey, setSortKey] = useState<SortKey>('displayedProjection');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
@@ -168,13 +170,18 @@ export default function PlayerTable({ players, onAdd, onRemove, onSelectPlayer, 
             const canAfford = !isSelected && player.salary <= remainingSalary + (isSelected ? player.salary : 0);
             const safety = safetyLabel(player);
             const upside = upsideLabel(player);
+            const isGuidedPick = guidePosition === 'QB'
+              ? player.position === 'QB'
+              : guidePosition === 'COMBO'
+              ? Boolean(guideTeam && player.team === guideTeam && (player.position === 'WR' || player.position === 'TE'))
+              : false;
             return (
               <div
                 key={player.id}
                 onClick={() => onSelectPlayer(player)}
                 style={{
                   background: isSelected ? '#0d2240' : '#111',
-                  border: `1px solid ${isSelected ? '#2a6ef5' : '#242424'}`,
+                  border: `1px solid ${isSelected ? '#2a6ef5' : isGuidedPick ? '#f59e0b' : '#242424'}`,
                   borderRadius: 8,
                   padding: '9px 10px',
                   opacity: !isSelected && !canAfford ? 0.45 : 1,
@@ -188,6 +195,21 @@ export default function PlayerTable({ players, onAdd, onRemove, onSelectPlayer, 
                   </div>
                   <div style={{ color: '#4fc3f7', fontSize: 17, fontWeight: 900 }}>{player.displayedProjection.toFixed(1)}</div>
                 </div>
+                {isGuidedPick && (
+                  <div style={{
+                    color: '#f5c542',
+                    background: '#1a1405',
+                    border: '1px solid #6f4d10',
+                    borderRadius: 999,
+                    padding: '2px 7px',
+                    fontSize: 10,
+                    fontWeight: 900,
+                    display: 'inline-block',
+                    marginBottom: 6,
+                  }}>
+                    Coach pick
+                  </div>
+                )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 7 }}>
                   <div style={{ color: '#aaa', fontSize: 12 }}>${player.salary.toLocaleString()}</div>
                   <div style={{ display: 'flex', gap: 5 }}>

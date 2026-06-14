@@ -77,10 +77,37 @@ export default function LineupBuilder({
   };
 
   const selectedIds = new Set(getLineupPlayers(lineup).map((p) => p.id));
+  const lineupPlayers = getLineupPlayers(lineup);
+  const qb = lineup.QB;
+  const hasQbCombo = Boolean(qb && lineupPlayers.some((p) => p.team === qb.team && (p.position === 'WR' || p.position === 'TE')));
   const tournament = TOURNAMENTS[effectiveTournament];
   const isStarterContest = isStarterTournament(effectiveTournament);
   const avgLeft = averageSalaryLeftPerOpenSlot(lineup);
   const slotsOpen = openSlotCount(lineup);
+  const firstSlateStep = !qb
+    ? {
+        title: 'Step 1: Pick a QB',
+        body: 'Quarterbacks usually carry the lineup. Start with a steady projected QB.',
+        tone: '#2a6ef5',
+      }
+    : !hasQbCombo
+    ? {
+        title: 'Step 2: Add a QB Combo',
+        body: `Add a ${qb.team} WR or TE. If ${qb.name} has a good game, that teammate can rise with him.`,
+        tone: '#f59e0b',
+      }
+    : slotsOpen > 0
+    ? {
+        title: `Step 3: Fill ${slotsOpen} more slot${slotsOpen === 1 ? '' : 's'}`,
+        body: 'For Safe 50/50, lean on Steady and Playable cards. You only need to beat half the room.',
+        tone: '#8ee0b3',
+      }
+    : {
+        title: 'Ready to enter',
+        body: 'Your lineup is full. Check cap left, then enter the Safe 50/50.',
+        tone: '#8ee0b3',
+      };
+  const guidePosition = isFirstSession && !qb ? 'QB' : isFirstSession && qb && !hasQbCombo ? 'COMBO' : null;
 
   return (
     <div style={{ minHeight: '100vh', background: '#0a0a0a', display: 'flex', flexDirection: 'column' }}>
@@ -200,6 +227,21 @@ export default function LineupBuilder({
 
       {/* Player table — scrollable area */}
       <div style={{ flex: 1, overflow: 'auto', padding: '10px 12px' }}>
+        {isFirstSession && (
+          <div style={{
+            background: '#0d1a2a',
+            border: `1px solid ${firstSlateStep.tone}`,
+            borderRadius: 8,
+            padding: '10px 12px',
+            marginBottom: 10,
+            color: '#cfe0ff',
+            fontSize: 12,
+            lineHeight: 1.45,
+          }}>
+            <div style={{ color: '#fff', fontWeight: 900, fontSize: 13, marginBottom: 3 }}>{firstSlateStep.title}</div>
+            {firstSlateStep.body}
+          </div>
+        )}
         <div style={{
           background: '#111',
           border: '1px solid #242424',
@@ -229,6 +271,8 @@ export default function LineupBuilder({
           selectedIds={selectedIds}
           remainingSalary={remainingSalary(lineup)}
           tournamentType={effectiveTournament}
+          guideTeam={qb?.team ?? null}
+          guidePosition={guidePosition}
         />
       </div>
 

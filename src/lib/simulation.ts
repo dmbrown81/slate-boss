@@ -125,63 +125,140 @@ function simulateEntry(
   return { lineupPlayers: players, scores, totalScore, isUser };
 }
 
-function buildOpponentLineup(slate: Slate, rng: RNG, isContrarian: boolean): Player[] {
-  // Ownership-weighted selection that clusters on chalk (or contrarian)
+type OpponentArchetype = 'safe_chalk' | 'balanced' | 'qb_combo' | 'contrarian' | 'stars_scrubs' | 'casual' | 'sharp';
+type LineupNeed = 'QB' | 'RB' | 'WR' | 'TE' | 'FLEX' | 'DST';
+
+const OPPONENT_SLOTS: LineupNeed[] = ['QB', 'RB', 'RB', 'WR', 'WR', 'TE', 'FLEX', 'DST'];
+
+const FIELD_MIX: Record<TournamentType, Record<OpponentArchetype, number>> = {
+  double_up: {
+    safe_chalk: 38,
+    balanced: 26,
+    qb_combo: 10,
+    contrarian: 4,
+    stars_scrubs: 6,
+    casual: 14,
+    sharp: 2,
+  },
+  mini_gpp: {
+    safe_chalk: 18,
+    balanced: 24,
+    qb_combo: 22,
+    contrarian: 12,
+    stars_scrubs: 10,
+    casual: 8,
+    sharp: 6,
+  },
+  large_gpp: {
+    safe_chalk: 10,
+    balanced: 18,
+    qb_combo: 26,
+    contrarian: 18,
+    stars_scrubs: 12,
+    casual: 6,
+    sharp: 10,
+  },
+  winner_take_all: {
+    safe_chalk: 6,
+    balanced: 12,
+    qb_combo: 28,
+    contrarian: 22,
+    stars_scrubs: 14,
+    casual: 6,
+    sharp: 12,
+  },
+};
+
+function eligibleForNeed(need: LineupNeed, player: Player): boolean {
+  if (need === 'FLEX') return player.position === 'RB' || player.position === 'WR' || player.position === 'TE';
+  return player.position === need;
+}
+
+function pickWeighted<T>(items: T[], weights: number[], rng: RNG): T {
+  const total = weights.reduce((sum, weight) => sum + Math.max(0, weight), 0);
+  if (total <= 0) return items[Math.floor(rng() * items.length)];
+  let cursor = rng() * total;
+  for (let i = 0; i < items.length; i++) {
+    cursor -= Math.max(0, weights[i]);
+    if (cursor <= 0) return items[i];
+  }
+  return items[items.length - 1];
+}
+
+function pickArchetype(tournamentType: TournamentType, rng: RNG): OpponentArchetype {
+  const mix = FIELD_MIX[tournamentType] ?? FIELD_MIX.mini_gpp;
+  const entries = Object.entries(mix) as Array<[OpponentArchetype, number]>;
+  return pickWeighted(entries.map(([key]) => key), entries.map(([, weight]) => weight), rng);
+}
+
+function cheapestRemainingCost(slate: Slate, selected: Player[], needs: LineupNeed[]): number {
+  const used = new Set(selected.map((p) => p.id));
+  return needs.reduce((sum, need) => {
+    const cheapest = slate.players
+      .filter((p) => !used.has(p.id) && eligibleForNeed(need, p))
+      .sort((a, b) => a.salary - b.salary)[0];
+    return sum + (cheapest?.salary ?? 0);
+  }, 0);
+}
+
+function playerArchetypeScore(player: Player, selected: Player[], archetype: OpponentArchetype): number {
+  const qb = selected.find((p) => p.position === 'QB');
+  const value = player.displayedProjection / (player.salary / 1000);
+  const comboBonus = qb && player.team === qb.team && (player.position === 'WR' || player.position === 'TE') ? 12 : 0;
+  const bringBackBonus = qb && player.team === qb.opponent && player.position !== 'DST' ? 5 : 0;
+  const cheapBonus = Math.max(0, (6200 - player.salary) / 450);
+  const expensiveBonus = Math.max(0, (player.salary - 6800) / 500);
+
+  switch (archetype) {
+    case 'safe_chalk':
+      return player.displayedProjection * 1.25 + player.floor * 0.8 + player.ownership * 0.45 - player.volatility * 8;
+    case 'balanced':
+      return player.displayedProjection * 1.1 + value * 4 + player.ownership * 0.2 + comboBonus * 0.5;
+    case 'qb_combo':
+      return player.displayedProjection + value * 2 + comboBonus + bringBackBonus;
+    case 'contrarian':
+      return player.ceiling * 0.75 + value * 2 + Math.max(0, 24 - player.ownership) * 0.9 + comboBonus * 0.55;
+    case 'stars_scrubs':
+      return player.displayedProjection + player.ceiling * 0.35 + expensiveBonus * 5 + cheapBonus * 3;
+    case 'casual':
+      return player.displayedProjection * 0.75 + player.ownership * 0.65 + expensiveBonus * 1.5;
+    case 'sharp':
+      return player.displayedProjection * 1.2 + value * 5 + comboBonus * 0.8 + Math.max(0, 18 - player.ownership) * 0.25;
+  }
+}
+
+function buildOpponentLineup(slate: Slate, rng: RNG, tournamentType: TournamentType): Player[] {
+  const archetype = pickArchetype(tournamentType, rng);
+
   const tryBuild = (): Player[] | null => {
     const result: Player[] = [];
-    const salaryCap = SALARY_CAP;
-    let remaining = salaryCap;
 
-    const positions: Array<{ pos: string; count: number }> = [
-      { pos: 'QB', count: 1 },
-      { pos: 'RB', count: 2 },
-      { pos: 'WR', count: 2 },
-      { pos: 'TE', count: 1 },
-      { pos: 'FLEX', count: 1 },
-      { pos: 'DST', count: 1 },
-    ];
+    for (let i = 0; i < OPPONENT_SLOTS.length; i++) {
+      const need = OPPONENT_SLOTS[i];
+      const remainingNeeds = OPPONENT_SLOTS.slice(i + 1);
+      const reserved = cheapestRemainingCost(slate, result, remainingNeeds);
+      const salaryUsed = result.reduce((sum, p) => sum + p.salary, 0);
+      const budget = SALARY_CAP - salaryUsed - reserved;
+      const usedIds = new Set(result.map((p) => p.id));
+      const pool = slate.players.filter((p) => !usedIds.has(p.id) && eligibleForNeed(need, p));
+      const affordable = pool.filter((p) => p.salary <= budget);
+      const candidates = affordable.length ? affordable : pool.filter((p) => p.salary <= SALARY_CAP - salaryUsed);
 
-    for (const { pos, count } of positions) {
-      const pool = slate.players.filter((p) => {
-        if (result.some((r) => r.id === p.id)) return false;
-        if (pos === 'FLEX') return p.position === 'RB' || p.position === 'WR' || p.position === 'TE';
-        if (pos === 'QB') return p.position === 'QB';
-        if (pos === 'RB') return p.position === 'RB';
-        if (pos === 'WR') return p.position === 'WR';
-        if (pos === 'TE') return p.position === 'TE';
-        if (pos === 'DST') return p.position === 'DST';
-        return false;
-      });
+      if (!candidates.length) return null;
 
-      for (let i = 0; i < count; i++) {
-        const available = pool.filter(
-          (p) => !result.some((r) => r.id === p.id) && p.salary <= remaining
-        );
-        if (!available.length) return null;
-
-        const weights = available.map((p) => {
-          const ownBase = isContrarian ? (1 / (p.ownership + 1)) * 50 : p.ownership;
-          return Math.max(0.1, ownBase);
-        });
-
-        const totalW = weights.reduce((a, b) => a + b, 0);
-        let r = rng() * totalW;
-        let chosen = available[available.length - 1];
-        for (let j = 0; j < available.length; j++) {
-          r -= weights[j];
-          if (r <= 0) { chosen = available[j]; break; }
-        }
-
-        result.push(chosen);
-        remaining -= chosen.salary;
-      }
+      const ranked = [...candidates]
+        .sort((a, b) => playerArchetypeScore(b, result, archetype) - playerArchetypeScore(a, result, archetype))
+        .slice(0, archetype === 'casual' ? 8 : 5);
+      const weights = ranked.map((_, index) => Math.max(0.1, ranked.length - index + rng() * 0.35));
+      result.push(pickWeighted(ranked, weights, rng));
     }
 
-    if (remaining < 0) return null;
+    const salary = result.reduce((sum, p) => sum + p.salary, 0);
+    if (salary > SALARY_CAP) return null;
     return result;
   };
 
-  for (let attempt = 0; attempt < 20; attempt++) {
+  for (let attempt = 0; attempt < 30; attempt++) {
     const lineup = tryBuild();
     if (lineup) return lineup;
   }
@@ -225,10 +302,8 @@ export function runContest(
   // Build field. Most opponents are chalk-biased, with a contrarian tail.
   const field: ContestEntry[] = [];
   const opponentCount = tournament.entrants - 1;
-  const chalkCutoff = Math.floor(opponentCount * (tournamentType === 'large_gpp' || tournamentType === 'winner_take_all' ? 0.82 : 0.88));
   for (let i = 0; i < opponentCount; i++) {
-    const isContrarian = i >= chalkCutoff;
-    const lineupPlayers = buildOpponentLineup(slate, rng, isContrarian);
+    const lineupPlayers = buildOpponentLineup(slate, rng, tournamentType);
     const entry = simulateEntry(lineupPlayers, rng, slate, null, false, contestVariance);
     field.push(entry);
   }
