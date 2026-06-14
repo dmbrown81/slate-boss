@@ -7,9 +7,10 @@ interface Props {
   selectedIds: Set<string>;
   onAdd: (player: Player) => void;
   onSelectPlayer: (player: Player) => void;
+  stackMeterPlus?: boolean;
 }
 
-export default function StackingTool({ lineup, players, selectedIds, onAdd, onSelectPlayer }: Props) {
+export default function StackingTool({ lineup, players, selectedIds, onAdd, onSelectPlayer, stackMeterPlus = false }: Props) {
   const selected = getLineupPlayers(lineup);
   const qb = lineup.QB;
   const passCatchers = qb
@@ -27,6 +28,35 @@ export default function StackingTool({ lineup, players, selectedIds, onAdd, onSe
       : stackScore >= 2
         ? 'Playable QB Combo'
         : 'Add a teammate';
+  const meterRead = !qb
+    ? {
+        label: 'No QB yet',
+        detail: 'Pick a quarterback first, then pair him with a WR or TE from his team.',
+        tone: '#666',
+      }
+    : passCatchers.length >= 2 && bringBacks.length >= 1
+      ? {
+          label: 'Premium shootout stack',
+          detail: `${qb.name} has multiple teammates plus an opponent bring-back. This is the highest-upside shape, but it can be more fragile.`,
+          tone: '#8ee0b3',
+        }
+      : passCatchers.length >= 1 && bringBacks.length >= 1
+        ? {
+            label: 'Strong connected stack',
+            detail: `You have a ${qb.team} pass-catcher and an opponent bring-back. If this game shoots out, several picks can rise together.`,
+            tone: '#4fc3f7',
+          }
+        : passCatchers.length >= 1
+          ? {
+              label: 'Playable QB combo',
+              detail: `You paired ${qb.name} with a teammate. Add an opponent pick if you want a bigger game-story bet.`,
+              tone: '#f59e0b',
+            }
+          : {
+              label: 'Missing QB combo',
+              detail: `Add a ${qb.team} WR or TE so your QB points can connect with another lineup slot.`,
+              tone: '#f5a34c',
+            };
 
   const sameTeamWrTargets = qb
     ? players
@@ -76,6 +106,21 @@ export default function StackingTool({ lineup, players, selectedIds, onAdd, onSe
             <MiniMetric label="Teammates" value={`${passCatchers.length}`} />
             <MiniMetric label="Opponent picks" value={`${bringBacks.length}`} />
           </div>
+          {stackMeterPlus && (
+            <div style={{
+              background: '#0d1a2a',
+              border: `1px solid ${meterRead.tone}`,
+              borderRadius: 7,
+              padding: '8px 9px',
+              marginBottom: 8,
+              color: '#cfe0ff',
+              fontSize: 11,
+              lineHeight: 1.4,
+            }}>
+              <div style={{ color: '#fff', fontWeight: 900, marginBottom: 2 }}>Stack Meter+: {meterRead.label}</div>
+              {meterRead.detail}
+            </div>
+          )}
 
           <SuggestionRow title="QB Combo: WR teammate" players={sameTeamWrTargets} onAdd={onAdd} onSelectPlayer={onSelectPlayer} />
           <SuggestionRow title="QB Combo: TE teammate" players={sameTeamTeTargets} onAdd={onAdd} onSelectPlayer={onSelectPlayer} />

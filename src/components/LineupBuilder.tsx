@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import type { Slate, Lineup, Player, NewsEvent, TournamentType } from '../types';
+import type { Slate, Lineup, Player, NewsEvent, TournamentType, BoonKey } from '../types';
 import { addPlayer, removePlayer, emptyLineup, getLineupPlayers, remainingSalary, lineupProjectedPoints, lineupAvgOwnership, averageSalaryLeftPerOpenSlot, openSlotCount } from '../lib/lineupValidation';
 import { applyNewsToPlayers } from '../lib/slateGenerator';
 import PlayerTable from './PlayerTable';
@@ -21,6 +21,7 @@ interface Props {
   entryFee?: number;
   selectedTournament: TournamentType;
   onTournamentChange: (type: TournamentType) => void;
+  activeBoon?: BoonKey | null;
 }
 
 export default function LineupBuilder({
@@ -32,6 +33,7 @@ export default function LineupBuilder({
   entryFee = 1,
   selectedTournament,
   onTournamentChange,
+  activeBoon = null,
 }: Props) {
   // The first daily contest is always a Safe 50/50, with advanced tooling hidden.
   const effectiveTournament: TournamentType = isFirstSession ? 'double_up' : selectedTournament;
@@ -84,6 +86,11 @@ export default function LineupBuilder({
   const isStarterContest = isStarterTournament(effectiveTournament);
   const avgLeft = averageSalaryLeftPerOpenSlot(lineup);
   const slotsOpen = openSlotCount(lineup);
+  const valueFinderPlayerId = activeBoon === 'value_finder'
+    ? players
+        .filter((p) => !selectedIds.has(p.id) && p.salary <= Math.max(remainingSalary(lineup), avgLeft))
+        .sort((a, b) => (b.displayedProjection / (b.salary / 1000)) - (a.displayedProjection / (a.salary / 1000)))[0]?.id ?? null
+    : null;
   const firstSlateStep = !qb
     ? {
         title: 'Step 1: Pick a QB',
@@ -261,6 +268,7 @@ export default function LineupBuilder({
           selectedIds={selectedIds}
           onAdd={handleAdd}
           onSelectPlayer={setSelectedPlayer}
+          stackMeterPlus={activeBoon === 'stack_meter_plus'}
         />}
         <LineupCoach lineup={lineup} tournamentType={effectiveTournament} />
         <PlayerTable
@@ -273,6 +281,7 @@ export default function LineupBuilder({
           tournamentType={effectiveTournament}
           guideTeam={qb?.team ?? null}
           guidePosition={guidePosition}
+          valueFinderPlayerId={valueFinderPlayerId}
         />
       </div>
 

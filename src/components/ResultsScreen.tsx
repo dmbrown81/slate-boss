@@ -106,7 +106,8 @@ export default function ResultsScreen({ result, streak, onHome, onCareer, newAch
   const [showAdvanced, setShowAdvanced] = useState(false);
   const cashed = result.payout > 0;
   const won = result.userRank === 1;
-  const net = result.payout - result.entryFee;
+  const refund = result.boonRefund ?? 0;
+  const net = result.payout + refund - result.entryFee;
   const nearMiss = nearMissInfo(result);
 
   const copy = () => {
@@ -203,6 +204,21 @@ export default function ResultsScreen({ result, streak, onHome, onCareer, newAch
             {nearMiss.tone === 'clutch' ? '😅 ' : '😤 '}{nearMiss.text}
           </div>
         )}
+        {result.boonMessage && (
+          <div style={{
+            background: '#071d14',
+            border: '1px solid #1f6f47',
+            borderRadius: 8,
+            padding: '10px 12px',
+            marginBottom: 12,
+            color: '#8ee0b3',
+            fontSize: 13,
+            fontWeight: 700,
+            lineHeight: 1.4,
+          }}>
+            Career Boon: {result.boonMessage}
+          </div>
+        )}
         <div style={{
           background: '#111',
           border: '1px solid #1e1e1e',
@@ -217,7 +233,9 @@ export default function ResultsScreen({ result, streak, onHome, onCareer, newAch
             </span>
           </div>
           <div style={{ color: '#666', fontSize: 11 }}>
-            Entry ${result.entryFee.toFixed(2)} · Payout ${result.payout.toFixed(2)} · {result.tournament.prizeSummary}
+            Entry ${result.entryFee.toFixed(2)} · Payout ${result.payout.toFixed(2)}
+            {refund > 0 && <span> · Boon refund ${refund.toFixed(2)}</span>}
+            {' '}· {result.tournament.prizeSummary}
           </div>
         </div>
 

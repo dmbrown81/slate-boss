@@ -15,6 +15,7 @@ interface Props {
   tournamentType: TournamentType;
   guideTeam?: string | null;
   guidePosition?: 'QB' | 'COMBO' | null;
+  valueFinderPlayerId?: string | null;
 }
 
 const POSITIONS: PositionFilter[] = ['ALL', 'QB', 'RB', 'WR', 'TE', 'FLEX', 'DST'];
@@ -50,7 +51,7 @@ function whyPick(player: Player, tournamentType: TournamentType): string {
   return 'Solid projection: useful if the rest of your lineup has enough upside.';
 }
 
-export default function PlayerTable({ players, onAdd, onRemove, onSelectPlayer, selectedIds, remainingSalary, tournamentType, guideTeam = null, guidePosition = null }: Props) {
+export default function PlayerTable({ players, onAdd, onRemove, onSelectPlayer, selectedIds, remainingSalary, tournamentType, guideTeam = null, guidePosition = null, valueFinderPlayerId = null }: Props) {
   const [posFilter, setPosFilter] = useState<PositionFilter>('ALL');
   const [sortKey, setSortKey] = useState<SortKey>('displayedProjection');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
@@ -175,13 +176,14 @@ export default function PlayerTable({ players, onAdd, onRemove, onSelectPlayer, 
               : guidePosition === 'COMBO'
               ? Boolean(guideTeam && player.team === guideTeam && (player.position === 'WR' || player.position === 'TE'))
               : false;
+            const isValueFinderPick = player.id === valueFinderPlayerId;
             return (
               <div
                 key={player.id}
                 onClick={() => onSelectPlayer(player)}
                 style={{
                   background: isSelected ? '#0d2240' : '#111',
-                  border: `1px solid ${isSelected ? '#2a6ef5' : isGuidedPick ? '#f59e0b' : '#242424'}`,
+                  border: `1px solid ${isSelected ? '#2a6ef5' : isGuidedPick ? '#f59e0b' : isValueFinderPick ? '#1f6f47' : '#242424'}`,
                   borderRadius: 8,
                   padding: '9px 10px',
                   opacity: !isSelected && !canAfford ? 0.45 : 1,
@@ -195,19 +197,34 @@ export default function PlayerTable({ players, onAdd, onRemove, onSelectPlayer, 
                   </div>
                   <div style={{ color: '#4fc3f7', fontSize: 17, fontWeight: 900 }}>{player.displayedProjection.toFixed(1)}</div>
                 </div>
-                {isGuidedPick && (
-                  <div style={{
-                    color: '#f5c542',
-                    background: '#1a1405',
-                    border: '1px solid #6f4d10',
-                    borderRadius: 999,
-                    padding: '2px 7px',
-                    fontSize: 10,
-                    fontWeight: 900,
-                    display: 'inline-block',
-                    marginBottom: 6,
-                  }}>
-                    Coach pick
+                {(isGuidedPick || isValueFinderPick) && (
+                  <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 6 }}>
+                    {isGuidedPick && (
+                      <span style={{
+                        color: '#f5c542',
+                        background: '#1a1405',
+                        border: '1px solid #6f4d10',
+                        borderRadius: 999,
+                        padding: '2px 7px',
+                        fontSize: 10,
+                        fontWeight: 900,
+                      }}>
+                        Coach pick
+                      </span>
+                    )}
+                    {isValueFinderPick && (
+                      <span style={{
+                        color: '#8ee0b3',
+                        background: '#071d14',
+                        border: '1px solid #1f6f47',
+                        borderRadius: 999,
+                        padding: '2px 7px',
+                        fontSize: 10,
+                        fontWeight: 900,
+                      }}>
+                        Value Finder
+                      </span>
+                    )}
                   </div>
                 )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 7 }}>
@@ -274,19 +291,23 @@ export default function PlayerTable({ players, onAdd, onRemove, onSelectPlayer, 
             {sorted.map((player) => {
               const isSelected = selectedIds.has(player.id);
               const canAfford = !isSelected && player.salary <= remainingSalary + (isSelected ? player.salary : 0);
+              const isValueFinderPick = player.id === valueFinderPlayerId;
               return (
                 <tr
                   key={player.id}
                   onClick={() => onSelectPlayer(player)}
                   style={{
                     borderBottom: '1px solid #1e1e1e',
-                    background: isSelected ? '#0d2240' : 'transparent',
+                    background: isSelected ? '#0d2240' : isValueFinderPick ? '#071d14' : 'transparent',
                     opacity: !isSelected && !canAfford ? 0.45 : 1,
                     cursor: 'pointer',
                   }}
                 >
                   <td style={{ padding: '5px 6px', color: '#e0e0e0', fontWeight: 600 }}>
                     {formIcon(player.form)} {player.name}
+                    {isValueFinderPick && (
+                      <span style={{ color: '#8ee0b3', fontSize: 10, fontWeight: 900, marginLeft: 6 }}>VALUE</span>
+                    )}
                   </td>
                   <td style={{ padding: '5px 6px', color: '#888' }}>{player.position}</td>
                   <td style={{ padding: '5px 6px', color: '#aaa' }}>{player.team}</td>

@@ -1,6 +1,7 @@
 import type { Achievement, UnlockReward, UserProfile, RunState, ContestResult, ContestTier, RunSummary, Lineup } from '../types';
 import { TIER_PROMOTION_BANKROLL, TIER_ENTRY_FEE } from '../types';
 import { evaluateAchievements } from './achievements';
+import { cashLineRank } from './payout';
 
 const STORAGE_VERSION = 3;
 const KEY = 'slateboss_v3';
@@ -12,6 +13,8 @@ const DEFAULT_RUN: RunState = {
   slatesRemaining: 10,
   currentWeek: 1,
   equippedModifier: null,
+  equippedBoon: null,
+  bubbleShieldUsed: false,
   isActive: false,
   bestRunScore: 0,
   lastTournamentType: 'double_up',
@@ -125,7 +128,21 @@ export function applyContestResult(
   let runJustEnded: RunSummary | null = null;
 
   if (isCareer && run.isActive) {
-    const newBankroll = run.bankroll - result.entryFee + payout;
+    let effectivePayout = payout;
+    if (run.equippedBoon === 'bubble_shield' && !run.bubbleShieldUsed && payout === 0) {
+      const allScores = [...result.field.map((entry) => entry.totalScore), result.userScore].sort((a, b) => b - a);
+      const cashRank = cashLineRank(result.totalEntrants, result.tournament.key);
+      const cashScore = allScores[cashRank - 1];
+      const missBy = cashScore - result.userScore;
+      if (missBy > 0 && missBy <= 2) {
+        effectivePayout = result.entryFee;
+        result.boonRefund = result.entryFee;
+        result.boonMessage = `Bubble Shield refunded your $${result.entryFee.toFixed(2)} entry after a ${missBy.toFixed(1)} point near miss.`;
+        run.bubbleShieldUsed = true;
+      }
+    }
+
+    const newBankroll = run.bankroll - result.entryFee + effectivePayout;
     run = {
       ...run,
       bankroll: newBankroll,
@@ -166,7 +183,7 @@ export function applyContestResult(
     totalContestsPlayed: profile.totalContestsPlayed + 1,
     totalCashed: profile.totalCashed + (cashed ? 1 : 0),
     bestFinishRank: Math.min(profile.bestFinishRank, userRank),
-    totalWinnings: profile.totalWinnings + payout,
+    totalWinnings: profile.totalWinnings + payout + (result.boonRefund ?? 0),
     run,
     lastDailyResult: isCareer ? profile.lastDailyResult : result,
     careerRunHistory: runJustEnded

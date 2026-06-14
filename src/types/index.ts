@@ -149,6 +149,8 @@ export interface ContestResult {
   grades: LineupGrades;
   shareCard: string;
   quarterRanks: [number, number, number, number];
+  boonRefund?: number;
+  boonMessage?: string;
 }
 
 export type AchievementCategory = 'starter' | 'contest' | 'lineup' | 'sweat' | 'career' | 'collection';
@@ -220,6 +222,7 @@ export const TIER_ENTRY_FEE: Record<ContestTier, number> = { 1: 1, 2: 5, 3: 25, 
 export const TIER_PROMOTION_BANKROLL: Record<ContestTier, number> = { 1: 50, 2: 150, 3: 500, 4: Infinity };
 
 export type ModifierKey = 'scout' | 'anchor_defense' | 'correlated';
+export type BoonKey = 'bubble_shield' | 'value_finder' | 'stack_meter_plus';
 export interface Modifier {
   key: ModifierKey;
   name: string;
@@ -242,6 +245,8 @@ export interface RunState {
   slatesRemaining: number;
   currentWeek: number;
   equippedModifier: ModifierKey | null;
+  equippedBoon: BoonKey | null;
+  bubbleShieldUsed: boolean;
   isActive: boolean;
   bestRunScore: number;
   lastTournamentType: TournamentType;

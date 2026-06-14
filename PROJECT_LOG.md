@@ -67,3 +67,11 @@ External reviews from ChatGPT, Gemini, and Claude converged on the same product 
 - Added a lightweight first-slate coach panel in the builder: pick a QB, add a QB Combo, then fill remaining slots safely.
 - Beginner cards can now show a Coach pick tag for the current first-slate step.
 - Balance harness sample after archetypes shows Safe 50/50 builds now separate more cleanly from random lineups while tournaments are less automatic.
+
+### Functional career boons
+
+- Added the first real career boon picker to new runs: Bubble Shield, Value Finder, and Stack Meter+.
+- Bubble Shield now has gameplay effect: once per run, it refunds the entry fee if a career lineup misses the cash line by 2 points or fewer. It does not count as a cash.
+- Value Finder highlights one strong salary-efficiency player in the builder during career runs.
+- Stack Meter+ upgrades the QB Combo Builder with a plain-English read on whether the lineup has no combo, a playable stack, or a stronger shootout stack.
+- Results now show career boon refunds separately and calculate net result using payout plus any boon refund.

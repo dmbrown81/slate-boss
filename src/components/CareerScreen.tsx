@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import type { UserProfile, ModifierKey } from '../types';
+import type { UserProfile, ModifierKey, BoonKey } from '../types';
 import { TIER_LABELS, TIER_ENTRY_FEE, TIER_PROMOTION_BANKROLL } from '../types';
 import { currentTitle } from '../lib/progression';
 import { APP_NAME } from '../config';
 
 interface Props {
   profile: UserProfile;
-  onStartRun: (modifier: ModifierKey | null) => void;
+  onStartRun: (modifier: ModifierKey | null, boon: BoonKey | null) => void;
   onContinueRun: () => void;
   onHome: () => void;
 }
@@ -17,11 +17,34 @@ const MODIFIER_INFO: Record<ModifierKey, { name: string; description: string }> 
   correlated: { name: 'Correlated', description: 'Same-team QB+WR/TE stacks gain a boom-trigger bonus.' },
 };
 
+const BOON_INFO: Record<BoonKey, { name: string; description: string; uses: string; bestFor: string }> = {
+  bubble_shield: {
+    name: 'Bubble Shield',
+    description: 'Refunds your entry fee if you miss the cash line by 2 points or fewer.',
+    uses: '1 per run',
+    bestFor: 'New runs and Safe 50/50 sweats',
+  },
+  value_finder: {
+    name: 'Value Finder',
+    description: 'Highlights one strong salary value in the player pool on each career slate.',
+    uses: 'Every slate',
+    bestFor: 'Learning salary efficiency',
+  },
+  stack_meter_plus: {
+    name: 'Stack Meter+',
+    description: 'Adds a clearer QB Combo read so you can see when a stack is actually connected.',
+    uses: 'Passive',
+    bestFor: 'Learning lineup correlation',
+  },
+};
+
 export default function CareerScreen({ profile, onStartRun, onContinueRun, onHome }: Props) {
   const [selectedMod, setSelectedMod] = useState<ModifierKey | null>(null);
+  const [selectedBoon, setSelectedBoon] = useState<BoonKey>('bubble_shield');
   const title = currentTitle(profile);
   const { run } = profile;
   const nextThreshold = TIER_PROMOTION_BANKROLL[run.tier];
+  const activeBoon = run.equippedBoon ? BOON_INFO[run.equippedBoon] : null;
 
   return (
     <div style={{ minHeight: '100vh', background: '#0a0a0a', padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -78,6 +101,26 @@ export default function CareerScreen({ profile, onStartRun, onContinueRun, onHom
                 <div style={{ fontSize: 10, color: '#555' }}>Entry Fee</div>
               </div>
             </div>
+            {activeBoon && (
+              <div style={{
+                marginTop: 10,
+                background: '#071d14',
+                border: '1px solid #1f6f47',
+                borderRadius: 8,
+                padding: '8px 10px',
+                color: '#8ee0b3',
+                fontSize: 11,
+                lineHeight: 1.4,
+              }}>
+                <span style={{ color: '#fff', fontWeight: 800 }}>Active boon: {activeBoon.name}</span>
+                {run.equippedBoon === 'bubble_shield' && (
+                  <span style={{ color: run.bubbleShieldUsed ? '#f5a34c' : '#8ee0b3' }}>
+                    {' '}· {run.bubbleShieldUsed ? 'used' : 'available'}
+                  </span>
+                )}
+                <div style={{ color: '#9adfb9', marginTop: 2 }}>{activeBoon.description}</div>
+              </div>
+            )}
             <div style={{ marginTop: 10, color: '#888', fontSize: 11, lineHeight: 1.45 }}>
               Goal: survive all 10 weeks and grow your bankroll.
               {Number.isFinite(nextThreshold) && (
@@ -137,8 +180,36 @@ export default function CareerScreen({ profile, onStartRun, onContinueRun, onHom
             })}
           </div>
 
+          <div style={{ fontSize: 13, color: '#888', marginBottom: 8, fontWeight: 600 }}>PICK A BOON</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+            {(Object.keys(BOON_INFO) as BoonKey[]).map((key) => {
+              const info = BOON_INFO[key];
+              const selected = selectedBoon === key;
+              return (
+                <div
+                  key={key}
+                  onClick={() => setSelectedBoon(key)}
+                  style={{
+                    background: selected ? '#071d14' : '#111',
+                    border: `1px solid ${selected ? '#1f6f47' : '#1e1e1e'}`,
+                    borderRadius: 8,
+                    padding: '10px 12px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 3 }}>
+                    <div style={{ fontSize: 13, color: '#ccc', fontWeight: 800 }}>{info.name}</div>
+                    <div style={{ fontSize: 10, color: selected ? '#8ee0b3' : '#666', fontWeight: 800 }}>{info.uses}</div>
+                  </div>
+                  <div style={{ fontSize: 11, color: '#777', lineHeight: 1.35 }}>{info.description}</div>
+                  <div style={{ fontSize: 10, color: '#555', marginTop: 4 }}>Best for: {info.bestFor}</div>
+                </div>
+              );
+            })}
+          </div>
+
           <button
-            onClick={() => onStartRun(selectedMod)}
+            onClick={() => onStartRun(selectedMod, selectedBoon)}
             style={{
               width: '100%', padding: '13px 0', background: '#2a6ef5',
               border: 'none', color: '#fff', borderRadius: 8, fontSize: 15, fontWeight: 700, cursor: 'pointer',

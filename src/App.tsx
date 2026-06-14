@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import type { Achievement, Screen, Lineup, Player, ContestResult, ModifierKey, UserProfile, TournamentType, RunSummary, UnlockReward } from './types';
+import type { Achievement, Screen, Lineup, Player, ContestResult, ModifierKey, BoonKey, UserProfile, TournamentType, RunSummary, UnlockReward } from './types';
 import { TIER_ENTRY_FEE } from './types';
 import { generateSlate } from './lib/slateGenerator';
 import { runContest } from './lib/simulation';
@@ -59,7 +59,7 @@ export default function App() {
     setScreen('career');
   }, []);
 
-  const handleStartRun = useCallback((modifier: ModifierKey | null) => {
+  const handleStartRun = useCallback((modifier: ModifierKey | null, boon: BoonKey | null) => {
     setProfile((prev) => {
       const runNumber = prev.run.runNumber + 1;
       return {
@@ -72,6 +72,8 @@ export default function App() {
           slatesRemaining: 10,
           currentWeek: 1,
           equippedModifier: modifier,
+          equippedBoon: boon,
+          bubbleShieldUsed: false,
           isActive: true,
           lastTournamentType: DEFAULT_TOURNAMENT_TYPE,
           peakBankroll: 25,
@@ -113,6 +115,7 @@ export default function App() {
       if (runJustEnded) setRunSummary(runJustEnded);
       setRecentAchievements(newAchievements);
       setRecentUnlocks(newUnlocks);
+      setContestResult({ ...contestResult });
       return next;
     });
   }, [contestResult, isCareerMode, lockedLineup]);
@@ -164,6 +167,7 @@ export default function App() {
           entryFee={entryFee}
           selectedTournament={selectedTournament}
           onTournamentChange={handleTournamentChange}
+          activeBoon={isCareerMode ? profile.run.equippedBoon : null}
         />
       );
 
