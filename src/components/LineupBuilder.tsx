@@ -169,7 +169,11 @@ export default function LineupBuilder({
           fontSize: 11, color: '#666', padding: '0 2px',
         }}>
           <span>Proj: <span style={{ color: '#f59e0b' }}>{lineupProjectedPoints(lineup).toFixed(1)}</span></span>
-          <span>Avg Own: <span style={{ color: '#888' }}>{lineupAvgOwnership(lineup).toFixed(1)}%</span></span>
+          {selectedTournament === 'double_up' ? (
+            <span>Mode: <span style={{ color: '#8ee0b3' }}>Safe</span></span>
+          ) : (
+            <span>Popularity: <span style={{ color: '#888' }}>{lineupAvgOwnership(lineup).toFixed(1)}%</span></span>
+          )}
           <span>Avg/Slot: <span style={{ color: avgLeft < 3800 && slotsOpen > 0 ? '#e74c3c' : '#888' }}>
             ${Math.max(0, avgLeft).toLocaleString(undefined, { maximumFractionDigits: 0 })}
           </span></span>
@@ -209,6 +213,7 @@ export default function LineupBuilder({
           onSelectPlayer={setSelectedPlayer}
           selectedIds={selectedIds}
           remainingSalary={remainingSalary(lineup)}
+          tournamentType={selectedTournament}
         />
       </div>
 

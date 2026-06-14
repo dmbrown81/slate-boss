@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import type { Player, Position } from '../types';
+import type { Player, Position, TournamentType } from '../types';
 
 type SortKey = 'salary' | 'displayedProjection' | 'value' | 'floor' | 'ceiling' | 'ownership' | 'boomChance' | 'volatility';
+type ViewMode = 'beginner' | 'advanced';
 
 interface Props {
   players: Player[];
@@ -10,17 +11,44 @@ interface Props {
   onSelectPlayer: (player: Player) => void;
   selectedIds: Set<string>;
   remainingSalary: number;
+  tournamentType: TournamentType;
 }
 
 const POSITIONS: Array<Position | 'ALL'> = ['ALL', 'QB', 'RB', 'WR', 'TE', 'DST'];
 
 const formIcon = (f: Player['form']) => f === 'hot' ? '🔥' : f === 'cold' ? '🧊' : '';
 
-export default function PlayerTable({ players, onAdd, onRemove, onSelectPlayer, selectedIds, remainingSalary }: Props) {
+function safetyLabel(player: Player): { label: string; color: string } {
+  const spread = player.ceiling - player.floor;
+  if (player.floor >= player.displayedProjection * 0.68 && player.volatility < 0.36) return { label: 'Steady', color: '#8ee0b3' };
+  if (spread > 25 || player.volatility > 0.5) return { label: 'Risky', color: '#f5a34c' };
+  return { label: 'Playable', color: '#4fc3f7' };
+}
+
+function upsideLabel(player: Player): { label: string; color: string } {
+  if (player.boomChance >= 0.22 || player.ceiling >= player.displayedProjection * 2) return { label: 'Big upside', color: '#f59e0b' };
+  if (player.ceiling >= player.displayedProjection * 1.65) return { label: 'Some upside', color: '#4fc3f7' };
+  return { label: 'Safer path', color: '#8ee0b3' };
+}
+
+function whyPick(player: Player, tournamentType: TournamentType): string {
+  const value = player.displayedProjection / (player.salary / 1000);
+  if (tournamentType === 'double_up') {
+    if (player.floor >= player.displayedProjection * 0.7) return 'Good for Safe 50/50: steady projection with less downside.';
+    if (value >= 2.8) return 'Good value: helpful points without spending too much salary.';
+    return 'Playable pick: solid projection, but check the safety label.';
+  }
+  if (player.boomChance >= 0.22) return 'Tournament pick: more big-game chance if you need upside.';
+  if (player.ownership < 14 && player.ceiling > player.displayedProjection * 1.7) return 'Sneaky tournament pick: lower popularity with a ceiling path.';
+  return 'Solid projection: useful if the rest of your lineup has enough upside.';
+}
+
+export default function PlayerTable({ players, onAdd, onRemove, onSelectPlayer, selectedIds, remainingSalary, tournamentType }: Props) {
   const [posFilter, setPosFilter] = useState<Position | 'ALL'>('ALL');
   const [sortKey, setSortKey] = useState<SortKey>('displayedProjection');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [search, setSearch] = useState('');
+  const [viewMode, setViewMode] = useState<ViewMode>(tournamentType === 'double_up' ? 'beginner' : 'advanced');
 
   const sorted = useMemo(() => {
     let list = players;
@@ -99,10 +127,104 @@ export default function PlayerTable({ players, onAdd, onRemove, onSelectPlayer, 
             {pos}
           </button>
         ))}
+        <div style={{
+          display: 'flex',
+          border: '1px solid #333',
+          borderRadius: 999,
+          overflow: 'hidden',
+          marginLeft: 'auto',
+        }}>
+          {(['beginner', 'advanced'] as const).map((mode) => (
+            <button
+              key={mode}
+              onClick={() => setViewMode(mode)}
+              style={{
+                background: viewMode === mode ? '#2a6ef5' : '#111',
+                border: 'none',
+                color: viewMode === mode ? '#fff' : '#888',
+                padding: '5px 9px',
+                fontSize: 11,
+                cursor: 'pointer',
+                fontWeight: 800,
+                textTransform: 'capitalize',
+              }}
+            >
+              {mode}
+            </button>
+          ))}
+        </div>
       </div>
 
+      {viewMode === 'beginner' && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 8 }}>
+          {sorted.slice(0, 36).map((player) => {
+            const isSelected = selectedIds.has(player.id);
+            const canAfford = !isSelected && player.salary <= remainingSalary + (isSelected ? player.salary : 0);
+            const safety = safetyLabel(player);
+            const upside = upsideLabel(player);
+            return (
+              <div
+                key={player.id}
+                onClick={() => onSelectPlayer(player)}
+                style={{
+                  background: isSelected ? '#0d2240' : '#111',
+                  border: `1px solid ${isSelected ? '#2a6ef5' : '#242424'}`,
+                  borderRadius: 8,
+                  padding: '9px 10px',
+                  opacity: !isSelected && !canAfford ? 0.45 : 1,
+                  cursor: 'pointer',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 5 }}>
+                  <div>
+                    <div style={{ color: '#fff', fontSize: 13, fontWeight: 800 }}>{formIcon(player.form)} {player.name}</div>
+                    <div style={{ color: '#777', fontSize: 11 }}>{player.position} · {player.team} vs {player.opponent}</div>
+                  </div>
+                  <div style={{ color: '#4fc3f7', fontSize: 17, fontWeight: 900 }}>{player.displayedProjection.toFixed(1)}</div>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 7 }}>
+                  <div style={{ color: '#aaa', fontSize: 12 }}>${player.salary.toLocaleString()}</div>
+                  <div style={{ display: 'flex', gap: 5 }}>
+                    <span style={{ color: safety.color, background: '#0a0a0a', border: '1px solid #242424', borderRadius: 999, padding: '2px 6px', fontSize: 10, fontWeight: 800 }}>
+                      {safety.label}
+                    </span>
+                    <span style={{ color: upside.color, background: '#0a0a0a', border: '1px solid #242424', borderRadius: 999, padding: '2px 6px', fontSize: 10, fontWeight: 800 }}>
+                      {upside.label}
+                    </span>
+                  </div>
+                </div>
+                <div style={{ color: '#888', fontSize: 11, lineHeight: 1.35, minHeight: 30 }}>
+                  {whyPick(player, tournamentType)}
+                </div>
+                <button
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    if (isSelected) onRemove(player);
+                    else onAdd(player);
+                  }}
+                  disabled={!isSelected && !canAfford}
+                  style={{
+                    width: '100%',
+                    marginTop: 8,
+                    padding: '7px 0',
+                    borderRadius: 7,
+                    border: 'none',
+                    background: isSelected ? '#c0392b' : (!canAfford ? '#222' : '#2a6ef5'),
+                    color: !isSelected && !canAfford ? '#555' : '#fff',
+                    fontWeight: 800,
+                    cursor: !isSelected && !canAfford ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {isSelected ? 'Remove' : 'Add'}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {/* Table */}
-      <div style={{ overflowX: 'auto', fontSize: 12 }}>
+      {viewMode === 'advanced' && <div style={{ overflowX: 'auto', fontSize: 12 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 660 }}>
           <thead>
             <tr style={{ borderBottom: '1px solid #2a2a2a', color: '#666', textAlign: 'left' }}>
@@ -191,7 +313,7 @@ export default function PlayerTable({ players, onAdd, onRemove, onSelectPlayer, 
             })}
           </tbody>
         </table>
-      </div>
+      </div>}
     </div>
   );
 }

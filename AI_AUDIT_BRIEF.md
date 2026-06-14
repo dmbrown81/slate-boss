@@ -18,6 +18,15 @@ Priority direction:
 
 Implementation started from the trust layer: no-rake payouts, Safe 50/50 default, $25 career starting bankroll, and a Build Quality / Outcome Luck result split.
 
+Second implementation pass focused on comprehension:
+
+- First-time home view now emphasizes Start First Slate and hides secondary systems until after one contest.
+- Safe 50/50 opens the player list in Beginner view with cards instead of the full advanced table.
+- Beginner cards show salary, projected points, safety, upside, and a simple reason to pick the player.
+- Advanced result grades are hidden behind Show Advanced Breakdown.
+- Near-miss language identifies the biggest swing rather than blaming a player.
+- Career copy now matches the $25 bankroll and explains the 10-week survival goal.
+
 ## 1. One-Sentence Summary
 
 Slate Boss is a fictional daily fantasy sports strategy game where players build salary-cap football lineups, enter simulated contests, sweat quarter-by-quarter results, earn XP/achievements/unlocks, and progress through short career runs.

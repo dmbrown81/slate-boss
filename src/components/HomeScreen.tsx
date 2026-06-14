@@ -22,6 +22,7 @@ export default function HomeScreen({ profile, onPlayDaily, onCareer }: Props) {
   const slateNum = slateNumber(today);
   const played = hasPlayedToday(profile);
   const title = currentTitle(profile);
+  const isFirstSession = profile.totalContestsPlayed === 0;
 
   // Generate slate just to read today's modifier — cheap, deterministic
   const todaySlate = generateSlate(today);
@@ -44,7 +45,9 @@ export default function HomeScreen({ profile, onPlayDaily, onCareer }: Props) {
           <div>
             <div style={{ fontSize: 13, color: '#fff', fontWeight: 800 }}>What am I trying to do?</div>
             <div style={{ fontSize: 11, color: '#9db8e8' }}>
-              Build a lineup under the salary cap, then beat the field in a contest.
+              {isFirstSession
+                ? 'Start with one Safe 50/50. Build a lineup, stay under the cap, and beat half the field.'
+                : 'Build a lineup under the salary cap, then beat the field in a contest.'}
             </div>
           </div>
           <button
@@ -67,7 +70,7 @@ export default function HomeScreen({ profile, onPlayDaily, onCareer }: Props) {
       </div>
 
       {/* Profile pill */}
-      <div style={{
+      {!isFirstSession && <div style={{
         background: '#111', border: '1px solid #1e1e1e', borderRadius: 10,
         padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
       }}>
@@ -81,7 +84,7 @@ export default function HomeScreen({ profile, onPlayDaily, onCareer }: Props) {
           </div>
           <div style={{ fontSize: 10, color: '#555' }}>streak</div>
         </div>
-      </div>
+      </div>}
 
       {/* Daily slate card */}
       <div style={{
@@ -91,8 +94,8 @@ export default function HomeScreen({ profile, onPlayDaily, onCareer }: Props) {
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
           <div>
-            <div style={{ fontSize: 10, color: '#555', letterSpacing: 1 }}>TODAY'S SLATE</div>
-            <div style={{ fontSize: 20, fontWeight: 800, color: '#fff' }}>#{slateNum}</div>
+            <div style={{ fontSize: 10, color: '#555', letterSpacing: 1 }}>{isFirstSession ? 'FIRST SLATE CHALLENGE' : "TODAY'S SLATE"}</div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: '#fff' }}>{isFirstSession ? 'Safe 50/50' : `#${slateNum}`}</div>
           </div>
           <div style={{
             background: played ? '#0d2a1a' : '#0d1a2a',
@@ -105,7 +108,7 @@ export default function HomeScreen({ profile, onPlayDaily, onCareer }: Props) {
         </div>
 
         {/* Today's modifier — key context before they enter */}
-        <div style={{
+        {!isFirstSession && <div style={{
           background: '#0a0a0a', border: '1px solid #1e1e1e', borderRadius: 8,
           padding: '8px 10px', marginBottom: 10,
           display: 'flex', alignItems: 'center', gap: 8,
@@ -117,7 +120,22 @@ export default function HomeScreen({ profile, onPlayDaily, onCareer }: Props) {
             </div>
             <div style={{ fontSize: 11, color: '#555' }}>{todaySlate.modifier.description}</div>
           </div>
-        </div>
+        </div>}
+
+        {isFirstSession && (
+          <div style={{
+            background: '#0a0a0a',
+            border: '1px solid #1e1e1e',
+            borderRadius: 8,
+            padding: '9px 10px',
+            marginBottom: 10,
+            color: '#aaa',
+            fontSize: 12,
+            lineHeight: 1.45,
+          }}>
+            You do not need a perfect lineup. In this first contest, steady projected points matter more than wild upside.
+          </div>
+        )}
 
         {played && profile.lastDailyResult && (
           <div style={{
@@ -145,12 +163,12 @@ export default function HomeScreen({ profile, onPlayDaily, onCareer }: Props) {
             borderRadius: 8, fontSize: 15, fontWeight: 700, cursor: 'pointer',
           }}
         >
-          {played ? 'Play Again' : 'Play Daily Slate'}
+          {isFirstSession ? 'Start First Slate' : played ? 'Play Again' : 'Play Daily Slate'}
         </button>
       </div>
 
       {/* Career card */}
-      <div style={{
+      {!isFirstSession && <div style={{
         background: '#111', border: '1px solid #1e1e1e', borderRadius: 12, padding: 16,
       }}>
         <div style={{ fontSize: 10, color: '#555', letterSpacing: 1, marginBottom: 8 }}>CAREER MODE</div>
@@ -186,10 +204,10 @@ export default function HomeScreen({ profile, onPlayDaily, onCareer }: Props) {
         >
           {profile.run.isActive ? 'Continue Run →' : 'Career Mode →'}
         </button>
-      </div>
+      </div>}
 
       {/* Stats row */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+      {!isFirstSession && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
         {[
           { label: 'Contests', value: profile.totalContestsPlayed },
           { label: 'Cashed', value: profile.totalCashed },
@@ -203,9 +221,9 @@ export default function HomeScreen({ profile, onPlayDaily, onCareer }: Props) {
             <div style={{ fontSize: 10, color: '#555' }}>{label}</div>
           </div>
         ))}
-      </div>
+      </div>}
 
-      <button
+      {!isFirstSession && <button
         onClick={() => setShowAchievements(true)}
         style={{
           background: '#111',
@@ -226,7 +244,7 @@ export default function HomeScreen({ profile, onPlayDaily, onCareer }: Props) {
           </div>
           <div style={{ color: '#f59e0b', fontSize: 16, fontWeight: 800 }}>{profile.achievementPoints ?? 0}</div>
         </div>
-      </button>
+      </button>}
 
       <div style={{
         fontSize: 10, color: '#2a2a2a', textAlign: 'center', lineHeight: 1.5,

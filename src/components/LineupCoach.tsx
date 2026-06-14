@@ -32,13 +32,13 @@ export default function LineupCoach({ lineup, tournamentType }: Props) {
   }
 
   if (!qb) {
-    notes.push({ label: 'Start with a QB. Everything else builds from the stack.', tone: 'neutral' });
+    notes.push({ label: 'Start with a QB. Then look for one of his WR or TE teammates.', tone: 'neutral' });
   } else if (passCatchers.length === 0) {
-    notes.push({ label: 'Naked QB. Add a WR or TE teammate to get correlation.', tone: 'warn' });
+    notes.push({ label: 'Your QB has no teammate yet. A WR or TE teammate creates a QB Combo.', tone: 'warn' });
   } else if (passCatchers.length >= 2) {
-    notes.push({ label: 'Double stack online — strong ceiling shape for GPPs.', tone: 'good' });
+    notes.push({ label: 'Double QB Combo online — strong upside for tournaments.', tone: 'good' });
   } else {
-    notes.push({ label: 'Single stack online. Clean correlation.', tone: 'good' });
+    notes.push({ label: 'QB Combo online. Nice way to add connected upside.', tone: 'good' });
   }
 
   if (qb && (tournamentType === 'mini_gpp' || tournamentType === 'large_gpp' || tournamentType === 'winner_take_all') && bringBacks.length === 0 && players.length >= 4) {

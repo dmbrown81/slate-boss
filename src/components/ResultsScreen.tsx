@@ -20,7 +20,7 @@ function nearMissInfo(result: ContestResult): { text: string; tone: 'sweat' | 'c
     const worstScore = result.userEntry.scores.find((s) => s.playerId === result.worstPlayer.id);
     const shortfall = worstScore ? result.worstPlayer.displayedProjection - worstScore.final : 0;
     const blame = shortfall > gap
-      ? ` ${result.worstPlayer.name} (${result.worstPlayer.position}) came in ${shortfall.toFixed(1)} under projection — that was the cash.`
+      ? ` ${result.worstPlayer.name} (${result.worstPlayer.position}) was the biggest swing. If he had reached projection, you likely cash.`
       : '';
     return { text: `You missed the cash by ${gap.toFixed(1)} points.${blame}`, tone: 'sweat' };
   }
@@ -103,6 +103,7 @@ function SummaryCard({
 
 export default function ResultsScreen({ result, streak, onHome, onCareer, newAchievements, newUnlocks }: Props) {
   const [copied, setCopied] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const cashed = result.payout > 0;
   const won = result.userRank === 1;
   const net = result.payout - result.entryFee;
@@ -287,15 +288,37 @@ export default function ResultsScreen({ result, streak, onHome, onCareer, newAch
           ))}
         </div>
 
-        {/* Report card */}
-        <div style={{ fontSize: 13, color: '#888', marginBottom: 8, fontWeight: 600 }}>ADVANCED REPORT CARD</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
-          <GradeCard grade={result.grades.value} label="Value" sentence={result.grades.valueSentence} />
-          <GradeCard grade={result.grades.ceiling} label="Ceiling" sentence={result.grades.ceilingSentence} />
-          <GradeCard grade={result.grades.leverage} label="Leverage" sentence={result.grades.leverageSentence} />
-          <GradeCard grade={result.grades.risk} label="Risk" sentence={result.grades.riskSentence} />
-          <GradeCard grade={result.grades.salaryEfficiency} label="Salary Efficiency" sentence={result.grades.salaryEfficiencySentence} />
-        </div>
+        <button
+          onClick={() => setShowAdvanced((value) => !value)}
+          style={{
+            width: '100%',
+            background: '#111',
+            border: '1px solid #2a2a2a',
+            color: '#aaa',
+            borderRadius: 8,
+            padding: '10px 12px',
+            marginBottom: showAdvanced ? 8 : 20,
+            cursor: 'pointer',
+            fontSize: 13,
+            fontWeight: 800,
+            textAlign: 'left',
+          }}
+        >
+          {showAdvanced ? 'Hide Advanced Breakdown' : 'Show Advanced Breakdown'}
+        </button>
+
+        {showAdvanced && (
+          <>
+            <div style={{ fontSize: 13, color: '#888', marginBottom: 8, fontWeight: 600 }}>ADVANCED REPORT CARD</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
+              <GradeCard grade={result.grades.value} label="Score Value" sentence={result.grades.valueSentence} />
+              <GradeCard grade={result.grades.ceiling} label="Upside" sentence={result.grades.ceilingSentence} />
+              <GradeCard grade={result.grades.leverage} label="Popularity Mix" sentence={result.grades.leverageSentence} />
+              <GradeCard grade={result.grades.risk} label="Risk Taken" sentence={result.grades.riskSentence} />
+              <GradeCard grade={result.grades.salaryEfficiency} label="Salary Use" sentence={result.grades.salaryEfficiencySentence} />
+            </div>
+          </>
+        )}
 
         {/* Share card preview */}
         <div style={{

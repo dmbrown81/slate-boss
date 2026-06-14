@@ -21,12 +21,12 @@ export default function StackingTool({ lineup, players, selectedIds, onAdd, onSe
 
   const stackScore = qb ? passCatchers.length + Math.min(1, bringBacks.length) : 0;
   const stackLabel = !qb
-    ? 'Pick a QB to unlock stack ideas'
+    ? 'Pick a QB to see combos'
     : stackScore >= 3
-      ? 'Strong game stack'
+      ? 'Strong game combo'
       : stackScore >= 2
-        ? 'Playable stack'
-        : 'Add correlation';
+        ? 'Playable QB Combo'
+        : 'Add a teammate';
 
   const sameTeamWrTargets = qb
     ? players
@@ -53,9 +53,9 @@ export default function StackingTool({ lineup, players, selectedIds, onAdd, onSe
     <div style={{ background: '#101010', border: '1px solid #242424', borderRadius: 8, padding: 10, marginBottom: 10 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', marginBottom: 8 }}>
         <div>
-          <div style={{ color: '#fff', fontSize: 13, fontWeight: 800 }}>Stack Builder</div>
+          <div style={{ color: '#fff', fontSize: 13, fontWeight: 800 }}>QB Combo Builder</div>
           <div style={{ color: '#666', fontSize: 11 }}>
-            {qb ? `${qb.team} vs ${qb.opponent} · QB ${qb.name}` : 'QB plus teammate, optional opponent bring-back'}
+            {qb ? `${qb.team} vs ${qb.opponent} · QB ${qb.name}` : 'Pair your QB with a teammate'}
           </div>
         </div>
         <div style={{
@@ -73,17 +73,17 @@ export default function StackingTool({ lineup, players, selectedIds, onAdd, onSe
       {qb ? (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 8 }}>
-            <MiniMetric label="Same-team" value={`${passCatchers.length}`} />
-            <MiniMetric label="Bring-backs" value={`${bringBacks.length}`} />
+            <MiniMetric label="Teammates" value={`${passCatchers.length}`} />
+            <MiniMetric label="Opponent picks" value={`${bringBacks.length}`} />
           </div>
 
-          <SuggestionRow title="QB stack: WR" players={sameTeamWrTargets} onAdd={onAdd} onSelectPlayer={onSelectPlayer} />
-          <SuggestionRow title="QB stack: TE" players={sameTeamTeTargets} onAdd={onAdd} onSelectPlayer={onSelectPlayer} />
-          <SuggestionRow title="Bring it back" players={bringBackTargets} onAdd={onAdd} onSelectPlayer={onSelectPlayer} />
+          <SuggestionRow title="QB Combo: WR teammate" players={sameTeamWrTargets} onAdd={onAdd} onSelectPlayer={onSelectPlayer} />
+          <SuggestionRow title="QB Combo: TE teammate" players={sameTeamTeTargets} onAdd={onAdd} onSelectPlayer={onSelectPlayer} />
+          <SuggestionRow title="Opponent pick for shootouts" players={bringBackTargets} onAdd={onAdd} onSelectPlayer={onSelectPlayer} />
         </>
       ) : (
         <div style={{ color: '#777', fontSize: 12 }}>
-          Start with a QB. Then stack one of his WR/TE teammates and consider one opposing skill player for shootout leverage.
+          Start with a QB. Then add one of his WR or TE teammates if you want connected upside.
         </div>
       )}
     </div>
@@ -136,7 +136,7 @@ function SuggestionRow({
               <span style={{ color: '#666', fontSize: 10 }}>{player.position}</span>
             </div>
             <div style={{ color: '#777', fontSize: 10, marginBottom: 6 }}>
-              {player.team} · {player.displayedProjection.toFixed(1)} proj · {Math.round(player.boomChance * 100)}% boom
+              {player.team} · {player.displayedProjection.toFixed(1)} projected
             </div>
             <button
               onClick={(event) => {

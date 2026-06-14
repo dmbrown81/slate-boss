@@ -29,3 +29,14 @@ External reviews from ChatGPT, Gemini, and Claude converged on the same product 
 - Add Beginner and Pro table modes.
 - Build a dev-only balance harness for cash/win/ROI targets.
 - Start converting unlocks into active career boons.
+
+### Comprehension pass
+
+- Added a first-session home treatment that points new players directly to Start First Slate.
+- Added Beginner and Advanced views to the player list. Safe 50/50 defaults to beginner cards.
+- Beginner cards hide DFS-heavy columns and show projection, salary, safety, upside, and a short reason.
+- Hid the advanced result grades behind a Show Advanced Breakdown button.
+- Softened near-miss language from blame to biggest swing.
+- Fixed career copy to match the $25 starting bankroll and added survive-10-weeks goal/risk copy.
+- Reworded lineup coach stack language around QB Combo.
+- Reworded the stack helper as QB Combo Builder and hid average ownership language in Safe 50/50.

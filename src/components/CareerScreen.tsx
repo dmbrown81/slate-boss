@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { UserProfile, ModifierKey } from '../types';
-import { TIER_LABELS, TIER_ENTRY_FEE } from '../types';
+import { TIER_LABELS, TIER_ENTRY_FEE, TIER_PROMOTION_BANKROLL } from '../types';
 import { currentTitle } from '../lib/progression';
 import { APP_NAME } from '../config';
 
@@ -21,6 +21,7 @@ export default function CareerScreen({ profile, onStartRun, onContinueRun, onHom
   const [selectedMod, setSelectedMod] = useState<ModifierKey | null>(null);
   const title = currentTitle(profile);
   const { run } = profile;
+  const nextThreshold = TIER_PROMOTION_BANKROLL[run.tier];
 
   return (
     <div style={{ minHeight: '100vh', background: '#0a0a0a', padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -77,6 +78,13 @@ export default function CareerScreen({ profile, onStartRun, onContinueRun, onHom
                 <div style={{ fontSize: 10, color: '#555' }}>Entry Fee</div>
               </div>
             </div>
+            <div style={{ marginTop: 10, color: '#888', fontSize: 11, lineHeight: 1.45 }}>
+              Goal: survive all 10 weeks and grow your bankroll.
+              {Number.isFinite(nextThreshold) && (
+                <span> Next tier at <span style={{ color: '#f59e0b' }}>${nextThreshold}</span>.</span>
+              )}
+              {' '}This slate risks <span style={{ color: '#fff' }}>${TIER_ENTRY_FEE[run.tier]}</span>.
+            </div>
           </div>
           <button
             onClick={onContinueRun}
@@ -95,7 +103,7 @@ export default function CareerScreen({ profile, onStartRun, onContinueRun, onHom
           <div style={{ background: '#111', border: '1px solid #1e1e1e', borderRadius: 8, padding: '9px 11px', marginBottom: 12 }}>
             <div style={{ fontSize: 12, color: '#ccc', fontWeight: 700 }}>Run setup</div>
             <div style={{ fontSize: 11, color: '#666' }}>
-              Start with $15, Week 1, and play 10 weekly slates. Pick your tournament type on each slate before lock.
+              Start with $25, Week 1, and play 10 weekly slates. Your goal: survive the run and build your bankroll.
             </div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
