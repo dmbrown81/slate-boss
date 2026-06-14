@@ -6,12 +6,30 @@ import { gradeLineup } from './grading';
 import { computePayout, DEFAULT_TOURNAMENT_TYPE, getTournament } from './payout';
 import { generateShare } from './shareCard';
 
+// Per-contest variance shaping. Lower = scores cluster near projection, so pre-lock
+// build quality decides outcomes more often; higher = more boom/bust swing.
+const CONTEST_VARIANCE: Record<TournamentType, number> = {
+  double_up: 0.8,
+  mini_gpp: 1.0,
+  large_gpp: 1.15,
+  winner_take_all: 1.3,
+};
+
+// Extra smoothing for a player's first few contests so early skill is visible.
+function beginnerVarianceScale(contestsPlayed: number): number {
+  if (contestsPlayed <= 0) return 0.8;
+  if (contestsPlayed === 1) return 0.9;
+  if (contestsPlayed === 2) return 0.95;
+  return 1;
+}
+
 function scorePlayer(
   player: Player,
   rng: RNG,
   gameScriptFactor: number,
   qbBoom: boolean,
-  equippedModifier: ModifierKey | null
+  equippedModifier: ModifierKey | null,
+  varianceScale: number = 1
 ): PlayerScore {
   const gameBonus = gameScriptFactor * 0.06;
 
@@ -29,7 +47,7 @@ function scorePlayer(
   const proj = player.trueProjection;
 
   // Single correlated draw with game script
-  const raw = skewedDraw(rng, player.floor, proj, player.ceiling, player.volatility, boomChance, gameBonus);
+  const raw = skewedDraw(rng, player.floor, proj, player.ceiling, player.volatility, boomChance, gameBonus, varianceScale);
 
   const boomHit = raw >= player.ceiling * 0.9;
 
@@ -63,7 +81,8 @@ function simulateEntry(
   rng: RNG,
   slate: Slate,
   equippedModifier: ModifierKey | null = null,
-  isUser = false
+  isUser = false,
+  varianceScale = 1
 ): ContestEntry {
   // Find QB
   const qb = players.find((p) => p.position === 'QB');
@@ -75,7 +94,7 @@ function simulateEntry(
   for (const player of players) {
     const gsf = gameScriptForPlayer(player, slate);
     if (player.position === 'QB') {
-      const score = scorePlayer(player, rng, gsf, false, equippedModifier);
+      const score = scorePlayer(player, rng, gsf, false, equippedModifier, varianceScale);
       qbBoomHit = score.boomHit;
       scores.push(score);
     }
@@ -96,7 +115,8 @@ function simulateEntry(
       rng,
       gsf,
       effectiveBoom,
-      equippedModifier
+      equippedModifier,
+      varianceScale
     );
     scores.push(score);
   }
@@ -187,12 +207,18 @@ export function runContest(
   slate: Slate,
   entryFee: number,
   equippedModifier: ModifierKey | null = null,
-  tournamentType: TournamentType = DEFAULT_TOURNAMENT_TYPE
+  tournamentType: TournamentType = DEFAULT_TOURNAMENT_TYPE,
+  userContestsPlayed = Number.POSITIVE_INFINITY
 ): ContestResult {
   if (!isValid(userLineup)) throw new Error('Invalid lineup');
 
   const rng = mulberry32(slate.seed + 9999);
   const tournament = getTournament(tournamentType);
+
+  // Contest variance shapes the whole field; the user gets extra beginner smoothing
+  // for their first few contests so good early builds cash more reliably.
+  const contestVariance = CONTEST_VARIANCE[tournamentType] ?? 1;
+  const userVariance = contestVariance * beginnerVarianceScale(userContestsPlayed);
 
   const userPlayers = getLineupPlayers(userLineup);
 
@@ -203,12 +229,12 @@ export function runContest(
   for (let i = 0; i < opponentCount; i++) {
     const isContrarian = i >= chalkCutoff;
     const lineupPlayers = buildOpponentLineup(slate, rng, isContrarian);
-    const entry = simulateEntry(lineupPlayers, rng, slate, null);
+    const entry = simulateEntry(lineupPlayers, rng, slate, null, false, contestVariance);
     field.push(entry);
   }
 
   // Simulate user
-  const userEntry = simulateEntry(userPlayers, rng, slate, equippedModifier, true);
+  const userEntry = simulateEntry(userPlayers, rng, slate, equippedModifier, true, userVariance);
 
   // Rank user (lower = better)
   const allScores = [...field.map((e) => e.totalScore), userEntry.totalScore].sort((a, b) => b - a);

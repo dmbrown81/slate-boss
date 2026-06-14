@@ -37,7 +37,9 @@ export function weightedPick<T>(items: T[], weights: number[], rng: RNG): T {
   return items[items.length - 1];
 }
 
-// Draw from right-skewed distribution
+// Draw from right-skewed distribution.
+// varianceScale < 1 compresses the spread toward projection (lower-variance contests /
+// beginner smoothing); > 1 widens it (big-field tournaments).
 export function skewedDraw(
   rng: RNG,
   floor: number,
@@ -45,19 +47,20 @@ export function skewedDraw(
   ceiling: number,
   volatility: number,
   boomChance: number,
-  gameScriptBonus: number = 0
+  gameScriptBonus: number = 0,
+  varianceScale: number = 1
 ): number {
   const isBoom = rng() < boomChance + gameScriptBonus;
   if (isBoom) {
     // Boom: draw from proj to ceiling+, right tail
-    const extra = rng() * (ceiling - proj) * 1.3;
+    const extra = rng() * (ceiling - proj) * 1.3 * varianceScale;
     return Math.max(floor, proj + extra);
   }
   // Normal distribution approximation via Box-Muller
   const u1 = Math.max(1e-10, rng());
   const u2 = rng();
   const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
-  const sigma = (ceiling - floor) * volatility * 0.25;
+  const sigma = (ceiling - floor) * volatility * 0.25 * varianceScale;
   const raw = proj + z * sigma;
   return Math.max(0, Math.min(raw, ceiling * 1.4));
 }

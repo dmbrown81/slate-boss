@@ -45,3 +45,17 @@ External reviews from ChatGPT, Gemini, and Claude converged on the same product 
 
 - Added `AI_MODEL_FEEDBACK_SYNTHESIS.md` as the concise working synthesis of outside-model feedback for Claude Code, Codex, and future reviewers.
 - The synthesis separates what shipped from what remains: balance harness, beginner variance tuning, guided first slate, functional career boons, and mobile app readiness.
+
+### Balance + first-run pass (Claude review)
+
+- Added a dev-only Monte Carlo balance harness (`scripts/balance.ts`, `npm run balance`). Reports cash / top-10 / win / ROI per archetype (random, projection, value, safe, contrarian, strong) across all four contest types. First run confirms strong Safe 50/50 builds cash ~95–98% vs ~25% for random — build quality now predicts cashing. It also shows the contrarian archetype is punished everywhere, flagging the weak opponent field as the next tuning target.
+- Implemented contest-level variance compression in the simulation. `skewedDraw` takes a `varianceScale`; `runContest` applies a per-contest multiplier (Safe 50/50 0.8, Starter 1.0, Big 1.15, WTA 1.3) to the whole field, plus extra beginner smoothing for the user's first three contests (0.8 / 0.9 / 0.95). This is what makes the Build Quality vs Game Luck split mechanically true rather than just copy.
+- Forced the first daily contest to Safe 50/50 at the contest-resolution layer (`App.handleEnterContest`), independent of the picker.
+- Decluttered the first session in `LineupBuilder`: locked contest chip instead of the dropdown, hid the modifier banner, suppressed in-build news toasts, and hid the advanced StackingTool. LineupCoach (beginner guidance) is kept.
+
+### Still open after this pass
+
+- Opponent field archetypes (the harness shows the field is too weak / contrarian is over-punished).
+- Guided step-by-step first slate (pick QB → add a combo → finish).
+- Functional career boons (Bubble Shield, Value Finder, Stack Meter+).
+- Mobile/PWA readiness: 100vh→100dvh, safe-area insets, larger tap targets, manifest/icons, run the sim off the main thread.

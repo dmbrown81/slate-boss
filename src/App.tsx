@@ -93,7 +93,10 @@ export default function App() {
   const handleEnterContest = useCallback((lineup: Lineup, _players: Player[]) => {
     const entryFee = isCareerMode ? TIER_ENTRY_FEE[profile.run.tier] : 1;
     const modifier = isCareerMode ? profile.run.equippedModifier : null;
-    const result = runContest(lineup, slate, entryFee, modifier, selectedTournament);
+    // First daily contest is always Safe 50/50, regardless of the picker state.
+    const firstSession = !isCareerMode && profile.totalContestsPlayed === 0;
+    const tournamentForContest = firstSession ? DEFAULT_TOURNAMENT_TYPE : selectedTournament;
+    const result = runContest(lineup, slate, entryFee, modifier, tournamentForContest, profile.totalContestsPlayed);
     setContestResult(result);
     setLockedLineup(lineup);
     setScreen('sweat');
@@ -157,6 +160,7 @@ export default function App() {
           onEnterContest={handleEnterContest}
           onBack={() => setScreen(isCareerMode ? 'career' : 'home')}
           isCareer={isCareerMode}
+          isFirstSession={!isCareerMode && profile.totalContestsPlayed === 0}
           entryFee={entryFee}
           selectedTournament={selectedTournament}
           onTournamentChange={handleTournamentChange}
