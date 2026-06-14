@@ -7,15 +7,15 @@ const KEY = 'slateboss_v3';
 
 const DEFAULT_RUN: RunState = {
   runNumber: 0,
-  bankroll: 15,
+  bankroll: 25,
   tier: 1,
   slatesRemaining: 10,
   currentWeek: 1,
   equippedModifier: null,
   isActive: false,
   bestRunScore: 0,
-  lastTournamentType: 'mini_gpp',
-  peakBankroll: 15,
+  lastTournamentType: 'double_up',
+  peakBankroll: 25,
   slateCashed: 0,
 };
 

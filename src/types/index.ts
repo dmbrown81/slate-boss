@@ -172,6 +172,8 @@ export interface UnlockReward {
 }
 
 export interface LineupGrades {
+  buildQuality: BuildQualityAnalysis;
+  outcomeLuck: OutcomeLuckAnalysis;
   value: string;
   valueSentence: string;
   ceiling: string;
@@ -184,6 +186,28 @@ export interface LineupGrades {
   salaryEfficiencySentence: string;
 }
 
+export interface BuildQualityAnalysis {
+  score: number;
+  grade: string;
+  label: string;
+  sentence: string;
+  contestFit: string;
+  salaryUse: string;
+  stackQuality: string;
+  riskProfile: string;
+  lesson: string;
+}
+
+export interface OutcomeLuckAnalysis {
+  score: number;
+  grade: string;
+  label: 'Hot' | 'Normal' | 'Cold';
+  sentence: string;
+  playersAboveProjection: number;
+  playersBelowFloor: number;
+  biggestSwingPlayerId: string | null;
+}
+
 // Career / persistence
 export type ContestTier = 1 | 2 | 3 | 4;
 export const TIER_LABELS: Record<ContestTier, string> = {
@@ -193,7 +217,7 @@ export const TIER_LABELS: Record<ContestTier, string> = {
   4: '$100 Shark',
 };
 export const TIER_ENTRY_FEE: Record<ContestTier, number> = { 1: 1, 2: 5, 3: 25, 4: 100 };
-export const TIER_PROMOTION_BANKROLL: Record<ContestTier, number> = { 1: 20, 2: 100, 3: 500, 4: Infinity };
+export const TIER_PROMOTION_BANKROLL: Record<ContestTier, number> = { 1: 50, 2: 150, 3: 500, 4: Infinity };
 
 export type ModifierKey = 'scout' | 'anchor_defense' | 'correlated';
 export interface Modifier {

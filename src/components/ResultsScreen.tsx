@@ -64,6 +64,43 @@ function GradeCard({ grade, label, sentence }: { grade: string; label: string; s
   );
 }
 
+function resultRead(result: ContestResult): string {
+  const build = result.grades.buildQuality.score;
+  const luck = result.grades.outcomeLuck.label;
+  const cashed = result.payout > 0;
+
+  if (build >= 75 && cashed) return 'Strong build, and it hit. That is the sweet spot.';
+  if (build >= 75 && !cashed) return 'Strong build, cold result. That is variance, not a reason to throw out the plan.';
+  if (build < 60 && cashed) return 'You got away with one. Fun result, but the build still has room to improve.';
+  if (luck === 'Cold') return 'The lineup needed help and the games did not bail it out.';
+  return 'This result mostly matched the build quality. The next lesson below is the part to carry forward.';
+}
+
+function SummaryCard({
+  title,
+  value,
+  accent,
+  children,
+}: {
+  title: string;
+  value: string;
+  accent: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div style={{
+      background: '#111',
+      border: `1px solid ${accent}`,
+      borderRadius: 8,
+      padding: '11px 12px',
+    }}>
+      <div style={{ color: '#888', fontSize: 11, marginBottom: 4 }}>{title}</div>
+      <div style={{ color: '#fff', fontSize: 24, fontWeight: 900, marginBottom: 5 }}>{value}</div>
+      <div style={{ color: '#ccc', fontSize: 12, lineHeight: 1.4 }}>{children}</div>
+    </div>
+  );
+}
+
 export default function ResultsScreen({ result, streak, onHome, onCareer, newAchievements, newUnlocks }: Props) {
   const [copied, setCopied] = useState(false);
   const cashed = result.payout > 0;
@@ -201,8 +238,57 @@ export default function ResultsScreen({ result, streak, onHome, onCareer, newAch
           ))}
         </div>
 
+        {/* Decision quality vs outcome */}
+        <div style={{ fontSize: 13, color: '#888', marginBottom: 8, fontWeight: 600 }}>WHAT HAPPENED</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
+          <SummaryCard
+            title="Build Quality"
+            value={result.grades.buildQuality.grade}
+            accent={GRADE_COLOR[result.grades.buildQuality.grade] ?? '#2a2a2a'}
+          >
+            {result.grades.buildQuality.sentence}
+          </SummaryCard>
+          <SummaryCard
+            title="Game Luck"
+            value={result.grades.outcomeLuck.label}
+            accent={result.grades.outcomeLuck.label === 'Hot' ? '#27ae60' : result.grades.outcomeLuck.label === 'Cold' ? '#e74c3c' : '#2a6ef5'}
+          >
+            {result.grades.outcomeLuck.sentence}
+          </SummaryCard>
+        </div>
+        <div style={{
+          background: '#0d1a2a',
+          border: '1px solid #263b61',
+          borderRadius: 8,
+          padding: '10px 12px',
+          marginBottom: 16,
+          color: '#cfe0ff',
+          fontSize: 12,
+          lineHeight: 1.45,
+        }}>
+          <div style={{ color: '#fff', fontWeight: 800, marginBottom: 4 }}>Read</div>
+          {resultRead(result)}
+          <div style={{ color: '#9db8e8', marginTop: 8 }}>
+            <strong style={{ color: '#fff' }}>Next time:</strong> {result.grades.buildQuality.lesson}
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
+          {[
+            ['Contest Fit', result.grades.buildQuality.contestFit],
+            ['Salary Use', result.grades.buildQuality.salaryUse],
+            ['QB Combo', result.grades.buildQuality.stackQuality],
+            ['Risk', result.grades.buildQuality.riskProfile],
+          ].map(([label, value]) => (
+            <div key={label} style={{ background: '#111', border: '1px solid #1e1e1e', borderRadius: 8, padding: '8px 10px' }}>
+              <div style={{ color: '#555', fontSize: 10, marginBottom: 3 }}>{label}</div>
+              <div style={{ color: '#ccc', fontSize: 12, fontWeight: 700 }}>{value}</div>
+            </div>
+          ))}
+        </div>
+
         {/* Report card */}
-        <div style={{ fontSize: 13, color: '#888', marginBottom: 8, fontWeight: 600 }}>REPORT CARD</div>
+        <div style={{ fontSize: 13, color: '#888', marginBottom: 8, fontWeight: 600 }}>ADVANCED REPORT CARD</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
           <GradeCard grade={result.grades.value} label="Value" sentence={result.grades.valueSentence} />
           <GradeCard grade={result.grades.ceiling} label="Ceiling" sentence={result.grades.ceilingSentence} />

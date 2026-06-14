@@ -249,7 +249,7 @@ export function runContest(
     .sort((a, b) => (fieldScores[b.id] ?? 0) - (fieldScores[a.id] ?? 0));
   const biggestRegret = regretCandidates[0] ?? null;
 
-  const grades = gradeLineup(userLineup, userEntry, slate);
+  const grades = gradeLineup(userLineup, userEntry, slate, tournamentType);
   const shareCard = generateShare(userRank, tournament.entrants, userEntry.totalScore, slate.slateNumber, userEntry.scores, userPlayers);
 
   return {

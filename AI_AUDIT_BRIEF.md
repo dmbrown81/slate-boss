@@ -2,6 +2,22 @@
 
 This document is a complete handoff for other AI models or reviewers to understand, critique, and suggest improvements for Slate Boss without needing to run or play it first.
 
+## 2026-06-13 External Audit Synthesis
+
+Follow-up feedback from ChatGPT, Gemini, and Claude was highly aligned. The shared recommendation was to stop expanding feature count for the next pass and instead make the core loop more understandable and trustworthy.
+
+Priority direction:
+
+- First-run clarity matters more than adding more modes.
+- New players should default into a Safe 50/50 / Double-Up, not the larger tournament.
+- Prototype payouts should have no rake so bankroll movement feels intuitive.
+- Results must separate Build Quality from Game Luck so losses can teach instead of feeling random.
+- Career mode should become a light roguelite loop with functional boons.
+- Achievements should be surfaced as a few current goals, even if the full catalog remains larger.
+- A Monte Carlo balance harness should be added before deep contest tuning.
+
+Implementation started from the trust layer: no-rake payouts, Safe 50/50 default, $25 career starting bankroll, and a Build Quality / Outcome Luck result split.
+
 ## 1. One-Sentence Summary
 
 Slate Boss is a fictional daily fantasy sports strategy game where players build salary-cap football lineups, enter simulated contests, sweat quarter-by-quarter results, earn XP/achievements/unlocks, and progress through short career runs.

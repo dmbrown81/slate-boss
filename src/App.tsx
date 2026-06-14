@@ -67,14 +67,14 @@ export default function App() {
         run: {
           ...prev.run,
           runNumber,
-          bankroll: 15,
+          bankroll: 25,
           tier: 1,
           slatesRemaining: 10,
           currentWeek: 1,
           equippedModifier: modifier,
           isActive: true,
           lastTournamentType: DEFAULT_TOURNAMENT_TYPE,
-          peakBankroll: 15,
+          peakBankroll: 25,
           slateCashed: 0,
         },
       };
