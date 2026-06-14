@@ -40,3 +40,8 @@ External reviews from ChatGPT, Gemini, and Claude converged on the same product 
 - Fixed career copy to match the $25 starting bankroll and added survive-10-weeks goal/risk copy.
 - Reworded lineup coach stack language around QB Combo.
 - Reworded the stack helper as QB Combo Builder and hid average ownership language in Safe 50/50.
+
+### AI feedback consolidation
+
+- Added `AI_MODEL_FEEDBACK_SYNTHESIS.md` as the concise working synthesis of outside-model feedback for Claude Code, Codex, and future reviewers.
+- The synthesis separates what shipped from what remains: balance harness, beginner variance tuning, guided first slate, functional career boons, and mobile app readiness.
