@@ -14,9 +14,10 @@ interface Props {
   onPlayDaily: () => void;
   onCareer: () => void;
   onRogue: () => void;
+  onFootball: () => void;
 }
 
-export default function HomeScreen({ profile, onPlayDaily, onCareer, onRogue }: Props) {
+export default function HomeScreen({ profile, onPlayDaily, onCareer, onRogue, onFootball }: Props) {
   const [showHelp, setShowHelp] = useState(false);
   const [showAchievements, setShowAchievements] = useState(false);
   const today = todayDateStr();
@@ -165,6 +166,61 @@ export default function HomeScreen({ profile, onPlayDaily, onCareer, onRogue }: 
           }}
         >
           {isFirstSession ? 'Start First Slate' : played ? 'Play Again' : 'Play Daily Slate'}
+        </button>
+      </div>
+
+      {/* Football Rogue card — new direction */}
+      <div style={{
+        background: '#111',
+        border: '1px solid #1f3350',
+        borderRadius: 12,
+        padding: 16,
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10, gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 10, color: '#6b86b8', letterSpacing: 1 }}>CARD ROGUE · v0</div>
+            <div style={{ fontSize: 20, fontWeight: 900, color: '#fff' }}>Football Rogue</div>
+          </div>
+          <div style={{
+            background: '#101826',
+            border: '1px solid #2a6ef5',
+            borderRadius: 6,
+            padding: '4px 9px',
+            fontSize: 11,
+            color: '#6fb0ff',
+            fontWeight: 800,
+            whiteSpace: 'nowrap',
+          }}>
+            Playable
+          </div>
+        </div>
+        <div style={{
+          background: '#0a0a0a',
+          border: '1px solid #1f3350',
+          borderRadius: 8,
+          padding: '9px 10px',
+          marginBottom: 10,
+          color: '#aaa',
+          fontSize: 12,
+          lineHeight: 1.45,
+        }}>
+          Cards are football plays. Each quarter, assemble a drive — stack a QB with his receivers, pound the rock, or bring it back — and watch it score Base × Mult. Beat the target in 4 quarters.
+        </div>
+        <button
+          onClick={onFootball}
+          style={{
+            width: '100%',
+            padding: '12px 0',
+            background: '#2a6ef5',
+            border: 'none',
+            color: '#fff',
+            borderRadius: 8,
+            fontSize: 15,
+            fontWeight: 800,
+            cursor: 'pointer',
+          }}
+        >
+          Play Football Rogue
         </button>
       </div>
 

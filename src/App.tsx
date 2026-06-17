@@ -14,6 +14,7 @@ import ResultsScreen from './components/ResultsScreen';
 import CareerScreen from './components/CareerScreen';
 import RunOverScreen from './components/RunOverScreen';
 import RogueResultsScreen from './components/RogueResultsScreen';
+import FootballRogueScreen from './components/FootballRogueScreen';
 
 const DAILY_TOURNAMENT_KEY = 'slateboss_daily_tournament';
 
@@ -77,6 +78,13 @@ export default function App() {
     setLockedLineup(null);
     setRogueScore(null);
     setScreen('builder');
+  }, []);
+
+  const handleFootball = useCallback(() => {
+    setIsCareerMode(false);
+    setIsRogueMode(false);
+    setRogueScore(null);
+    setScreen('football');
   }, []);
 
   const handleStartRun = useCallback((modifier: ModifierKey | null, boon: BoonKey | null) => {
@@ -207,7 +215,7 @@ export default function App() {
 
   switch (screen) {
     case 'home':
-      return <HomeScreen profile={profile} onPlayDaily={handlePlayDaily} onCareer={handleCareer} onRogue={handleRogue} />;
+      return <HomeScreen profile={profile} onPlayDaily={handlePlayDaily} onCareer={handleCareer} onRogue={handleRogue} onFootball={handleFootball} />;
 
     case 'builder':
       return (
@@ -259,6 +267,9 @@ export default function App() {
           newUnlocks={recentUnlocks}
         />
       );
+
+    case 'football':
+      return <FootballRogueScreen onHome={handleBackHome} />;
 
     case 'career':
       return (

@@ -274,7 +274,7 @@ export interface UserProfile {
   careerRunHistory: RunSummary[];
 }
 
-export type Screen = 'home' | 'builder' | 'sweat' | 'results' | 'career' | 'run_over';
+export type Screen = 'home' | 'builder' | 'sweat' | 'results' | 'career' | 'run_over' | 'football';
 
 export interface RunSummary {
   runNumber: number;

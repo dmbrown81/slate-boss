@@ -28,6 +28,32 @@ Blockers:
 - ...
 ```
 
+## 2026-06-17 - Claude Code - football-card-rogue
+
+Goal:
+- Pivot the card-rogue direction from "DFS lineup + bolt-on Edge multiplier" to a football-native deckbuilder where a card is a football ACTION and you assemble scoring plays. Ship the smallest playable slice that tests the core fun question: does assembling a play and watching Base x Mult feel good?
+
+Changed:
+- Added `src/lib/footballRogue.ts`: action-card model (cards are Deep Ball, Power Run, Deep Catch, Interception, etc., value weighted by player archetype), deterministic `scoreFootballPlay` (Base x Mult) with a synergy/coordinator/environment ledger, starter deck built from Ironhawks + a few Blazers (bring-back) + kicker cards, and `Air Raid` coordinator.
+- Added `src/components/FootballRogueScreen.tsx`: a full single-match loop — scoreboard + target, 8-card hand, tap up to 4 cards, LIVE play preview (the key "watch the engine" moment), Run Play / Audible, 4 quarters, win/lose. Per-match environment modifier (Dome/Snow/Wind/Primetime/Clear).
+- Added `Screen = 'football'` and routed it in `App.tsx`; added a "Football Rogue" entry card to `HomeScreen.tsx`.
+
+Decisions (defaults, all tunable):
+- Scoring is DETERMINISTIC. Variance lives in the draw (do you hold the cards to complete the stack?), not in a sweat sim. No contest sim involved in this mode.
+- One card = one football action. A play = 1-4 cards. Hand size 8, 4 quarters, 2 audibles, target 700 (Primetime ×1.25).
+- Single starter team (Ironhawks), one coordinator (Air Raid), one environment per match. Teams-as-decks, shops, bosses, season shell all deferred until the core play loop proves fun.
+
+Validation:
+- `npm run lint` and `npm run build` pass.
+- Engine sanity check (scripts/fbcheck, since removed): Field Goal 55, Single Stack 319, Double-Stack Bomb 603, Shootout 618, Ground & Pound 134 vs 700 target.
+
+Next:
+- Playtest the core loop. Tune target / mults if a single stack trivializes the match.
+- If fun: add a season shell (rounds → playoffs → championship), a shop/reward loop, more coordinators, multiple teams-as-decks, and boss defensive schemes (the "stingy vs pass" idea).
+
+Blockers:
+- Need the user's feel: is "assemble a drive, watch it score" the fun moment? That decides whether we invest in the run shell.
+
 ## 2026-06-17 - Codex - codex/dfs-card-rogue
 
 Goal:
