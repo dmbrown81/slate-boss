@@ -191,10 +191,13 @@ achievements.push(
   achievements.push(make(`score_extra_${score}`, String(name), `Score ${score}+ points.`, 'sweat', Number(score) >= 165 ? 'gold' : 'silver', (c) => c.result.userScore >= Number(score)));
 });
 
-export const ACHIEVEMENTS: Achievement[] = achievements.slice(0, 100).map(({ rule: _rule, ...achievement }, index) => ({
-  ...achievement,
-  unlockId: index % 4 === 3 ? UNLOCKS[Math.floor(index / 4)]?.id : achievement.unlockId,
-}));
+export const ACHIEVEMENTS: Achievement[] = achievements.slice(0, 100).map(({ rule, ...achievement }, index) => {
+  void rule;
+  return {
+    ...achievement,
+    unlockId: index % 4 === 3 ? UNLOCKS[Math.floor(index / 4)]?.id : achievement.unlockId,
+  };
+});
 
 const achievementDefs: AchievementDef[] = achievements.slice(0, 100).map((achievement, index) => ({
   ...achievement,
@@ -209,7 +212,10 @@ export function evaluateAchievements(ctx: AchievementContext): { newAchievements
   const owned = new Set(ctx.profileBefore.achievementIds ?? []);
   const newAchievements = achievementDefs
     .filter((achievement) => !owned.has(achievement.id) && achievement.rule(ctx))
-    .map(({ rule: _rule, ...achievement }) => achievement);
+    .map(({ rule, ...achievement }) => {
+      void rule;
+      return achievement;
+    });
 
   const unlockIdsBefore = new Set(ctx.profileBefore.unlockIds ?? []);
   const newUnlocks = newAchievements

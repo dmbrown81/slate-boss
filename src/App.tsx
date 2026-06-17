@@ -1,8 +1,10 @@
 import { useState, useCallback, useEffect } from 'react';
-import type { Achievement, Screen, Lineup, Player, ContestResult, ModifierKey, BoonKey, UserProfile, TournamentType, RunSummary, UnlockReward } from './types';
+import type { Achievement, Screen, Lineup, ContestResult, ModifierKey, BoonKey, UserProfile, TournamentType, RunSummary, UnlockReward } from './types';
 import { TIER_ENTRY_FEE } from './types';
 import { generateSlate } from './lib/slateGenerator';
 import { runContest } from './lib/simulation';
+import { getLineupPlayers } from './lib/lineupValidation';
+import { scoreRogueLineup, type RogueScoreResult } from './lib/rogueScoring';
 import { loadProfile, saveProfile, updateStreak, applyContestResult, todayDateStr } from './lib/storage';
 import { DEFAULT_TOURNAMENT_TYPE, isTournamentType } from './lib/payout';
 import HomeScreen from './components/HomeScreen';
@@ -11,6 +13,7 @@ import SweatScreen from './components/SweatScreen';
 import ResultsScreen from './components/ResultsScreen';
 import CareerScreen from './components/CareerScreen';
 import RunOverScreen from './components/RunOverScreen';
+import RogueResultsScreen from './components/RogueResultsScreen';
 
 const DAILY_TOURNAMENT_KEY = 'slateboss_daily_tournament';
 
@@ -33,13 +36,17 @@ export default function App() {
   const [contestResult, setContestResult] = useState<ContestResult | null>(null);
   const [lockedLineup, setLockedLineup] = useState<Lineup | null>(null);
   const [isCareerMode, setIsCareerMode] = useState(false);
+  const [isRogueMode, setIsRogueMode] = useState(false);
   const [selectedTournament, setSelectedTournament] = useState<TournamentType>(() => loadDailyTournament());
   const [runSummary, setRunSummary] = useState<RunSummary | null>(null);
   const [recentAchievements, setRecentAchievements] = useState<Achievement[]>([]);
   const [recentUnlocks, setRecentUnlocks] = useState<UnlockReward[]>([]);
+  const [rogueScore, setRogueScore] = useState<RogueScoreResult | null>(null);
 
   const today = todayDateStr();
-  const slate = isCareerMode && profile.run.isActive
+  const slate = isRogueMode
+    ? generateSlate(`rogue-prototype-${today}`)
+    : isCareerMode && profile.run.isActive
     ? generateSlate(`career-${profile.run.runNumber}-week-${profile.run.currentWeek}`, { week: profile.run.currentWeek })
     : generateSlate(today);
 
@@ -52,11 +59,24 @@ export default function App() {
 
   const handlePlayDaily = useCallback(() => {
     setIsCareerMode(false);
+    setIsRogueMode(false);
+    setRogueScore(null);
     setScreen('builder');
   }, []);
 
   const handleCareer = useCallback(() => {
+    setIsRogueMode(false);
+    setRogueScore(null);
     setScreen('career');
+  }, []);
+
+  const handleRogue = useCallback(() => {
+    setIsCareerMode(false);
+    setIsRogueMode(true);
+    setContestResult(null);
+    setLockedLineup(null);
+    setRogueScore(null);
+    setScreen('builder');
   }, []);
 
   const handleStartRun = useCallback((modifier: ModifierKey | null, boon: BoonKey | null) => {
@@ -82,34 +102,48 @@ export default function App() {
       };
     });
     setIsCareerMode(true);
+    setIsRogueMode(false);
+    setRogueScore(null);
     setSelectedTournament(DEFAULT_TOURNAMENT_TYPE);
     setScreen('builder');
   }, []);
 
   const handleContinueRun = useCallback(() => {
     setIsCareerMode(true);
+    setIsRogueMode(false);
+    setRogueScore(null);
     setSelectedTournament(profile.run.lastTournamentType ?? DEFAULT_TOURNAMENT_TYPE);
     setScreen('builder');
   }, [profile.run.lastTournamentType]);
 
-  const handleEnterContest = useCallback((lineup: Lineup, _players: Player[]) => {
+  const handleEnterContest = useCallback((lineup: Lineup) => {
     const entryFee = isCareerMode ? TIER_ENTRY_FEE[profile.run.tier] : 1;
     const modifier = isCareerMode ? profile.run.equippedModifier : null;
     // First daily contest is always Safe 50/50, regardless of the picker state.
-    const firstSession = !isCareerMode && profile.totalContestsPlayed === 0;
-    const tournamentForContest = firstSession ? DEFAULT_TOURNAMENT_TYPE : selectedTournament;
+    const firstSession = !isCareerMode && !isRogueMode && profile.totalContestsPlayed === 0;
+    const tournamentForContest = isRogueMode ? 'mini_gpp' : firstSession ? DEFAULT_TOURNAMENT_TYPE : selectedTournament;
     const result = runContest(lineup, slate, entryFee, modifier, tournamentForContest, profile.totalContestsPlayed);
+    if (isRogueMode) {
+      setRogueScore(scoreRogueLineup({
+        players: getLineupPlayers(lineup),
+        basePoints: result.userScore,
+        slate,
+      }));
+    } else {
+      setRogueScore(null);
+    }
     setContestResult(result);
     setLockedLineup(lineup);
     setScreen('sweat');
-  }, [slate, isCareerMode, profile, selectedTournament]);
+  }, [slate, isCareerMode, isRogueMode, profile, selectedTournament]);
 
   const handleSweatDone = useCallback(() => {
     setScreen('results');
     if (!contestResult) return;
+    if (isRogueMode) return;
 
     setProfile((prev) => {
-      let profBeforeResult = isCareerMode ? prev : updateStreak(prev);
+      const profBeforeResult = isCareerMode ? prev : updateStreak(prev);
       if (!lockedLineup) return profBeforeResult;
       const { next, runJustEnded, newAchievements, newUnlocks } = applyContestResult(profBeforeResult, contestResult, isCareerMode, lockedLineup);
       if (runJustEnded) setRunSummary(runJustEnded);
@@ -118,14 +152,33 @@ export default function App() {
       setContestResult({ ...contestResult });
       return next;
     });
-  }, [contestResult, isCareerMode, lockedLineup]);
+  }, [contestResult, isCareerMode, isRogueMode, lockedLineup]);
 
   const handleBackHome = useCallback(() => {
     setScreen('home');
     setContestResult(null);
     setLockedLineup(null);
+    setRogueScore(null);
+    setIsRogueMode(false);
     setRecentAchievements([]);
     setRecentUnlocks([]);
+  }, []);
+
+  const handleBuilderBack = useCallback(() => {
+    if (isRogueMode) {
+      handleBackHome();
+      return;
+    }
+    setScreen(isCareerMode ? 'career' : 'home');
+  }, [handleBackHome, isCareerMode, isRogueMode]);
+
+  const handleRogueReplay = useCallback(() => {
+    setIsCareerMode(false);
+    setIsRogueMode(true);
+    setContestResult(null);
+    setLockedLineup(null);
+    setRogueScore(null);
+    setScreen('builder');
   }, []);
 
   const handleGoCareerFromResults = useCallback(() => {
@@ -154,20 +207,21 @@ export default function App() {
 
   switch (screen) {
     case 'home':
-      return <HomeScreen profile={profile} onPlayDaily={handlePlayDaily} onCareer={handleCareer} />;
+      return <HomeScreen profile={profile} onPlayDaily={handlePlayDaily} onCareer={handleCareer} onRogue={handleRogue} />;
 
     case 'builder':
       return (
         <LineupBuilder
           slate={slate}
           onEnterContest={handleEnterContest}
-          onBack={() => setScreen(isCareerMode ? 'career' : 'home')}
+          onBack={handleBuilderBack}
           isCareer={isCareerMode}
-          isFirstSession={!isCareerMode && profile.totalContestsPlayed === 0}
+          isFirstSession={!isCareerMode && !isRogueMode && profile.totalContestsPlayed === 0}
           entryFee={entryFee}
-          selectedTournament={selectedTournament}
+          selectedTournament={isRogueMode ? 'mini_gpp' : selectedTournament}
           onTournamentChange={handleTournamentChange}
           activeBoon={isCareerMode ? profile.run.equippedBoon : null}
+          isRogue={isRogueMode}
         />
       );
 
@@ -183,6 +237,18 @@ export default function App() {
 
     case 'results':
       if (!contestResult) return null;
+      if (isRogueMode) {
+        if (!lockedLineup || !rogueScore) return null;
+        return (
+          <RogueResultsScreen
+            result={contestResult}
+            lineup={lockedLineup}
+            rogueScore={rogueScore}
+            onHome={handleBackHome}
+            onReplay={handleRogueReplay}
+          />
+        );
+      }
       return (
         <ResultsScreen
           result={contestResult}

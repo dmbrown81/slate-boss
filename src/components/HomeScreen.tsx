@@ -13,9 +13,10 @@ interface Props {
   profile: UserProfile;
   onPlayDaily: () => void;
   onCareer: () => void;
+  onRogue: () => void;
 }
 
-export default function HomeScreen({ profile, onPlayDaily, onCareer }: Props) {
+export default function HomeScreen({ profile, onPlayDaily, onCareer, onRogue }: Props) {
   const [showHelp, setShowHelp] = useState(false);
   const [showAchievements, setShowAchievements] = useState(false);
   const today = todayDateStr();
@@ -164,6 +165,61 @@ export default function HomeScreen({ profile, onPlayDaily, onCareer }: Props) {
           }}
         >
           {isFirstSession ? 'Start First Slate' : played ? 'Play Again' : 'Play Daily Slate'}
+        </button>
+      </div>
+
+      {/* Rogue prototype card */}
+      <div style={{
+        background: '#111',
+        border: '1px solid #3b2f66',
+        borderRadius: 12,
+        padding: 16,
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10, gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 10, color: '#777', letterSpacing: 1 }}>EXPERIMENTAL MODE</div>
+            <div style={{ fontSize: 20, fontWeight: 900, color: '#fff' }}>Rogue Prototype</div>
+          </div>
+          <div style={{
+            background: '#171126',
+            border: '1px solid #6b55c8',
+            borderRadius: 6,
+            padding: '4px 9px',
+            fontSize: 11,
+            color: '#b7a7ff',
+            fontWeight: 800,
+            whiteSpace: 'nowrap',
+          }}>
+            New branch
+          </div>
+        </div>
+        <div style={{
+          background: '#0a0a0a',
+          border: '1px solid #242036',
+          borderRadius: 8,
+          padding: '9px 10px',
+          marginBottom: 10,
+          color: '#aaa',
+          fontSize: 12,
+          lineHeight: 1.45,
+        }}>
+          Build a DFS lineup, then watch it score like an engine: Base Points x Edge from stacks, bring-backs, leverage, punt values, and starter coordinators.
+        </div>
+        <button
+          onClick={onRogue}
+          style={{
+            width: '100%',
+            padding: '12px 0',
+            background: '#6b55c8',
+            border: 'none',
+            color: '#fff',
+            borderRadius: 8,
+            fontSize: 15,
+            fontWeight: 800,
+            cursor: 'pointer',
+          }}
+        >
+          Try Rogue Prototype
         </button>
       </div>
 

@@ -179,7 +179,6 @@ export default function SweatScreen({ result, lineup, onDone }: Props) {
     if (done) return;
 
     const lines = buildQuarterTicker(phaseIdx, result, lineupPlayers);
-    setDisplayedTicker([]);
     tickLineRef.current = 0;
 
     const addLine = () => {
@@ -189,7 +188,10 @@ export default function SweatScreen({ result, lineup, onDone }: Props) {
         lineTimerRef.current = setTimeout(addLine, LINE_INTERVAL);
       }
     };
-    addLine();
+    lineTimerRef.current = setTimeout(() => {
+      setDisplayedTicker([]);
+      addLine();
+    }, 0);
 
     phaseTimerRef.current = setTimeout(() => {
       if (phaseIdx < PHASE_ORDER.length - 1) {

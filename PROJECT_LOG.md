@@ -18,6 +18,17 @@
 - Add a small coordinator/tool database and test the pattern engine before building new UI.
 - Keep the existing daily/classic game path intact while the rogue mode proves itself.
 
+### First playable Rogue Prototype
+
+- Added `src/lib/rogueScoring.ts` as a standalone rogue scoring engine.
+- Detects core lineup patterns: Single Stack, Double Stack, Bring-Back, Game Stack, Chalk Core, Leverage Core, Stars and Scrubs, Bellcow Build, Punt Value, and Fragile Ceiling.
+- Added starter coordinators: Air Raid Coordinator, Salary Wizard, and Leverage Desk.
+- Added a home-screen Rogue Prototype entry point without removing Daily Slate or Career Mode.
+- Reused the existing lineup builder and sweat screen, then routes rogue entries to a new `RogueResultsScreen`.
+- Rogue results now show engine score, boss target, Base Points, Flat Edge, Total Edge, pattern cards, coordinator cards, and a scoring ledger.
+- Rogue Prototype does not update normal daily/career profile progression yet.
+- Validation: `npm run lint` and `npm run build` pass, and an in-browser smoke test completed the full rogue path locally.
+
 ## 2026-06-13
 
 ### AI audit synthesis

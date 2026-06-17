@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import type { Slate, Lineup, Player, NewsEvent, TournamentType, BoonKey } from '../types';
 import { addPlayer, removePlayer, emptyLineup, getLineupPlayers, remainingSalary, lineupProjectedPoints, lineupAvgOwnership, averageSalaryLeftPerOpenSlot, openSlotCount } from '../lib/lineupValidation';
 import { applyNewsToPlayers } from '../lib/slateGenerator';
@@ -11,6 +11,7 @@ import LineupCoach from './LineupCoach';
 import HelpModal from './HelpModal';
 import { APP_NAME } from '../config';
 import { isStarterTournament, TOURNAMENT_ORDER, TOURNAMENTS } from '../lib/payout';
+import { ROGUE_COORDINATORS, STARTER_ROGUE_COORDINATOR_KEYS } from '../lib/rogueScoring';
 
 interface Props {
   slate: Slate;
@@ -22,6 +23,7 @@ interface Props {
   selectedTournament: TournamentType;
   onTournamentChange: (type: TournamentType) => void;
   activeBoon?: BoonKey | null;
+  isRogue?: boolean;
 }
 
 export default function LineupBuilder({
@@ -34,6 +36,7 @@ export default function LineupBuilder({
   selectedTournament,
   onTournamentChange,
   activeBoon = null,
+  isRogue = false,
 }: Props) {
   // The first daily contest is always a Safe 50/50, with advanced tooling hidden.
   const effectiveTournament: TournamentType = isFirstSession ? 'double_up' : selectedTournament;
@@ -43,13 +46,13 @@ export default function LineupBuilder({
   const [shownNews, setShownNews] = useState<Set<string>>(new Set());
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
   const [showHelp, setShowHelp] = useState(false);
-  const startTime = useRef(Date.now());
+  const [startTime] = useState(() => Date.now());
 
   // News event timing — suppressed on the first session so the first build is calm.
   useEffect(() => {
     if (isFirstSession) return;
     const interval = setInterval(() => {
-      const elapsed = (Date.now() - startTime.current) / 60000; // minutes
+      const elapsed = (Date.now() - startTime) / 60000; // minutes
       const toShow = slate.newsEvents.filter(
         (e) => elapsed >= e.triggerAtMinute && !shownNews.has(e.id)
       );
@@ -65,7 +68,7 @@ export default function LineupBuilder({
       }
     }, 3000);
     return () => clearInterval(interval);
-  }, [slate.newsEvents, shownNews, isFirstSession]);
+  }, [slate.newsEvents, shownNews, isFirstSession, startTime]);
 
   const dismissNews = (id: string) => setPendingNews((prev) => prev.filter((e) => e.id !== id));
 
@@ -128,9 +131,10 @@ export default function LineupBuilder({
           <button onClick={onBack} style={{ background: 'none', border: 'none', color: '#555', cursor: 'pointer', fontSize: 18 }}>←</button>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 15, fontWeight: 700, color: '#fff' }}>
-              {APP_NAME} · Slate #{slate.slateNumber}
+              {APP_NAME} · {isRogue ? 'Rogue Prototype' : `Slate #${slate.slateNumber}`}
               <span style={{ fontSize: 11, color: '#777', marginLeft: 8 }}>Week {slate.week}</span>
               {isCareer && <span style={{ fontSize: 11, color: '#f59e0b', marginLeft: 8 }}>CAREER · ${entryFee} entry</span>}
+              {isRogue && <span style={{ fontSize: 11, color: '#b7a7ff', marginLeft: 8 }}>BASE POINTS x EDGE</span>}
             </div>
           </div>
           <button
@@ -162,13 +166,16 @@ export default function LineupBuilder({
 
         {/* Tournament picker — single line with dropdown. First session is locked to Safe 50/50. */}
         <div style={{ marginTop: 6, display: 'flex', gap: 6, alignItems: 'center' }}>
-          {isFirstSession ? (
+        {isFirstSession || isRogue ? (
             <div style={{
               flex: 1,
               background: '#111', border: '1px solid #2a2a2a', color: '#ccc',
               borderRadius: 7, padding: '6px 8px', fontSize: 12, fontWeight: 700,
             }}>
-              Safe 50/50 <span style={{ color: '#8ee0b3', fontWeight: 400 }}>· First slate</span>
+              {isRogue ? tournament.name : 'Safe 50/50'}
+              <span style={{ color: isRogue ? '#b7a7ff' : '#8ee0b3', fontWeight: 400 }}>
+                {isRogue ? ' · Rogue test field' : ' · First slate'}
+              </span>
             </div>
           ) : (
             <select
@@ -198,7 +205,7 @@ export default function LineupBuilder({
             ${entryFee} <span style={{ color: '#4fc3f7' }}>· {tournament.prizeSummary.split('·')[0].trim()}</span>
           </div>
         </div>
-        <div style={{
+        {!isRogue && <div style={{
           marginTop: 5,
           color: isStarterContest ? '#8ee0b3' : '#f5a34c',
           fontSize: 11,
@@ -210,7 +217,22 @@ export default function LineupBuilder({
           {isStarterContest
             ? 'Good starter contest: you can learn the game without needing a perfect first-place lineup.'
             : 'Advanced contest: higher ceiling, more frustration risk. Use when you want a big-swing sweat.'}
-        </div>
+        </div>}
+
+        {isRogue && (
+          <div style={{
+            marginTop: 6,
+            color: '#d7ceff',
+            fontSize: 11,
+            background: '#171126',
+            border: '1px solid #3b2f66',
+            borderRadius: 6,
+            padding: '7px 8px',
+            lineHeight: 1.4,
+          }}>
+            Prototype goal: build an engine. Stacks, bring-backs, low-owned ceiling plays, and cheap value can all trigger Edge.
+          </div>
+        )}
 
         {/* Stats bar */}
         <div style={{
@@ -249,6 +271,34 @@ export default function LineupBuilder({
             {firstSlateStep.body}
           </div>
         )}
+        {isRogue && (
+          <div style={{
+            background: '#171126',
+            border: '1px solid #3b2f66',
+            borderRadius: 8,
+            padding: '10px 12px',
+            marginBottom: 10,
+          }}>
+            <div style={{ color: '#fff', fontSize: 12, fontWeight: 900, marginBottom: 7 }}>Starter Coordinators</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 7 }}>
+              {STARTER_ROGUE_COORDINATOR_KEYS.map((key) => {
+                const coordinator = ROGUE_COORDINATORS[key];
+                return (
+                  <div key={key} style={{
+                    background: '#0d0a16',
+                    border: '1px solid #34295c',
+                    borderRadius: 7,
+                    padding: '8px 8px',
+                    minWidth: 0,
+                  }}>
+                    <div style={{ color: '#d7ceff', fontSize: 11, fontWeight: 900, marginBottom: 3 }}>{coordinator.name}</div>
+                    <div style={{ color: '#9588d4', fontSize: 10, lineHeight: 1.3 }}>{coordinator.description}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
         <div style={{
           background: '#111',
           border: '1px solid #242424',
@@ -259,8 +309,11 @@ export default function LineupBuilder({
           fontSize: 12,
           lineHeight: 1.4,
         }}>
-          <span style={{ color: '#fff', fontWeight: 800 }}>Your job:</span> fill QB, 2 RB, 2 WR, TE, FLEX, and DST under $50k.
-          Tap a player for details, use <span style={{ color: '#4fc3f7' }}>+</span> to add, and watch Avg/Slot so you do not run out of salary.
+          <span style={{ color: '#fff', fontWeight: 800 }}>Your job:</span>{' '}
+          {isRogue
+            ? 'fill a legal lineup under $50k, then try to make your engine fire with stacks, bring-backs, leverage, and punt value.'
+            : 'fill QB, 2 RB, 2 WR, TE, FLEX, and DST under $50k.'}
+          {' '}Tap a player for details, use <span style={{ color: '#4fc3f7' }}>+</span> to add, and watch Avg/Slot so you do not run out of salary.
         </div>
         {!isFirstSession && <StackingTool
           lineup={lineup}
@@ -268,7 +321,7 @@ export default function LineupBuilder({
           selectedIds={selectedIds}
           onAdd={handleAdd}
           onSelectPlayer={setSelectedPlayer}
-          stackMeterPlus={activeBoon === 'stack_meter_plus'}
+          stackMeterPlus={activeBoon === 'stack_meter_plus' || isRogue}
         />}
         <LineupCoach lineup={lineup} tournamentType={effectiveTournament} />
         <PlayerTable
