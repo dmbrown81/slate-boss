@@ -1,5 +1,23 @@
 # Slate Boss Project Log
 
+## 2026-06-17
+
+### DFS card-rogue branch kickoff
+
+- Preserved the current playable DFS lineup sim as the classic baseline.
+- Created and pushed `archive/classic-dfs-sim` so the old direction has an explicit GitHub branch.
+- Created and pushed `classic-dfs-sim-2026-06-17` as a matching archive tag.
+- Created `codex/dfs-card-rogue` as the experimental branch for the DFS card-roguelike pivot.
+- Added `AGENT_HANDOFF_LOG.md` as the shared Codex / Claude Code update log.
+- Added `docs/DFS_CARD_ROGUE_DIRECTION.md` with the Balatro-inspired DFS translation, MVP phases, scoring model, item taxonomy, and boss-slate ideas.
+
+### Next intended build slice
+
+- Add a rogue scoring module that detects DFS lineup patterns such as Single Stack, Double Stack, Bring-Back, Game Stack, Chalk Core, Leverage Core, Stars and Scrubs, and Punt Value.
+- Return a transparent `Base Points x Edge` score ledger.
+- Add a small coordinator/tool database and test the pattern engine before building new UI.
+- Keep the existing daily/classic game path intact while the rogue mode proves itself.
+
 ## 2026-06-13
 
 ### AI audit synthesis
