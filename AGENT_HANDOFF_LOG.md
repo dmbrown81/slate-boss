@@ -28,6 +28,30 @@ Blockers:
 - ...
 ```
 
+## 2026-06-17 - Claude Code - football-card-rogue (refactor slice)
+
+Goal:
+- Act on the multi-model design reviews (Gemini / ChatGPT / "Gridiron Run" spec). Consensus + my read: fix the "one Double-Stack Bomb wins the match" pacing, give coordinators that actually SCALE, and bring the DFS salary cap back as the play resource. Refactor the core in place; season shell/shop/bosses deferred to next slice. User chose: core-refactor-first (then playtest) + Play Budget resource model.
+
+Changed (footballRogue.ts + FootballRogueScreen.tsx):
+- Match is now 3 escalating DRIVES (not one 700 target). Clear each drive's target or the run stalls.
+- THREE-CHANNEL deterministic scoring: total = base × (1 + execution) × bigPlay. Ledger renders Base / Execution / Big Play separately. Kills the one-bomb-wins problem.
+- PLAY BUDGET resource model (salary cap folded into the play resource, per the reviewer pushback I agreed with): every card has a cap `cost` (1–4 by source-player salary tier; kick/defense overridden). You call as many plays per drive as the budget affords. Audibles (3/drive) stay as the simple second resource.
+- SCALING coordinators: Air Raid = +0.2 Execution per stack already completed this match (within-game ramp); Bell Cow = +8 Base/run card and +6 permanent Base per Ground & Pound this match. (salary_wizard also defined.)
+- Anti-spam: repeating a concept in a drive applies ×0.85 Big Play ("Defense Adjusted").
+- Environments retained (Dome/Snow/Wind/Primetime/Clear).
+
+Balance (harness, since removed): budget [24,26,28], targets [900,1150,1450]. Optimal value-per-credit play wins ~71%, random 0%, ~5.7 plays/match (~2/drive), first bomb ≈69% of drive-1 target (was 118%). Tunables at top of footballRogue.ts.
+
+Validation: `npm run lint` and `npm run build` pass.
+
+Next (the season shell, per the reviews):
+- Wrap matches in a ~5-game season (RogueRunState, escalating across games), lose-on-failed-drive, simple 3-choice reward loop after each win (add/upgrade/cut card, hire coordinator), then teams-as-decks (5 identities, license-agnostic display-only names), then 5 boss schemes. Cap first coordinator catalog ~16–20.
+- Add a season-SCALING coordinator (e.g. Franchise QB: +0.15 Big Play each game you land a Bomb) once the season exists.
+
+Blockers:
+- Need user's playtest feel on the 3-drive + budget loop before building the season shell.
+
 ## 2026-06-17 - Claude Code - football-card-rogue
 
 Goal:
