@@ -6,9 +6,9 @@
 // balance-affecting change.
 
 import {
-  scoreFootballPlay, shuffle, randomEnvironment,
+  scoreFootballPlay, shuffle, randomBossScheme, randomEnvironment,
   DRIVE_BUDGET, DRIVES_PER_MATCH, HAND_SIZE, AUDIBLES_PER_DRIVE,
-  type FbCard, type FbConceptKey,
+  type FbBossSchemeKey, type FbCard, type FbConceptKey, type FbEnvironmentKey,
 } from '../src/lib/footballRogue';
 import {
   createRun, gameTargets, generateRewards, isChampionship, SEASON_GAMES,
@@ -18,7 +18,7 @@ import {
 // ── Tactical play: greedy value-per-credit, audible to seek a strong play ────
 interface GameResult { won: boolean; drive: number; bomb: boolean; score: number; concepts: Record<string, number>; }
 
-function playGame(run: FbRunState, targets: number[]): GameResult {
+function playGame(run: FbRunState, targets: number[], environment: FbEnvironmentKey, bossScheme: FbBossSchemeKey): GameResult {
   let full = shuffle([...run.deck]);
   let stacks = 0, ground = 0, bomb = false, total = 0;
   const concepts: Record<string, number> = {};
@@ -33,7 +33,7 @@ function playGame(run: FbRunState, targets: number[]): GameResult {
       let best: { ids: number[]; metric: number; total: number; cost: number; concept: FbConceptKey } | null = null;
       for (const cmb of combos) {
         const cards = cmb.map((i) => hand[i]); const cost = cards.reduce((s, c) => s + c.cost, 0); if (cost > budget) continue;
-        const res = scoreFootballPlay(cards, { coordinators: run.coordinators, environment: 'clear', playbook: run.playbook, bombGames: run.bombGames, stacksThisMatch: stacks, groundBonusThisMatch: ground, conceptCountsThisDrive: counts });
+        const res = scoreFootballPlay(cards, { coordinators: run.coordinators, environment, bossScheme, playbook: run.playbook, bombGames: run.bombGames, stacksThisMatch: stacks, groundBonusThisMatch: ground, conceptCountsThisDrive: counts });
         if (!res.valid) continue;
         const metric = res.total / cost;
         if (!best || metric > best.metric) best = { ids: cmb, metric, total: res.total, cost: res.cost, concept: res.concept };
@@ -117,7 +117,9 @@ function playSeason(policy: RewardPolicy): SeasonOut {
   let run = createRun();
   const perGame = [0, 0, 0, 0, 0];
   for (let g = 1; g <= SEASON_GAMES; g++) {
-    const res = playGame(run, gameTargets(randomEnvironment(), g));
+    const environment = randomEnvironment();
+    const bossScheme = randomBossScheme(g, isChampionship(g));
+    const res = playGame(run, gameTargets(environment, g), environment, bossScheme);
     if (!res.won) return { champion: false, gamesWon: g - 1, perGame };
     perGame[g - 1] = 1;
     run = { ...run, bombGames: run.bombGames + (res.bomb ? 1 : 0) };

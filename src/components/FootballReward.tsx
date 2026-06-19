@@ -1,6 +1,6 @@
 import { FB, card, sectionLabel } from './footballStyles';
 import { FB_COORDINATORS, FB_CONCEPT_LABEL } from '../lib/footballRogue';
-import { deckValueSummary, SEASON_GAMES, type FbRunState, type Reward } from '../lib/footballRun';
+import { buildIdentity, deckValueSummary, rewardFitLabel, rewardImpact, SEASON_GAMES, type FbRunState, type Reward } from '../lib/footballRun';
 
 interface Props {
   run: FbRunState;
@@ -15,6 +15,7 @@ const KIND_COLOR: Record<Reward['kind'], string> = {
 export default function FootballReward({ run, rewards, onPick }: Props) {
   const deck = deckValueSummary(run.deck);
   const nextGame = run.gameNumber + 1;
+  const identity = buildIdentity(run);
 
   return (
     <div style={{ minHeight: '100svh', padding: '20px 16px 28px', display: 'flex', flexDirection: 'column' }}>
@@ -23,6 +24,17 @@ export default function FootballReward({ run, rewards, onPick }: Props) {
         <div style={{ fontSize: 24, fontWeight: 900, color: FB.text, marginTop: 4 }}>Front Office</div>
         <div style={{ fontSize: 12.5, color: FB.textDim, marginTop: 4 }}>
           Pick one to strengthen your team before {nextGame >= SEASON_GAMES ? 'the Championship' : `Game ${nextGame}`} — the target rises.
+        </div>
+      </div>
+
+      <div style={{ ...card(12), padding: '12px 14px', marginTop: 14, borderColor: identity.level >= 2 ? '#5a4112' : FB.border }}>
+        <div style={{ ...sectionLabel, marginBottom: 5 }}>Current build</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
+          <div>
+            <div style={{ fontSize: 17, color: identity.level >= 2 ? FB.gold : FB.text, fontWeight: 900 }}>{identity.title}</div>
+            <div style={{ fontSize: 11.5, color: FB.textDim, lineHeight: 1.35, marginTop: 3 }}>{identity.detail}</div>
+          </div>
+          <span style={{ flexShrink: 0, fontSize: 10, color: identity.level >= 2 ? FB.gold : FB.green, background: identity.level >= 2 ? FB.goldSoft : FB.greenSoft, border: `1px solid ${identity.level >= 2 ? '#5a4112' : '#1f6b44'}`, borderRadius: 999, padding: '4px 8px', fontWeight: 900 }}>{identity.tag}</span>
         </div>
       </div>
 
@@ -35,8 +47,12 @@ export default function FootballReward({ run, rewards, onPick }: Props) {
           >
             <span style={{ fontSize: 26 }}>{rw.emoji}</span>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 15, fontWeight: 800, color: FB.text }}>{rw.title}</div>
+              <div style={{ display: 'flex', gap: 7, alignItems: 'center', flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 15, fontWeight: 800, color: FB.text }}>{rw.title}</div>
+                <span style={{ fontSize: 9.5, fontWeight: 900, color: KIND_COLOR[rw.kind], background: FB.inset, border: `1px solid ${FB.borderSoft}`, borderRadius: 999, padding: '2px 7px' }}>{rewardFitLabel(run, rw)}</span>
+              </div>
               <div style={{ fontSize: 12, color: FB.textDim, lineHeight: 1.4, marginTop: 2 }}>{rw.detail}</div>
+              <div style={{ fontSize: 11, color: FB.gold, lineHeight: 1.35, marginTop: 5 }}>{rewardImpact(run, rw)}</div>
             </div>
             <span style={{ color: KIND_COLOR[rw.kind], fontSize: 18, fontWeight: 900 }}>＋</span>
           </button>

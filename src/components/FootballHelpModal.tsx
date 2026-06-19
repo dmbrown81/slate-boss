@@ -1,7 +1,8 @@
 import { FB, btnPrimary, sectionLabel, SIDE } from './footballStyles';
 import {
-  FB_COORDINATORS, FB_ENVIRONMENTS, STARTER_COORDINATORS,
+  FB_BOSS_SCHEMES, FB_COORDINATORS, FB_ENVIRONMENTS, STARTER_COORDINATORS,
   DRIVES_PER_MATCH, AUDIBLES_PER_DRIVE, MAX_PLAY_CARDS,
+  type FbBossSchemeKey,
   type FbEnvironmentKey,
 } from '../lib/footballRogue';
 
@@ -52,6 +53,12 @@ export default function FootballHelpModal({ onClose }: Props) {
             <li><Dot c={FB.gold} /><b>Big Play</b> — a multiplier from elite synergies (explosive).</li>
           </ul>
           A great build feeds all three. Pump only one and you stall.
+        </Block>
+
+        <Block title="First drive grammar">
+          The cleanest first play is usually <b>QB Pass + same-team Catch</b>. That makes a Stack TD. Add a
+          second same-team catch and it becomes a Double-Stack Bomb. If your hand is all catches, select a few
+          loose cards and use <b>Audible</b> to dig for the QB pass.
         </Block>
 
         <Block title="Play Budget (the cap)">
@@ -107,6 +114,19 @@ export default function FootballHelpModal({ onClose }: Props) {
           <b> growing Big Play multiplier</b>. Targets rise <i>geometrically</i> across the season, so flat
           value alone plateaus: <b>pick a strategy early and stack its Game Plan</b> to build the
           multiplicative engine that beats the late games. Riding one plan beats spreading thin.
+        </Block>
+
+        <Block title="Boss defenses">
+          Later games add an opposing scheme that counters a style of play. You can see it on the scoreboard
+          before calling a play. Bosses do not make a build useless, but they force a supporting plan.
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 8 }}>
+            {(Object.keys(FB_BOSS_SCHEMES) as FbBossSchemeKey[]).map((k) => (
+              <div key={k} style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
+                <span style={{ fontSize: 12, fontWeight: 800, color: k === 'balanced' ? FB.text : FB.red, minWidth: 92 }}>{FB_BOSS_SCHEMES[k].label}</span>
+                <span style={{ fontSize: 11.5, color: FB.textDim }}>{FB_BOSS_SCHEMES[k].description}</span>
+              </div>
+            ))}
+          </div>
         </Block>
 
         <Block title="Weather">

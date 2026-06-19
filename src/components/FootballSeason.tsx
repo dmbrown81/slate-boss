@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { randomEnvironment, type FbEnvironmentKey } from '../lib/footballRogue';
+import { randomBossScheme, randomEnvironment, type FbBossSchemeKey, type FbEnvironmentKey } from '../lib/footballRogue';
 import {
   createRun, gameTargets, generateRewards, isChampionship, SEASON_GAMES,
   type FbRunState, type Reward,
@@ -14,6 +14,7 @@ export default function FootballSeason({ onHome }: { onHome: () => void }) {
   const [run, setRun] = useState<FbRunState>(() => createRun());
   const [phase, setPhase] = useState<Phase>('match');
   const [env, setEnv] = useState<FbEnvironmentKey>(() => randomEnvironment());
+  const [scheme, setScheme] = useState<FbBossSchemeKey>(() => randomBossScheme(1));
   const [rewards, setRewards] = useState<Reward[]>([]);
   const [matchInstance, setMatchInstance] = useState(0);
   const [gamesWon, setGamesWon] = useState(0);
@@ -36,8 +37,10 @@ export default function FootballSeason({ onHome }: { onHome: () => void }) {
 
   function handlePick(reward: Reward) {
     const applied = reward.apply(run);
-    setRun({ ...applied, gameNumber: applied.gameNumber + 1 });
+    const nextGame = applied.gameNumber + 1;
+    setRun({ ...applied, gameNumber: nextGame });
     setEnv(randomEnvironment());
+    setScheme(randomBossScheme(nextGame, isChampionship(nextGame)));
     setMatchInstance((n) => n + 1);
     setPhase('match');
   }
@@ -52,6 +55,7 @@ export default function FootballSeason({ onHome }: { onHome: () => void }) {
   function newSeason() {
     setRun(createRun());
     setEnv(randomEnvironment());
+    setScheme(randomBossScheme(1));
     setRewards([]);
     setGamesWon(0);
     setLostDrive(0);
@@ -74,6 +78,7 @@ export default function FootballSeason({ onHome }: { onHome: () => void }) {
       bombGames={run.bombGames}
       targets={targets}
       environment={env}
+      bossScheme={scheme}
       gameNumber={run.gameNumber}
       totalGames={SEASON_GAMES}
       championship={isChampionship(run.gameNumber)}

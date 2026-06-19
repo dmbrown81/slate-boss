@@ -1,6 +1,6 @@
 import { FB, btnPrimary, btnGhost, card } from './footballStyles';
-import { FB_COORDINATORS } from '../lib/footballRogue';
-import { deckValueSummary, SEASON_GAMES, type FbRunState } from '../lib/footballRun';
+import { FB_CONCEPT_LABEL, FB_COORDINATORS } from '../lib/footballRogue';
+import { buildIdentity, deckValueSummary, SEASON_GAMES, type FbRunState } from '../lib/footballRun';
 
 interface Props {
   won: boolean;
@@ -14,6 +14,7 @@ interface Props {
 export default function FootballRunSummary({ won, gamesWon, run, lostDrive, onNewSeason, onHome }: Props) {
   const deck = deckValueSummary(run.deck);
   const topPlan = Math.max(0, ...Object.values(run.playbook));
+  const identity = buildIdentity(run);
 
   return (
     <div style={{ minHeight: '100svh', padding: '28px 16px 28px', display: 'flex', flexDirection: 'column' }}>
@@ -28,6 +29,11 @@ export default function FootballRunSummary({ won, gamesWon, run, lostDrive, onNe
       </div>
 
       <div style={{ ...card(14), padding: '14px', marginTop: 16 }}>
+        <div style={{ marginBottom: 12, padding: '10px 11px', background: FB.inset, border: `1px solid ${identity.level >= 2 ? '#5a4112' : FB.borderSoft}`, borderRadius: 10 }}>
+          <div style={{ fontSize: 10, color: FB.textFaint, letterSpacing: 1.2, fontWeight: 900 }}>FINAL BUILD</div>
+          <div style={{ fontSize: 17, color: identity.level >= 2 ? FB.gold : FB.text, fontWeight: 900, marginTop: 2 }}>{identity.title}</div>
+          <div style={{ fontSize: 11.5, color: FB.textDim, lineHeight: 1.35, marginTop: 3 }}>{identity.detail}</div>
+        </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <Stat label="Games won" value={`${gamesWon}/${SEASON_GAMES}`} accent={won ? FB.gold : FB.text} />
           <Stat label="Final deck" value={`${deck.size}`} />
@@ -37,6 +43,11 @@ export default function FootballRunSummary({ won, gamesWon, run, lostDrive, onNe
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 12 }}>
           {run.coordinators.map((k) => (
             <span key={k} style={{ fontSize: 10, fontWeight: 800, color: '#b7a7ff', background: '#140f24', border: '1px solid #2a2440', borderRadius: 7, padding: '4px 8px' }}>{FB_COORDINATORS[k].name}</span>
+          ))}
+          {(Object.entries(run.playbook) as [keyof typeof FB_CONCEPT_LABEL, number][]).filter(([, l]) => l > 0).map(([c, l]) => (
+            <span key={c} style={{ fontSize: 10, fontWeight: 800, color: '#5fe0a0', background: '#0c2419', border: '1px solid #1f6b44', borderRadius: 7, padding: '4px 8px' }}>
+              {FB_CONCEPT_LABEL[c] ?? c} <span style={{ color: FB.gold }}>Lv{l}</span>
+            </span>
           ))}
         </div>
       </div>

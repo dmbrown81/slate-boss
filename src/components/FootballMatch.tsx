@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   buildStarterDeck, scoreFootballPlay, shuffle,
   HAND_SIZE, DRIVES_PER_MATCH, AUDIBLES_PER_DRIVE, MAX_PLAY_CARDS, DRIVE_BUDGET,
-  FB_COORDINATORS, FB_ENVIRONMENTS, FB_CONCEPT_LABEL,
-  type FbCard, type FbCoordinatorKey, type FbEnvironmentKey, type FbPlaybook, type FbPlayResult, type FbConceptKey,
+  FB_BOSS_SCHEMES, FB_COORDINATORS, FB_ENVIRONMENTS, FB_CONCEPT_LABEL,
+  type FbBossSchemeKey, type FbCard, type FbCoordinatorKey, type FbEnvironmentKey, type FbPlaybook, type FbPlayResult, type FbConceptKey,
 } from '../lib/footballRogue';
+import { buildIdentity } from '../lib/footballRun';
 import { FB, SIDE, btnPrimary, btnGhost } from './footballStyles';
 import FootballHelpModal from './FootballHelpModal';
 
@@ -15,6 +16,7 @@ export interface MatchProps {
   bombGames: number;
   targets: number[];
   environment: FbEnvironmentKey;
+  bossScheme: FbBossSchemeKey;
   gameNumber: number;
   totalGames: number;
   championship: boolean;
@@ -56,7 +58,7 @@ function drawUp(deck: FbCard[], hand: FbCard[], discard: FbCard[]) {
 }
 
 export default function FootballMatch(props: MatchProps) {
-  const { deck: runDeck, coordinators, playbook, bombGames, targets, environment, gameNumber, totalGames, championship } = props;
+  const { deck: runDeck, coordinators, playbook, bombGames, targets, environment, bossScheme, gameNumber, totalGames, championship } = props;
 
   const [match, setMatch] = useState<MatchState>(() => {
     const full = shuffle(runDeck.length ? runDeck : buildStarterDeck().cards);
@@ -70,20 +72,23 @@ export default function FootballMatch(props: MatchProps) {
   });
   const [selected, setSelected] = useState<string[]>([]);
   const [showHelp, setShowHelp] = useState(false);
+  const [scoreBeat, setScoreBeat] = useState(0);
 
   const selectedCards = useMemo(
     () => selected.map((id) => match.hand.find((c) => c.id === id)).filter(Boolean) as FbCard[],
     [selected, match.hand],
   );
   const scoreCtx = useMemo(() => ({
-    coordinators, environment, playbook, bombGames,
+    coordinators, environment, bossScheme, playbook, bombGames,
     stacksThisMatch: match.stacksThisMatch,
     groundBonusThisMatch: match.groundBonusThisMatch,
     conceptCountsThisDrive: match.conceptCountsThisDrive,
-  }), [coordinators, environment, playbook, bombGames, match.stacksThisMatch, match.groundBonusThisMatch, match.conceptCountsThisDrive]);
+  }), [coordinators, environment, bossScheme, playbook, bombGames, match.stacksThisMatch, match.groundBonusThisMatch, match.conceptCountsThisDrive]);
   const preview = useMemo(() => scoreFootballPlay(selectedCards, scoreCtx), [selectedCards, scoreCtx]);
 
   const env = FB_ENVIRONMENTS[environment];
+  const boss = FB_BOSS_SCHEMES[bossScheme];
+  const identity = useMemo(() => buildIdentity({ gameNumber, deck: runDeck, coordinators, playbook, bombGames, status: 'playing' }), [gameNumber, runDeck, coordinators, playbook, bombGames]);
   const target = targets[match.driveIndex];
   const remaining = Math.max(0, target - match.driveScore);
   const pct = Math.min(100, (match.driveScore / target) * 100);
@@ -93,6 +98,15 @@ export default function FootballMatch(props: MatchProps) {
   const canAffordAnything = match.budgetLeft >= cheapest;
   const handHasPass = match.hand.some((c) => c.side === 'pass');
   const handHasRun = match.hand.some((c) => c.action === 'power_run' || c.action === 'breakaway_run');
+  const handGroups = useMemo(() => groupHand(match.hand), [match.hand]);
+  const coach = useMemo(() => firstDriveCoach(gameNumber, match, selectedCards, preview), [gameNumber, match, selectedCards, preview]);
+  const coachHighlights = useMemo(() => new Set(coach?.highlightIds ?? []), [coach]);
+
+  useEffect(() => {
+    if (!match.lastPlay) return undefined;
+    const timers = [260, 560, 900].map((ms, i) => window.setTimeout(() => setScoreBeat(i + 1), ms));
+    return () => timers.forEach((timer) => window.clearTimeout(timer));
+  }, [match.lastPlay, match.popKey]);
 
   function toggle(id: string) {
     if (match.status !== 'playing') return;
@@ -102,6 +116,7 @@ export default function FootballMatch(props: MatchProps) {
   function runPlay() {
     if (match.status !== 'playing' || selectedCards.length === 0 || overBudget) return;
     const result = scoreFootballPlay(selectedCards, scoreCtx);
+    setScoreBeat(0);
     setMatch((m) => {
       const playedIds = new Set(selected);
       const handAfter = m.hand.filter((c) => !playedIds.has(c.id));
@@ -184,6 +199,10 @@ export default function FootballMatch(props: MatchProps) {
           <Stat label="Deck" value={`${match.deck.length}`} />
           <Stat label="Weather" value={env.label.split(' ')[0]} />
         </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 7, marginTop: 9 }}>
+          <Scout label="Current Build" title={identity.title} detail={identity.tag} color={identity.level >= 2 ? FB.gold : FB.green} />
+          <Scout label="Defense" title={boss.shortLabel} detail={boss.hint} color={bossScheme === 'balanced' ? FB.textDim : FB.red} />
+        </div>
         <div style={{ display: 'flex', gap: 6, marginTop: 9, flexWrap: 'wrap' }}>
           {coordinators.map((k) => {
             const ramp = k === 'air_raid' && match.stacksThisMatch > 0 ? `+${(0.25 * match.stacksThisMatch).toFixed(2)} EXE`
@@ -206,20 +225,34 @@ export default function FootballMatch(props: MatchProps) {
       {match.status === 'playing' && (
         <>
           <PlayPreview result={preview} count={selectedCards.length} budgetLeft={match.budgetLeft} overBudget={overBudget} />
+          {coach && <CoachCall coach={coach} />}
           <div>
             <div style={{ fontSize: 9.5, color: FB.textFaint, letterSpacing: 1.4, fontWeight: 800, margin: '0 2px 7px' }}>YOUR HAND · TAP UP TO {MAX_PLAY_CARDS}</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 7 }}>
-              {match.hand.map((c) => (
-                <CardView key={c.id} card={c} active={selected.includes(c.id)} affordable={c.cost <= match.budgetLeft} onClick={() => toggle(c.id)} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+              {handGroups.map((group) => (
+                <div key={group.key}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '0 2px 5px' }}>
+                    <span style={{ fontSize: 9, color: group.color, fontWeight: 900, letterSpacing: 1.1 }}>{group.label}</span>
+                    <span style={{ height: 1, flex: 1, background: FB.borderSoft }} />
+                    <span style={{ fontSize: 9, color: FB.textFaint, fontWeight: 800 }}>{group.cards.length}</span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 7 }}>
+                    {group.cards.map((c) => (
+                      <CardView key={c.id} card={c} active={selected.includes(c.id)} highlighted={coachHighlights.has(c.id)} affordable={c.cost <= match.budgetLeft} onClick={() => toggle(c.id)} />
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={audible} disabled={selectedCards.length === 0 || match.audiblesLeft <= 0}
+              className={coach?.action === 'audible' ? 'fb-glow' : undefined}
               style={{ ...btnGhost, flex: 1, padding: '14px 0', fontSize: 14, borderRadius: 12, opacity: selectedCards.length === 0 || match.audiblesLeft <= 0 ? 0.45 : 1 }}>
               Audible · {match.audiblesLeft}
             </button>
             <button onClick={runPlay} disabled={selectedCards.length === 0 || overBudget}
+              className={coach?.action === 'run' ? 'fb-glow' : undefined}
               style={{ ...btnPrimary, flex: 2, ...(selectedCards.length === 0 || overBudget ? { background: '#1a2330', color: FB.textFaint, boxShadow: 'none' } : {}) }}>
               {overBudget ? `Over budget by $${selectedCost - match.budgetLeft}` : selectedCards.length ? `Run Play  ·  +${preview.total}` : 'Select cards'}
             </button>
@@ -228,7 +261,7 @@ export default function FootballMatch(props: MatchProps) {
           {canAffordAnything && !handHasPass && !handHasRun && match.audiblesLeft > 0 && (
             <div style={{ fontSize: 11, color: FB.gold, textAlign: 'center' }}>💡 No QB pass or run in hand — select a few catches and Audible to dig for one.</div>
           )}
-          {match.lastPlay && <div style={{ fontSize: 11, color: FB.textFaint, textAlign: 'center' }}>Last: {match.lastPlay.playName} · +{match.lastPlay.total}</div>}
+          {match.lastPlay && <ScoreBeats result={match.lastPlay} stage={scoreBeat} />}
         </>
       )}
 
@@ -258,16 +291,27 @@ function Stat({ label, value, accent }: { label: string; value: string; accent?:
   );
 }
 
-function CardView({ card, active, affordable, onClick }: { card: FbCard; active: boolean; affordable: boolean; onClick: () => void }) {
+function Scout({ label, title, detail, color }: { label: string; title: string; detail: string; color: string }) {
+  return (
+    <div style={{ background: '#0a1016', border: `1px solid ${FB.borderSoft}`, borderRadius: 9, padding: '8px 9px' }}>
+      <div style={{ fontSize: 8.5, color: FB.textFaint, letterSpacing: 0.8, fontWeight: 800 }}>{label.toUpperCase()}</div>
+      <div style={{ fontSize: 12, color, fontWeight: 900, lineHeight: 1.2, marginTop: 2 }}>{title}</div>
+      <div style={{ fontSize: 9.5, color: FB.textDim, lineHeight: 1.25, marginTop: 2 }}>{detail}</div>
+    </div>
+  );
+}
+
+function CardView({ card, active, highlighted, affordable, onClick }: { card: FbCard; active: boolean; highlighted: boolean; affordable: boolean; onClick: () => void }) {
   const c = SIDE[card.side];
   return (
     <button onClick={onClick} className={active ? 'fb-glow' : undefined} style={{
       background: active ? c.grad : FB.panelSoft,
-      border: `1.5px solid ${active ? c.border : FB.borderSoft}`,
+      border: `1.5px solid ${active || highlighted ? c.border : FB.borderSoft}`,
       borderRadius: 11, padding: '8px 6px 7px', cursor: 'pointer', textAlign: 'left',
       transform: active ? 'translateY(-5px)' : 'none', transition: 'transform .14s ease, border-color .14s',
       minHeight: 84, display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
       opacity: affordable || active ? 1 : 0.42,
+      boxShadow: highlighted && !active ? `0 0 0 2px ${c.border}44, 0 0 18px ${c.border}25` : undefined,
     }}>
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -279,6 +323,24 @@ function CardView({ card, active, affordable, onClick }: { card: FbCard; active:
       </div>
       <div style={{ fontSize: 8, color: FB.textFaint, lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.playerName} · {card.team}</div>
     </button>
+  );
+}
+
+interface Coach {
+  title: string;
+  detail: string;
+  action: 'select' | 'audible' | 'run';
+  highlightIds: string[];
+}
+
+function CoachCall({ coach }: { coach: Coach }) {
+  const accent = coach.action === 'run' ? FB.green : coach.action === 'audible' ? FB.gold : FB.blue;
+  return (
+    <div style={{ background: '#101926', border: `1px solid ${accent}66`, borderLeft: `3px solid ${accent}`, borderRadius: 12, padding: '10px 12px' }}>
+      <div style={{ fontSize: 10, color: accent, letterSpacing: 1.2, fontWeight: 900 }}>COACH'S FIRST DRIVE</div>
+      <div style={{ fontSize: 13.5, color: FB.text, fontWeight: 900, marginTop: 2 }}>{coach.title}</div>
+      <div style={{ fontSize: 11.5, color: FB.textDim, lineHeight: 1.35, marginTop: 2 }}>{coach.detail}</div>
+    </div>
   );
 }
 
@@ -304,13 +366,41 @@ function PlayPreview({ result, count, budgetLeft, overBudget }: { result: FbPlay
           </div>
           {result.ledger.length > 2 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-              {result.ledger.filter((e) => ['execution', 'big_play', 'coordinator', 'environment', 'spam'].includes(e.kind)).map((e) => (
-                <span key={e.id} style={{ fontSize: 10, fontWeight: 700, color: e.kind === 'coordinator' ? '#b7a7ff' : e.kind === 'spam' ? FB.red : e.kind === 'environment' ? '#9cc6ff' : e.kind === 'big_play' ? FB.gold : FB.blue, background: FB.inset, border: `1px solid ${FB.borderSoft}`, borderRadius: 6, padding: '3px 7px' }}>{e.label}</span>
+              {result.ledger.filter((e) => ['execution', 'big_play', 'coordinator', 'environment', 'boss', 'spam'].includes(e.kind)).map((e) => (
+                <span key={e.id} style={{ fontSize: 10, fontWeight: 700, color: e.kind === 'coordinator' ? '#b7a7ff' : e.kind === 'spam' || e.kind === 'boss' ? FB.red : e.kind === 'environment' ? '#9cc6ff' : e.kind === 'big_play' ? FB.gold : FB.blue, background: FB.inset, border: `1px solid ${FB.borderSoft}`, borderRadius: 6, padding: '3px 7px' }}>{e.label}</span>
               ))}
             </div>
           )}
         </>
       )}
+    </div>
+  );
+}
+
+function ScoreBeats({ result, stage }: { result: FbPlayResult; stage: number }) {
+  const beats = [
+    { label: 'Base', value: `${result.base}`, color: FB.green },
+    { label: 'Execution', value: `+${result.execution.toFixed(2)}`, color: FB.blue },
+    { label: 'Big Play', value: `×${result.bigPlay}`, color: FB.gold },
+    { label: 'Final', value: `+${result.total}`, color: FB.text },
+  ];
+  return (
+    <div style={{ background: FB.panelSoft, border: `1px solid ${FB.borderSoft}`, borderRadius: 12, padding: 10 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <div style={{ fontSize: 10, color: FB.textFaint, letterSpacing: 1.2, fontWeight: 900 }}>SCORING SEQUENCE</div>
+        <div style={{ fontSize: 11, color: FB.textDim, fontWeight: 800 }}>{result.playName}</div>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+        {beats.map((beat, i) => {
+          const active = stage >= i;
+          return (
+            <div key={beat.label} className={active ? 'fb-pop' : undefined} style={{ background: active ? '#111d28' : FB.inset, border: `1px solid ${active ? beat.color : FB.borderSoft}`, borderRadius: 8, padding: '7px 4px', textAlign: 'center', opacity: active ? 1 : 0.45 }}>
+              <div className="fb-num" style={{ fontSize: i === 3 ? 17 : 14, color: beat.color, fontWeight: 900, lineHeight: 1.05 }}>{beat.value}</div>
+              <div style={{ fontSize: 8.5, color: FB.textFaint, fontWeight: 800, marginTop: 2 }}>{beat.label.toUpperCase()}</div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -322,6 +412,91 @@ function Channel({ label, value, color }: { label: string; value: string; color:
       <div style={{ fontSize: 8, color: FB.textFaint, letterSpacing: 0.4, fontWeight: 700 }}>{label.toUpperCase()}</div>
     </div>
   );
+}
+
+function groupHand(hand: FbCard[]) {
+  const groups: { key: FbCard['side']; label: string; color: string; cards: FbCard[] }[] = [
+    { key: 'pass', label: 'QB Pass', color: SIDE.pass.text, cards: [] },
+    { key: 'catch', label: 'Catch', color: SIDE.catch.text, cards: [] },
+    { key: 'run', label: 'Run', color: SIDE.run.text, cards: [] },
+    { key: 'defense', label: 'Defense', color: SIDE.defense.text, cards: [] },
+    { key: 'kick', label: 'Kick', color: SIDE.kick.text, cards: [] },
+  ];
+  for (const card of hand) groups.find((g) => g.key === card.side)?.cards.push(card);
+  return groups
+    .map((group) => ({
+      ...group,
+      cards: group.cards.sort((a, b) => a.team.localeCompare(b.team) || a.position.localeCompare(b.position) || b.value - a.value),
+    }))
+    .filter((group) => group.cards.length > 0);
+}
+
+function firstDriveCoach(gameNumber: number, match: MatchState, selectedCards: FbCard[], preview: FbPlayResult): Coach | null {
+  if (gameNumber !== 1 || match.driveIndex !== 0 || match.lastPlay || match.status !== 'playing') return null;
+
+  const pass = bestCoachCard(match.hand, (c) => c.side === 'pass');
+  const sameTeamCatch = pass ? bestCoachCard(match.hand, (c) => c.side === 'catch' && c.team === pass.team) : undefined;
+  const selectedPass = selectedCards.find((c) => c.side === 'pass');
+  const selectedCatch = selectedCards.find((c) => c.side === 'catch');
+  const selectedSameTeamCatch = selectedPass ? selectedCards.find((c) => c.side === 'catch' && c.team === selectedPass.team) : undefined;
+
+  if (preview.valid && (preview.concept === 'stack_td' || preview.concept === 'double_stack_bomb' || preview.concept === 'shootout_stack')) {
+    return {
+      title: 'That is a real football concept',
+      detail: `${preview.playName} turns the cards into Base × Execution × Big Play. Run it and watch the scoring sequence.`,
+      action: 'run',
+      highlightIds: selectedCards.map((c) => c.id),
+    };
+  }
+
+  if (!pass || !sameTeamCatch) {
+    const throwaways = (match.hand.filter((c) => c.side === 'catch').length ? match.hand.filter((c) => c.side === 'catch') : match.hand.filter((c) => c.side !== 'pass')).slice(0, 3);
+    return {
+      title: 'Dig for a QB pass',
+      detail: 'Catches need a QB pass to become a stack. Select a few loose cards and hit Audible to redraw.',
+      action: 'audible',
+      highlightIds: throwaways.map((c) => c.id),
+    };
+  }
+
+  if (selectedPass && !selectedSameTeamCatch) {
+    const catches = match.hand.filter((c) => c.side === 'catch' && c.team === selectedPass.team);
+    return {
+      title: 'Add his receiver',
+      detail: 'A QB pass plus a same-team catch becomes Stack TD. This is the basic grammar of the game.',
+      action: 'select',
+      highlightIds: catches.map((c) => c.id),
+    };
+  }
+
+  if (selectedCatch && !selectedPass) {
+    return {
+      title: 'Pair that catch with a QB',
+      detail: 'A catch by itself is just yardage. Add the highlighted QB pass to turn it into a scoring concept.',
+      action: 'select',
+      highlightIds: [pass.id],
+    };
+  }
+
+  if (selectedCards.length > 0 && !preview.valid) {
+    return {
+      title: 'Make the cards agree',
+      detail: 'Try one QB Pass and one same-team Catch. Mismatched cards become Busted Plays.',
+      action: 'select',
+      highlightIds: [pass.id, sameTeamCatch.id],
+    };
+  }
+
+  return {
+    title: 'Call your first Stack TD',
+    detail: 'Select the highlighted QB pass and matching catch. That combo is your first clean play.',
+    action: 'select',
+    highlightIds: [pass.id, sameTeamCatch.id],
+  };
+}
+
+function bestCoachCard(hand: FbCard[], pred: (card: FbCard) => boolean): FbCard | undefined {
+  return [...hand].filter(pred).sort((a, b) => b.value - a.value || a.cost - b.cost)[0];
 }
 
 function ResultPanel({ won, title, detail, cta, onCta }: { won: boolean; title: string; detail: string; cta: string; onCta: () => void }) {

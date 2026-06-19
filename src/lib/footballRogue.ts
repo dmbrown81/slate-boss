@@ -112,7 +112,7 @@ export const GAME_PLAN_STEP: Partial<Record<FbConceptKey, { base: number; exec: 
   pick_six: { base: 0, exec: 0.3 },
   takeaway: { base: 0, exec: 0.18 },
 };
-export const GAME_PLAN_COMMIT_XMULT = 0.13; // Big Play added per level beyond 1
+export const GAME_PLAN_COMMIT_XMULT = 0.16; // Big Play added per level beyond 1
 
 // ── Environments (per-match modifier) ───────────────────────────────────────
 export type FbEnvironmentKey = 'clear' | 'dome' | 'snow' | 'wind' | 'primetime';
@@ -129,10 +129,74 @@ export const FB_ENVIRONMENTS: Record<FbEnvironmentKey, FbEnvironment> = {
 
 export const FB_ENVIRONMENT_KEYS: FbEnvironmentKey[] = ['clear', 'dome', 'snow', 'wind', 'primetime'];
 
+// ── Opposing defensive schemes (Boss Blind analog) ──────────────────────────
+export type FbBossSchemeKey =
+  | 'balanced'
+  | 'no_fly_zone'
+  | 'stacked_box'
+  | 'turnover_drill'
+  | 'adaptive_dc';
+
+export interface FbBossScheme {
+  key: FbBossSchemeKey;
+  label: string;
+  shortLabel: string;
+  description: string;
+  hint: string;
+}
+
+export const FB_BOSS_SCHEMES: Record<FbBossSchemeKey, FbBossScheme> = {
+  balanced: {
+    key: 'balanced',
+    label: 'Base Defense',
+    shortLabel: 'Base D',
+    description: 'No special counters. Learn your playbook and build a plan.',
+    hint: 'Any clean concept can win.',
+  },
+  no_fly_zone: {
+    key: 'no_fly_zone',
+    label: 'No-Fly Zone',
+    shortLabel: 'No-Fly',
+    description: 'Deep stacks lose Big Play, but short passing stays efficient.',
+    hint: 'Lean on Stack TD, Checkdown, or the run game.',
+  },
+  stacked_box: {
+    key: 'stacked_box',
+    label: 'Stacked Box',
+    shortLabel: 'Box',
+    description: 'Runs lose Base, but play-action stacks get a small Execution bump.',
+    hint: 'Beat it with QB stacks and passing concepts.',
+  },
+  turnover_drill: {
+    key: 'turnover_drill',
+    label: 'Turnover Drill',
+    shortLabel: 'Secure',
+    description: 'Defensive splash plays lose Big Play; clean offense gains Execution.',
+    hint: 'Do not rely only on Pick Six luck.',
+  },
+  adaptive_dc: {
+    key: 'adaptive_dc',
+    label: 'Adaptive DC',
+    shortLabel: 'Adaptive',
+    description: 'Repeating a concept gets punished harder than usual.',
+    hint: 'Mix your engine with one supporting play.',
+  },
+};
+
+export const FB_BOSS_SCHEME_KEYS: FbBossSchemeKey[] = ['no_fly_zone', 'stacked_box', 'turnover_drill', 'adaptive_dc'];
+
+export function randomBossScheme(gameNumber: number, championship = false): FbBossSchemeKey {
+  if (gameNumber <= 1) return 'balanced';
+  if (championship) return FB_BOSS_SCHEME_KEYS[Math.floor(Math.random() * FB_BOSS_SCHEME_KEYS.length)];
+  const pool = FB_BOSS_SCHEME_KEYS.filter((k) => k !== 'adaptive_dc');
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
 // ── Scoring context + result ────────────────────────────────────────────────
 export interface FbScoreContext {
   coordinators: FbCoordinatorKey[];
   environment: FbEnvironmentKey;
+  bossScheme?: FbBossSchemeKey;
   stacksThisMatch: number;                       // for Air Raid scaling
   groundBonusThisMatch: number;                  // accumulated Bell Cow base
   conceptCountsThisDrive: Partial<Record<FbConceptKey, number>>; // anti-spam
@@ -140,7 +204,7 @@ export interface FbScoreContext {
   bombGames?: number;                            // earlier games with a Bomb (Franchise QB)
 }
 
-export type FbLedgerKind = 'base' | 'execution' | 'big_play' | 'coordinator' | 'environment' | 'spam' | 'final';
+export type FbLedgerKind = 'base' | 'execution' | 'big_play' | 'coordinator' | 'environment' | 'boss' | 'spam' | 'final';
 
 export interface FbLedgerEntry {
   id: string;
@@ -320,6 +384,7 @@ export function scoreFootballPlay(cards: FbCard[], ctx: FbScoreContext): FbPlayR
 
   const co = new Set(ctx.coordinators);
   const env = ctx.environment;
+  const scheme = ctx.bossScheme ?? 'balanced';
   const cost = cards.reduce((s, c) => s + c.cost, 0);
 
   const passCards = cards.filter((c) => c.side === 'pass');
@@ -439,12 +504,41 @@ export function scoreFootballPlay(cards: FbCard[], ctx: FbScoreContext): FbPlayR
   }
   if (env === 'primetime') { bigPlay *= 1.2; ledger.push({ id: 'env', kind: 'environment', label: FB_ENVIRONMENTS.primetime.label, detail: 'Big Play ×1.2.' }); }
 
+  // ── Opposing defensive scheme (Boss Blind analog) ──
+  if (scheme === 'no_fly_zone') {
+    if (concept === 'double_stack_bomb' || concept === 'shootout_stack') {
+      bigPlay *= 0.78;
+      ledger.push({ id: 'boss', kind: 'boss', label: FB_BOSS_SCHEMES.no_fly_zone.label, detail: 'Deep stack counter — Big Play ×0.78.' });
+    } else if (concept === 'stack_td' || concept === 'checkdown') {
+      execution += 0.15;
+      ledger.push({ id: 'boss', kind: 'boss', label: FB_BOSS_SCHEMES.no_fly_zone.label, detail: 'Short passing window — Execution +0.15.' });
+    }
+  }
+  if (scheme === 'stacked_box') {
+    if (concept === 'ground_pound' || concept === 'designed_run' || concept === 'qb_keeper') {
+      base *= 0.82;
+      ledger.push({ id: 'boss', kind: 'boss', label: FB_BOSS_SCHEMES.stacked_box.label, detail: 'Run fit is loaded — Base ×0.82.' });
+    } else if (isStack) {
+      execution += 0.12;
+      ledger.push({ id: 'boss', kind: 'boss', label: FB_BOSS_SCHEMES.stacked_box.label, detail: 'Play-action window — Execution +0.12.' });
+    }
+  }
+  if (scheme === 'turnover_drill') {
+    if (defense.length > 0) {
+      bigPlay *= 0.75;
+      ledger.push({ id: 'boss', kind: 'boss', label: FB_BOSS_SCHEMES.turnover_drill.label, detail: 'Ball security emphasis — defensive Big Play ×0.75.' });
+    } else if (concept !== 'busted_play' && kicks.length === 0) {
+      execution += 0.1;
+      ledger.push({ id: 'boss', kind: 'boss', label: FB_BOSS_SCHEMES.turnover_drill.label, detail: 'Clean offense — Execution +0.10.' });
+    }
+  }
+
   // ── Anti-spam (defense adjusts to repeated concepts this drive) ──
   const repeats = ctx.conceptCountsThisDrive[concept] ?? 0;
   if (repeats > 0 && concept !== 'busted_play') {
-    const factor = Math.pow(0.85, repeats);
+    const factor = Math.pow(scheme === 'adaptive_dc' ? 0.72 : 0.85, repeats);
     bigPlay *= factor;
-    ledger.push({ id: 'spam', kind: 'spam', label: 'Defense Adjusted', detail: `Repeated ${playName} ×${round2(factor)} (call something else).` });
+    ledger.push({ id: 'spam', kind: 'spam', label: scheme === 'adaptive_dc' ? FB_BOSS_SCHEMES.adaptive_dc.label : 'Defense Adjusted', detail: `Repeated ${playName} ×${round2(factor)} (call something else).` });
   }
 
   base = r(base);

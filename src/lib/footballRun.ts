@@ -4,8 +4,8 @@
 import {
   buildStarterDeck, driveTargets, createFreeAgentCard,
   FB_COORDINATORS, STARTER_COORDINATORS, MAX_COORDINATORS, FB_CONCEPT_LABEL,
-  shuffle,
-  type FbCard, type FbCoordinatorKey, type FbPlaybook, type FbEnvironmentKey, type FbConceptKey, type FreeAgentKey,
+  scoreFootballPlay, shuffle,
+  type FbBossSchemeKey, type FbCard, type FbCoordinatorKey, type FbPlaybook, type FbEnvironmentKey, type FbConceptKey, type FreeAgentKey,
 } from './footballRogue';
 
 export const SEASON_GAMES = 5;
@@ -174,4 +174,150 @@ export function deckValueSummary(deck: FbCard[]): { size: number; avgValue: numb
   const avgValue = size ? Math.round(deck.reduce((s, c) => s + c.value, 0) / size) : 0;
   const avgCost = size ? Math.round((deck.reduce((s, c) => s + c.cost, 0) / size) * 10) / 10 : 0;
   return { size, avgValue, avgCost };
+}
+
+export function topGamePlan(playbook: FbPlaybook): { concept: FbConceptKey; level: number; label: string } | null {
+  const top = (Object.entries(playbook) as [FbConceptKey, number][])
+    .filter(([, level]) => level > 0)
+    .sort((a, b) => b[1] - a[1])[0];
+  if (!top) return null;
+  return { concept: top[0], level: top[1], label: FB_CONCEPT_LABEL[top[0]] ?? top[0] };
+}
+
+export function buildIdentity(run: FbRunState): { title: string; detail: string; concept: FbConceptKey | null; level: number; tag: string } {
+  const top = topGamePlan(run.playbook);
+  if (top) {
+    const online = top.level >= 2 ? 'Big Play engine online' : 'flat scoring unlocked';
+    return {
+      title: `${top.label} Team`,
+      detail: `Lv${top.level} Game Plan — ${online}. Keep drafting cards and coordinators that trigger it.`,
+      concept: top.concept,
+      level: top.level,
+      tag: top.level >= 2 ? 'Engine online' : 'Commit next',
+    };
+  }
+  const lean = deckLean(run.deck);
+  if (lean === 'run') return { title: 'Ground Game Starter', detail: 'No Game Plan yet. Level Ground & Pound to turn carries into an engine.', concept: 'ground_pound', level: 0, tag: 'Pick a plan' };
+  if (lean === 'def') return { title: 'Defensive Starter', detail: 'No Game Plan yet. Level Pick Six or Takeaway if defense becomes your identity.', concept: 'pick_six', level: 0, tag: 'Pick a plan' };
+  return { title: 'Air Raid Starter', detail: 'No Game Plan yet. Level Stack TD or Double-Stack Bomb to make QB stacks scale.', concept: 'double_stack_bomb', level: 0, tag: 'Pick a plan' };
+}
+
+function bestCard(deck: FbCard[], pred: (c: FbCard) => boolean, exclude = new Set<string>()): FbCard | undefined {
+  return [...deck]
+    .filter((c) => pred(c) && !exclude.has(c.id))
+    .sort((a, b) => b.value - a.value || a.cost - b.cost)[0];
+}
+
+function representativeCards(deck: FbCard[], concept: FbConceptKey): FbCard[] | null {
+  const used = new Set<string>();
+  const take = (pred: (c: FbCard) => boolean) => {
+    const card = bestCard(deck, pred, used);
+    if (card) used.add(card.id);
+    return card;
+  };
+
+  if (concept === 'double_stack_bomb' || concept === 'stack_td' || concept === 'shootout_stack') {
+    const pass = take((c) => c.side === 'pass');
+    if (!pass) return null;
+    const catch1 = take((c) => c.side === 'catch' && c.team === pass.team);
+    if (!catch1) return null;
+    const cards = [pass, catch1];
+    if (concept === 'double_stack_bomb' || concept === 'shootout_stack') {
+      const catch2 = take((c) => c.side === 'catch' && c.team === pass.team);
+      if (catch2) cards.push(catch2);
+    }
+    if (concept === 'shootout_stack') {
+      const bringBack = take((c) => c.side === 'catch' && c.team !== pass.team);
+      if (bringBack) cards.push(bringBack);
+    }
+    return cards;
+  }
+
+  if (concept === 'checkdown') {
+    const pass = take((c) => c.side === 'pass');
+    const check = take((c) => c.action === 'checkdown_catch');
+    return pass && check ? [pass, check] : null;
+  }
+
+  if (concept === 'ground_pound') {
+    const run1 = take((c) => c.action === 'power_run' || c.action === 'breakaway_run');
+    const run2 = take((c) => c.action === 'power_run' || c.action === 'breakaway_run');
+    return run1 && run2 ? [run1, run2] : null;
+  }
+
+  if (concept === 'field_goal') {
+    const kick = take((c) => c.action === 'field_goal');
+    return kick ? [kick] : null;
+  }
+
+  if (concept === 'pick_six') {
+    const pick = take((c) => c.action === 'return_td');
+    return pick ? [pick] : null;
+  }
+
+  if (concept === 'takeaway') {
+    const takeaway = take((c) => c.action === 'interception');
+    return takeaway ? [takeaway] : null;
+  }
+
+  return null;
+}
+
+export function estimateConceptScore(run: FbRunState, concept: FbConceptKey, bossScheme: FbBossSchemeKey = 'balanced'): number | null {
+  const cards = representativeCards(run.deck, concept);
+  if (!cards) return null;
+  const result = scoreFootballPlay(cards, {
+    coordinators: run.coordinators,
+    environment: 'clear',
+    bossScheme,
+    stacksThisMatch: 1,
+    groundBonusThisMatch: concept === 'ground_pound' ? 6 : 0,
+    conceptCountsThisDrive: {},
+    playbook: run.playbook,
+    bombGames: run.bombGames,
+  });
+  return result.valid ? result.total : null;
+}
+
+export function rewardFitLabel(run: FbRunState, reward: Reward): string {
+  const identity = buildIdentity(run);
+  if (reward.kind === 'playbook' && reward.id === `pb-${identity.concept}`) return 'Feeds current plan';
+  if (reward.kind === 'playbook') return identity.level ? 'Starts side plan' : 'Choose identity';
+  if (reward.kind === 'coordinator') {
+    if (identity.concept?.includes('stack') && ['coord-franchise_qb', 'coord-air_raid', 'coord-west_coast'].includes(reward.id)) return 'Feeds current plan';
+    if (identity.concept === 'ground_pound' && ['coord-bell_cow', 'coord-salary_wizard'].includes(reward.id)) return 'Feeds current plan';
+    if ((identity.concept === 'pick_six' || identity.concept === 'takeaway') && reward.id === 'coord-ball_hawk') return 'Feeds current plan';
+    return 'Engine piece';
+  }
+  if (reward.kind === 'trim') return 'Consistency';
+  if (reward.kind === 'upgrade') return 'Flat value';
+  return 'Adds cards';
+}
+
+export function rewardImpact(run: FbRunState, reward: Reward, bossScheme: FbBossSchemeKey = 'balanced'): string {
+  const after = reward.apply(run);
+  if (reward.kind === 'playbook') {
+    const concept = reward.id.slice(3) as FbConceptKey;
+    const label = FB_CONCEPT_LABEL[concept] ?? concept;
+    const beforeScore = estimateConceptScore(run, concept, bossScheme);
+    const afterScore = estimateConceptScore(after, concept, bossScheme);
+    if (beforeScore !== null && afterScore !== null) return `Sample ${label}: ${beforeScore} → ${afterScore}`;
+    return `Levels ${label}; draft the matching cards to cash it in.`;
+  }
+
+  const identity = buildIdentity(run);
+  if (identity.concept) {
+    const beforeScore = estimateConceptScore(run, identity.concept, bossScheme);
+    const afterScore = estimateConceptScore(after, identity.concept, bossScheme);
+    if (beforeScore !== null && afterScore !== null && beforeScore !== afterScore) {
+      return `Current plan sample: ${beforeScore} → ${afterScore}`;
+    }
+  }
+
+  const beforeDeck = deckValueSummary(run.deck);
+  const afterDeck = deckValueSummary(after.deck);
+  if (reward.kind === 'card') return `Deck ${beforeDeck.size} → ${afterDeck.size}; avg yards ${beforeDeck.avgValue} → ${afterDeck.avgValue}.`;
+  if (reward.kind === 'trim') return `Deck ${beforeDeck.size} → ${afterDeck.size}; draw your best cards more often.`;
+  if (reward.kind === 'upgrade') return `Avg yards ${beforeDeck.avgValue} → ${afterDeck.avgValue}; helps early flat scoring.`;
+  return 'Adds a scaling piece for the rest of the season.';
 }

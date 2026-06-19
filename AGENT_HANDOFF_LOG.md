@@ -28,6 +28,33 @@ Blockers:
 - ...
 ```
 
+## 2026-06-19 - Codex - main (Gridiron: onboarding + boss/readability pass)
+
+Goal:
+- Build recommendations 1-6 from the design review: guided first drive, obvious build identity, readable hand grouping, projected reward impact, boss defensive schemes, and more scoring feedback/juice.
+
+Changed:
+- `footballRogue.ts`: added Boss Defense schemes (`Base D`, `No-Fly Zone`, `Stacked Box`, `Turnover Drill`, `Adaptive DC`) and wired them into `scoreFootballPlay` with ledger tags. Bosses counter specific styles instead of deleting builds.
+- `footballRun.ts`: added build identity helpers plus reward fit/impact projections. Front Office can now say what build you are becoming and show sample before/after scores.
+- `FootballMatch.tsx`: added first-drive coach, hand grouping by QB Pass/Catch/Run/Defense/Kick, current build + defense scout cards, boss-aware previews, and staged scoring sequence recap.
+- `FootballReward.tsx` / `FootballRunSummary.tsx`: surfaced current/final build identity, reward fit labels, and impact text.
+- `FootballHelpModal.tsx`: documented first-drive grammar, Game Plans, and boss defenses.
+- `scripts/gridironBalance.ts`: harness now simulates random weather + boss schemes.
+
+Validation:
+- `npm run lint` ✅
+- `npm run build` ✅
+- `npm run balance:gridiron -- 3000`: synergy ~40.4%, naive ~16.4%, random ~12.9%, none 0%; build gap ~40.4 pts, reward gap ~27.5 pts.
+- Browser smoke test: first-drive coach appears; hand groups render; Stack TD / Double-Stack / Shootout previews work; scoring sequence appears; Front Office shows current build + reward projections; taking Double-Stack Bomb updates Game 2 to `Double-Stack Bomb Team` and shows a boss defense.
+
+Next:
+- Teams-as-decks remains the biggest content/replayability slice.
+- Add localStorage persistence so a season survives a closed tab.
+- Consider seeded daily challenge/share strings after persistence.
+
+Blockers:
+- None.
+
 ## 2026-06-19 - Claude Code - main (Gridiron: starter-deck ratio fix + rebalance)
 
 Goal:

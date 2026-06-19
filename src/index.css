@@ -52,6 +52,7 @@ button {
 }
 .fb-pop { animation: fb-pop .28s cubic-bezier(.2,.9,.3,1.2); }
 .fb-rise { animation: fb-rise .22s ease-out; }
+.fb-glow { animation: fb-glow 1.25s ease-in-out infinite; }
 
 /* faint yard-lines for hero/scoreboard backgrounds */
 .fb-yard {
