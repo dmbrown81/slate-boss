@@ -1,48 +1,49 @@
 import { useMemo, useState } from 'react';
 import {
-  buildStarterDeck, scoreFootballPlay, shuffle, randomEnvironment, driveTargets,
+  buildStarterDeck, scoreFootballPlay, shuffle,
   HAND_SIZE, DRIVES_PER_MATCH, AUDIBLES_PER_DRIVE, MAX_PLAY_CARDS, DRIVE_BUDGET,
-  FB_COORDINATORS, FB_ENVIRONMENTS, STARTER_COORDINATORS,
-  type FbCard, type FbEnvironmentKey, type FbPlayResult, type FbConceptKey,
+  FB_COORDINATORS, FB_ENVIRONMENTS,
+  type FbCard, type FbCoordinatorKey, type FbEnvironmentKey, type FbPlaybook, type FbPlayResult, type FbConceptKey,
 } from '../lib/footballRogue';
 import { FB, SIDE, btnPrimary, btnGhost } from './footballStyles';
 import FootballHelpModal from './FootballHelpModal';
 
-interface Props { onHome: () => void; }
+export interface MatchProps {
+  deck: FbCard[];
+  coordinators: FbCoordinatorKey[];
+  playbook: FbPlaybook;
+  bombGames: number;
+  targets: number[];
+  environment: FbEnvironmentKey;
+  gameNumber: number;
+  totalGames: number;
+  championship: boolean;
+  onWon: (summary: { bombLanded: boolean; score: number }) => void;
+  onLost: (info: { drive: number }) => void;
+  onHome: () => void;
+}
 
 interface MatchState {
   deck: FbCard[];
   hand: FbCard[];
   discard: FbCard[];
   driveIndex: number;
-  targets: number[];
   driveScore: number;
+  totalScore: number;
   budgetLeft: number;
   audiblesLeft: number;
-  environment: FbEnvironmentKey;
   stacksThisMatch: number;
   groundBonusThisMatch: number;
+  bombLanded: boolean;
   conceptCountsThisDrive: Partial<Record<FbConceptKey, number>>;
   status: 'playing' | 'won' | 'lost';
-  lastPlay: { result: FbPlayResult; drive: number } | null;
+  lastPlay: FbPlayResult | null;
   popKey: number;
 }
 
 function freshDrive(deck: FbCard[], discard: FbCard[]) {
   const pool = shuffle([...deck, ...discard]);
   return { deck: pool.slice(HAND_SIZE), hand: pool.slice(0, HAND_SIZE), discard: [] as FbCard[] };
-}
-
-function deal(): MatchState {
-  const env = randomEnvironment();
-  const full = shuffle(buildStarterDeck().cards);
-  return {
-    deck: full.slice(HAND_SIZE), hand: full.slice(0, HAND_SIZE), discard: [],
-    driveIndex: 0, targets: driveTargets(env), driveScore: 0,
-    budgetLeft: DRIVE_BUDGET[0], audiblesLeft: AUDIBLES_PER_DRIVE,
-    environment: env, stacksThisMatch: 0, groundBonusThisMatch: 0,
-    conceptCountsThisDrive: {}, status: 'playing', lastPlay: null, popKey: 0,
-  };
 }
 
 function drawUp(deck: FbCard[], hand: FbCard[], discard: FbCard[]) {
@@ -54,8 +55,19 @@ function drawUp(deck: FbCard[], hand: FbCard[], discard: FbCard[]) {
   return { deck: d, hand: h, discard: dp };
 }
 
-export default function FootballRogueScreen({ onHome }: Props) {
-  const [match, setMatch] = useState<MatchState>(() => deal());
+export default function FootballMatch(props: MatchProps) {
+  const { deck: runDeck, coordinators, playbook, bombGames, targets, environment, gameNumber, totalGames, championship } = props;
+
+  const [match, setMatch] = useState<MatchState>(() => {
+    const full = shuffle(runDeck.length ? runDeck : buildStarterDeck().cards);
+    return {
+      deck: full.slice(HAND_SIZE), hand: full.slice(0, HAND_SIZE), discard: [],
+      driveIndex: 0, driveScore: 0, totalScore: 0,
+      budgetLeft: DRIVE_BUDGET[0], audiblesLeft: AUDIBLES_PER_DRIVE,
+      stacksThisMatch: 0, groundBonusThisMatch: 0, bombLanded: false,
+      conceptCountsThisDrive: {}, status: 'playing', lastPlay: null, popKey: 0,
+    };
+  });
   const [selected, setSelected] = useState<string[]>([]);
   const [showHelp, setShowHelp] = useState(false);
 
@@ -64,16 +76,15 @@ export default function FootballRogueScreen({ onHome }: Props) {
     [selected, match.hand],
   );
   const scoreCtx = useMemo(() => ({
-    coordinators: STARTER_COORDINATORS,
-    environment: match.environment,
+    coordinators, environment, playbook, bombGames,
     stacksThisMatch: match.stacksThisMatch,
     groundBonusThisMatch: match.groundBonusThisMatch,
     conceptCountsThisDrive: match.conceptCountsThisDrive,
-  }), [match.environment, match.stacksThisMatch, match.groundBonusThisMatch, match.conceptCountsThisDrive]);
+  }), [coordinators, environment, playbook, bombGames, match.stacksThisMatch, match.groundBonusThisMatch, match.conceptCountsThisDrive]);
   const preview = useMemo(() => scoreFootballPlay(selectedCards, scoreCtx), [selectedCards, scoreCtx]);
 
-  const env = FB_ENVIRONMENTS[match.environment];
-  const target = match.targets[match.driveIndex];
+  const env = FB_ENVIRONMENTS[environment];
+  const target = targets[match.driveIndex];
   const remaining = Math.max(0, target - match.driveScore);
   const pct = Math.min(100, (match.driveScore / target) * 100);
   const selectedCost = selectedCards.reduce((s, c) => s + c.cost, 0);
@@ -95,24 +106,25 @@ export default function FootballRogueScreen({ onHome }: Props) {
       const discardAfter = [...m.discard, ...m.hand.filter((c) => playedIds.has(c.id))];
       const newScore = m.driveScore + result.total;
       const newBudget = m.budgetLeft - result.cost;
-      const stacks = m.stacksThisMatch + (result.concept === 'stack_td' || result.concept === 'double_stack_bomb' || result.concept === 'shootout_stack' ? 1 : 0);
+      const isStackCon = result.concept === 'stack_td' || result.concept === 'double_stack_bomb' || result.concept === 'shootout_stack';
+      const stacks = m.stacksThisMatch + (isStackCon ? 1 : 0);
       const ground = m.groundBonusThisMatch + (result.concept === 'ground_pound' ? 6 : 0);
+      const bomb = m.bombLanded || result.concept === 'double_stack_bomb';
       const counts = { ...m.conceptCountsThisDrive, [result.concept]: (m.conceptCountsThisDrive[result.concept] ?? 0) + 1 };
-      const base = { ...m, stacksThisMatch: stacks, groundBonusThisMatch: ground, lastPlay: { result, drive: m.driveIndex }, popKey: m.popKey + 1 };
+      const base = { ...m, stacksThisMatch: stacks, groundBonusThisMatch: ground, bombLanded: bomb, lastPlay: result, popKey: m.popKey + 1 };
 
       if (newScore >= target) {
         const nextIndex = m.driveIndex + 1;
         if (nextIndex >= DRIVES_PER_MATCH) {
-          const drawn = drawUp(m.deck, handAfter, discardAfter);
-          return { ...base, ...drawn, driveScore: newScore, budgetLeft: newBudget, conceptCountsThisDrive: counts, status: 'won' };
+          return { ...base, driveScore: newScore, totalScore: m.totalScore + newScore, budgetLeft: newBudget, conceptCountsThisDrive: counts, status: 'won' };
         }
         const fd = freshDrive(m.deck, discardAfter);
-        return { ...base, ...fd, driveIndex: nextIndex, driveScore: 0, budgetLeft: DRIVE_BUDGET[nextIndex], audiblesLeft: AUDIBLES_PER_DRIVE, conceptCountsThisDrive: {}, status: 'playing' };
+        return { ...base, ...fd, driveIndex: nextIndex, driveScore: 0, totalScore: m.totalScore + newScore, budgetLeft: DRIVE_BUDGET[nextIndex], audiblesLeft: AUDIBLES_PER_DRIVE, conceptCountsThisDrive: {}, status: 'playing' };
       }
 
       const drawn = drawUp(m.deck, handAfter, discardAfter);
       const broke = newBudget < (drawn.hand.length ? Math.min(...drawn.hand.map((c) => c.cost)) : Infinity);
-      return { ...base, ...drawn, driveScore: newScore, budgetLeft: newBudget, conceptCountsThisDrive: counts, status: broke ? 'lost' : 'playing' };
+      return { ...base, ...drawn, driveScore: newScore, totalScore: m.totalScore + result.total, budgetLeft: newBudget, conceptCountsThisDrive: counts, status: broke ? 'lost' : 'playing' };
     });
     setSelected([]);
   }
@@ -129,30 +141,25 @@ export default function FootballRogueScreen({ onHome }: Props) {
     setSelected([]);
   }
 
-  function newGame() { setMatch(deal()); setSelected([]); }
-
   return (
     <div style={{ minHeight: '100svh', padding: '14px 14px 26px', display: 'flex', flexDirection: 'column', gap: 11 }}>
-      {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <button onClick={onHome} style={btnGhost}>←</button>
-        <div style={{ fontSize: 12, color: FB.gold, letterSpacing: 2.5, fontWeight: 900 }}>GRIDIRON</div>
-        <div style={{ display: 'flex', gap: 6 }}>
-          <button onClick={() => setShowHelp(true)} style={btnGhost}>?</button>
-          <button onClick={newGame} style={btnGhost}>↻</button>
+        <button onClick={props.onHome} style={btnGhost}>←</button>
+        <div style={{ fontSize: 11, color: FB.gold, letterSpacing: 1.5, fontWeight: 900 }}>
+          {championship ? '🏆 CHAMPIONSHIP' : `GAME ${gameNumber} / ${totalGames}`}
         </div>
+        <button onClick={() => setShowHelp(true)} style={btnGhost}>?</button>
       </div>
 
-      {/* Scoreboard */}
-      <div className="fb-yard" style={{ background: 'linear-gradient(180deg,#11202c,#0b1119)', border: `1px solid ${FB.border}`, borderRadius: 16, padding: 15 }}>
+      <div className="fb-yard" style={{ background: championship ? 'linear-gradient(180deg,#2a2410,#0b1119)' : 'linear-gradient(180deg,#11202c,#0b1119)', border: `1px solid ${championship ? '#5a4a16' : FB.border}`, borderRadius: 16, padding: 15 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            {match.targets.map((_, i) => (
+            {targets.map((_, i) => (
               <div key={i} style={{ width: 26, height: 5, borderRadius: 3, background: i < match.driveIndex ? FB.green : i === match.driveIndex ? FB.gold : '#22303f' }} />
             ))}
           </div>
           <div style={{ fontSize: 11, color: FB.textDim, fontWeight: 800, letterSpacing: 0.5 }}>
-            DRIVE {Math.min(match.driveIndex + 1, DRIVES_PER_MATCH)}/{DRIVES_PER_MATCH}{match.driveIndex === DRIVES_PER_MATCH - 1 ? ' · BOSS' : ''}
+            DRIVE {Math.min(match.driveIndex + 1, DRIVES_PER_MATCH)}/{DRIVES_PER_MATCH}
           </div>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 9 }}>
@@ -163,7 +170,7 @@ export default function FootballRogueScreen({ onHome }: Props) {
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontSize: 9.5, color: FB.textFaint, letterSpacing: 1.5, fontWeight: 800 }}>TARGET</div>
             <div className="fb-num" style={{ fontSize: 22, fontWeight: 900, color: FB.gold }}>{target}</div>
-            <div style={{ fontSize: 10, color: pct >= 100 ? FB.green : FB.textDim, fontWeight: 600 }}>{remaining > 0 ? `${remaining} to go` : '✓ cleared' }</div>
+            <div style={{ fontSize: 10, color: pct >= 100 ? FB.green : FB.textDim, fontWeight: 600 }}>{remaining > 0 ? `${remaining} to go` : '✓ cleared'}</div>
           </div>
         </div>
         <div style={{ height: 9, background: '#0a1016', borderRadius: 6, overflow: 'hidden', border: '1px solid #0c151d' }}>
@@ -176,9 +183,10 @@ export default function FootballRogueScreen({ onHome }: Props) {
           <Stat label="Weather" value={env.label.split(' ')[0]} />
         </div>
         <div style={{ display: 'flex', gap: 6, marginTop: 9, flexWrap: 'wrap' }}>
-          {STARTER_COORDINATORS.map((k) => {
+          {coordinators.map((k) => {
             const ramp = k === 'air_raid' && match.stacksThisMatch > 0 ? `+${(0.2 * match.stacksThisMatch).toFixed(1)} EXE`
-              : k === 'bell_cow' && match.groundBonusThisMatch > 0 ? `+${match.groundBonusThisMatch} BASE` : '';
+              : k === 'bell_cow' && match.groundBonusThisMatch > 0 ? `+${match.groundBonusThisMatch} BASE`
+              : k === 'franchise_qb' && bombGames > 0 ? `×${(1 + 0.15 * bombGames).toFixed(2)} BP` : '';
             return (
               <span key={k} style={{ fontSize: 10, fontWeight: 800, color: '#b7a7ff', background: '#140f24', border: '1px solid #2a2440', borderRadius: 7, padding: '4px 8px' }}>
                 {FB_COORDINATORS[k].name}{ramp && <span style={{ color: FB.gold }}> · {ramp}</span>}
@@ -191,18 +199,14 @@ export default function FootballRogueScreen({ onHome }: Props) {
       {match.status === 'playing' && (
         <>
           <PlayPreview result={preview} count={selectedCards.length} budgetLeft={match.budgetLeft} overBudget={overBudget} />
-
           <div>
-            <div style={{ fontSize: 9.5, color: FB.textFaint, letterSpacing: 1.4, fontWeight: 800, margin: '0 2px 7px' }}>
-              YOUR HAND · TAP UP TO {MAX_PLAY_CARDS}
-            </div>
+            <div style={{ fontSize: 9.5, color: FB.textFaint, letterSpacing: 1.4, fontWeight: 800, margin: '0 2px 7px' }}>YOUR HAND · TAP UP TO {MAX_PLAY_CARDS}</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 7 }}>
               {match.hand.map((c) => (
                 <CardView key={c.id} card={c} active={selected.includes(c.id)} affordable={c.cost <= match.budgetLeft} onClick={() => toggle(c.id)} />
               ))}
             </div>
           </div>
-
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={audible} disabled={selectedCards.length === 0 || match.audiblesLeft <= 0}
               style={{ ...btnGhost, flex: 1, padding: '14px 0', fontSize: 14, borderRadius: 12, opacity: selectedCards.length === 0 || match.audiblesLeft <= 0 ? 0.45 : 1 }}>
@@ -213,13 +217,22 @@ export default function FootballRogueScreen({ onHome }: Props) {
               {overBudget ? `Over budget by $${selectedCost - match.budgetLeft}` : selectedCards.length ? `Run Play  ·  +${preview.total}` : 'Select cards'}
             </button>
           </div>
-
           {!canAffordAnything && <div style={{ fontSize: 11, color: FB.red, textAlign: 'center' }}>Out of budget — audible for cheaper cards or the drive stalls.</div>}
-          {match.lastPlay && <div style={{ fontSize: 11, color: FB.textFaint, textAlign: 'center' }}>Last: {match.lastPlay.result.playName} · +{match.lastPlay.result.total}</div>}
+          {match.lastPlay && <div style={{ fontSize: 11, color: FB.textFaint, textAlign: 'center' }}>Last: {match.lastPlay.playName} · +{match.lastPlay.total}</div>}
         </>
       )}
 
-      {match.status !== 'playing' && <EndPanel won={match.status === 'won'} drive={match.driveIndex + 1} onReplay={newGame} onHome={onHome} />}
+      {match.status === 'won' && (
+        <ResultPanel won title={championship ? 'Champions!' : `Game ${gameNumber} Won`}
+          detail={championship ? 'You cleared the championship.' : 'All three drives cleared.'}
+          cta={championship ? 'See Results →' : 'Choose Reward →'}
+          onCta={() => props.onWon({ bombLanded: match.bombLanded, score: match.totalScore })} />
+      )}
+      {match.status === 'lost' && (
+        <ResultPanel won={false} title="Drive Stalled"
+          detail={`Ran out of budget on Drive ${match.driveIndex + 1} before the target. The season ends here.`}
+          cta="See Results →" onCta={() => props.onLost({ drive: match.driveIndex + 1 })} />
+      )}
 
       {showHelp && <FootballHelpModal onClose={() => setShowHelp(false)} />}
     </div>
@@ -263,21 +276,13 @@ function PlayPreview({ result, count, budgetLeft, overBudget }: { result: FbPlay
   const live = count > 0;
   const good = result.valid && !overBudget;
   return (
-    <div style={{
-      background: live ? (good ? FB.greenSoft : '#23121a') : FB.panelSoft,
-      border: `1px solid ${live ? (good ? '#1f6b44' : '#6b3344') : FB.borderSoft}`,
-      borderRadius: 13, padding: 12, transition: 'background .15s',
-    }}>
+    <div style={{ background: live ? (good ? FB.greenSoft : '#23121a') : FB.panelSoft, border: `1px solid ${live ? (good ? '#1f6b44' : '#6b3344') : FB.borderSoft}`, borderRadius: 13, padding: 12, transition: 'background .15s' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: live ? 9 : 0 }}>
         <div>
           <div style={{ fontSize: 16, fontWeight: 900, color: FB.text }}>{result.playName}</div>
           <div style={{ fontSize: 11, color: FB.textDim }}>{live ? result.flavor : 'Tap cards to call a play.'}</div>
         </div>
-        {live && (
-          <div style={{ textAlign: 'right' }}>
-            <div className="fb-num" style={{ fontSize: 28, fontWeight: 900, color: good ? FB.green : FB.red, lineHeight: 1 }}>{result.total}</div>
-          </div>
-        )}
+        {live && <div className="fb-num" style={{ fontSize: 28, fontWeight: 900, color: good ? FB.green : FB.red, lineHeight: 1 }}>{result.total}</div>}
       </div>
       {live && (
         <>
@@ -290,11 +295,7 @@ function PlayPreview({ result, count, budgetLeft, overBudget }: { result: FbPlay
           {result.ledger.length > 2 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
               {result.ledger.filter((e) => ['execution', 'big_play', 'coordinator', 'environment', 'spam'].includes(e.kind)).map((e) => (
-                <span key={e.id} style={{
-                  fontSize: 10, fontWeight: 700,
-                  color: e.kind === 'coordinator' ? '#b7a7ff' : e.kind === 'spam' ? FB.red : e.kind === 'environment' ? '#9cc6ff' : e.kind === 'big_play' ? FB.gold : FB.blue,
-                  background: FB.inset, border: `1px solid ${FB.borderSoft}`, borderRadius: 6, padding: '3px 7px',
-                }}>{e.label}</span>
+                <span key={e.id} style={{ fontSize: 10, fontWeight: 700, color: e.kind === 'coordinator' ? '#b7a7ff' : e.kind === 'spam' ? FB.red : e.kind === 'environment' ? '#9cc6ff' : e.kind === 'big_play' ? FB.gold : FB.blue, background: FB.inset, border: `1px solid ${FB.borderSoft}`, borderRadius: 6, padding: '3px 7px' }}>{e.label}</span>
               ))}
             </div>
           )}
@@ -313,18 +314,13 @@ function Channel({ label, value, color }: { label: string; value: string; color:
   );
 }
 
-function EndPanel({ won, drive, onReplay, onHome }: { won: boolean; drive: number; onReplay: () => void; onHome: () => void }) {
+function ResultPanel({ won, title, detail, cta, onCta }: { won: boolean; title: string; detail: string; cta: string; onCta: () => void }) {
   return (
     <div className="fb-rise" style={{ background: won ? 'linear-gradient(180deg,#0f2a1b,#0a1610)' : 'linear-gradient(180deg,#2a1018,#160c10)', border: `1px solid ${won ? FB.green : FB.red}`, borderRadius: 16, padding: 22, textAlign: 'center', marginTop: 8 }}>
-      <div style={{ fontSize: 46 }}>{won ? '🏆' : '🥶'}</div>
-      <div style={{ fontSize: 23, fontWeight: 900, color: FB.text, marginTop: 4 }}>{won ? 'Match Won!' : 'Drive Stalled'}</div>
-      <div style={{ fontSize: 13, color: FB.textDim, marginTop: 5 }}>
-        {won ? 'You cleared all three drives.' : `Ran out of budget on Drive ${drive} before the target.`}
-      </div>
-      <div style={{ display: 'flex', gap: 8, marginTop: 18 }}>
-        <button onClick={onHome} style={{ ...btnGhost, flex: 1, padding: '13px 0', fontSize: 14, borderRadius: 12 }}>Home</button>
-        <button onClick={onReplay} style={{ ...btnPrimary, flex: 2 }}>Play Again</button>
-      </div>
+      <div style={{ fontSize: 46 }}>{won ? '🏈' : '🥶'}</div>
+      <div style={{ fontSize: 23, fontWeight: 900, color: FB.text, marginTop: 4 }}>{title}</div>
+      <div style={{ fontSize: 13, color: FB.textDim, marginTop: 5 }}>{detail}</div>
+      <button onClick={onCta} style={{ ...btnPrimary, width: '100%', marginTop: 18 }}>{cta}</button>
     </div>
   );
 }

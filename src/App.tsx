@@ -14,7 +14,7 @@ import ResultsScreen from './components/ResultsScreen';
 import CareerScreen from './components/CareerScreen';
 import RunOverScreen from './components/RunOverScreen';
 import RogueResultsScreen from './components/RogueResultsScreen';
-import FootballRogueScreen from './components/FootballRogueScreen';
+import FootballSeason from './components/FootballSeason';
 import FootballHome from './components/FootballHome';
 
 const DAILY_TOURNAMENT_KEY = 'slateboss_daily_tournament';
@@ -277,7 +277,7 @@ export default function App() {
       );
 
     case 'football':
-      return <FootballRogueScreen onHome={handleFootballHome} />;
+      return <FootballSeason onHome={handleFootballHome} />;
 
     case 'career':
       return (

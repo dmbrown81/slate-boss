@@ -22,7 +22,7 @@ export const DRIVES_PER_MATCH = 3;
 export const AUDIBLES_PER_DRIVE = 3;
 export const MAX_PLAY_CARDS = 4;
 export const DRIVE_BUDGET = [24, 26, 28];            // cap credits per drive (affords ~3-4 plays)
-export const DRIVE_TARGET = [900, 1150, 1450];       // escalating drive targets
+export const DRIVE_TARGET = [700, 880, 1120];        // game-1 drive targets (escalate across the season)
 
 // ── Card model ─────────────────────────────────────────────────────────────
 export type FbPosition = 'QB' | 'RB' | 'WR' | 'TE' | 'K' | 'DST';
@@ -54,13 +54,15 @@ export type FbConceptKey =
   | 'pick_six' | 'takeaway' | 'sack' | 'busted_play';
 
 // ── Coordinators (scaling "jokers") ─────────────────────────────────────────
-export type FbCoordinatorKey = 'air_raid' | 'bell_cow' | 'salary_wizard';
+export type FbCoordinatorKey =
+  | 'air_raid' | 'bell_cow' | 'salary_wizard'
+  | 'franchise_qb' | 'west_coast' | 'ball_hawk';
 
 export interface FbCoordinator {
   key: FbCoordinatorKey;
   name: string;
   channel: 'base' | 'execution' | 'big_play';
-  scaling: 'within_game' | 'flat';
+  scaling: 'within_game' | 'season' | 'flat';
   description: string;
 }
 
@@ -77,9 +79,25 @@ export const FB_COORDINATORS: Record<FbCoordinatorKey, FbCoordinator> = {
     key: 'salary_wizard', name: 'Salary Wizard', channel: 'base', scaling: 'flat',
     description: 'Cheap cards (cost 1) add +12 Base before multipliers.',
   },
+  franchise_qb: {
+    key: 'franchise_qb', name: 'Franchise QB', channel: 'big_play', scaling: 'season',
+    description: '+0.15 Big Play on every play for each earlier game in which you landed a Bomb.',
+  },
+  west_coast: {
+    key: 'west_coast', name: 'West Coast Guru', channel: 'execution', scaling: 'flat',
+    description: 'Short passing — Checkdowns and quick passes gain +0.3 Execution.',
+  },
+  ball_hawk: {
+    key: 'ball_hawk', name: 'Ball-Hawk DC', channel: 'big_play', scaling: 'flat',
+    description: 'Defensive plays (Sack, Takeaway, Pick Six) gain ×1.3 Big Play.',
+  },
 };
 
 export const STARTER_COORDINATORS: FbCoordinatorKey[] = ['air_raid', 'bell_cow'];
+export const MAX_COORDINATORS = 5;
+
+// Run-level playbook upgrades: concept -> permanent channel bonuses.
+export type FbPlaybook = Partial<Record<FbConceptKey, { exec: number; base: number }>>;
 
 // ── Environments (per-match modifier) ───────────────────────────────────────
 export type FbEnvironmentKey = 'clear' | 'dome' | 'snow' | 'wind' | 'primetime';
@@ -103,6 +121,8 @@ export interface FbScoreContext {
   stacksThisMatch: number;                       // for Air Raid scaling
   groundBonusThisMatch: number;                  // accumulated Bell Cow base
   conceptCountsThisDrive: Partial<Record<FbConceptKey, number>>; // anti-spam
+  playbook?: FbPlaybook;                          // run-level concept upgrades
+  bombGames?: number;                            // earlier games with a Bomb (Franchise QB)
 }
 
 export type FbLedgerKind = 'base' | 'execution' | 'big_play' | 'coordinator' | 'environment' | 'spam' | 'final';
@@ -350,6 +370,30 @@ export function scoreFootballPlay(cards: FbCard[], ctx: FbScoreContext): FbPlayR
     execution += add;
     ledger.push({ id: 'ar', kind: 'coordinator', label: 'Air Raid Coordinator', detail: `+${add} Execution (scales with ${ctx.stacksThisMatch} prior stack${ctx.stacksThisMatch === 1 ? '' : 's'}).` });
   }
+  if (co.has('west_coast') && (concept === 'checkdown' || (passCards.length > 0 && !isStack))) {
+    execution += 0.3;
+    ledger.push({ id: 'wc', kind: 'coordinator', label: 'West Coast Guru', detail: '+0.3 Execution on short passing.' });
+  }
+  if (co.has('ball_hawk') && defense.length > 0) {
+    bigPlay *= 1.3;
+    ledger.push({ id: 'bh', kind: 'coordinator', label: 'Ball-Hawk DC', detail: 'Defensive play — Big Play ×1.3.' });
+  }
+  const bombGames = ctx.bombGames ?? 0;
+  if (co.has('franchise_qb') && bombGames > 0) {
+    const mult = 1 + 0.15 * bombGames;
+    bigPlay *= mult;
+    ledger.push({ id: 'fqb', kind: 'coordinator', label: 'Franchise QB', detail: `Big Play ×${round2(mult)} (${bombGames} prior Bomb game${bombGames === 1 ? '' : 's'}).` });
+  }
+
+  // ── Run-level playbook upgrades ──
+  const pb = ctx.playbook?.[concept];
+  if (pb && concept !== 'busted_play') {
+    if (pb.base) { base += pb.base; }
+    if (pb.exec) { execution += pb.exec; }
+    if (pb.base || pb.exec) {
+      ledger.push({ id: 'pb', kind: 'coordinator', label: 'Playbook', detail: `${playName} install${pb.base ? ` +${pb.base} Base` : ''}${pb.exec ? ` +${pb.exec} Exec` : ''}.` });
+    }
+  }
 
   // ── Busted play penalty ──
   if (concept === 'busted_play') { bigPlay *= 0.5; ledger.push({ id: 'busted', kind: 'big_play', label: 'No Concept', detail: 'Mismatched cards — Big Play ×0.5.' }); }
@@ -397,3 +441,46 @@ export function driveTargets(env: FbEnvironmentKey): number[] {
   const scale = env === 'primetime' ? 1.2 : 1;
   return DRIVE_TARGET.map((t) => Math.round(t * scale));
 }
+
+// ── Free-agent cards (for the reward shop) ──────────────────────────────────
+export type FreeAgentKey = 'deep_wr' | 'bell_rb' | 'shutdown_dst' | 'value_slot' | 'gunslinger';
+
+interface FreeAgentDef { name: string; team: string; position: FbPosition; action: FbActionType; value: number; cost: number; label: string; }
+
+const FREE_AGENTS: Record<FreeAgentKey, FreeAgentDef> = {
+  deep_wr: { name: 'D. Vaughn', team: 'IRN', position: 'WR', action: 'deep_catch', value: 88, cost: 3, label: 'Deep Catch' },
+  bell_rb: { name: 'M. Stokes', team: 'IRN', position: 'RB', action: 'power_run', value: 64, cost: 2, label: 'Power Run' },
+  shutdown_dst: { name: 'Ironhawks D', team: 'IRN', position: 'DST', action: 'interception', value: 80, cost: 3, label: 'Interception' },
+  value_slot: { name: 'R. Pike', team: 'IRN', position: 'WR', action: 'short_catch', value: 40, cost: 1, label: 'Quick Catch' },
+  gunslinger: { name: 'A. Royce', team: 'IRN', position: 'QB', action: 'deep_pass', value: 70, cost: 3, label: 'Deep Ball' },
+};
+
+export const FREE_AGENT_KEYS: FreeAgentKey[] = ['deep_wr', 'bell_rb', 'shutdown_dst', 'value_slot', 'gunslinger'];
+
+export function createFreeAgentCard(key: FreeAgentKey): FbCard {
+  const d = FREE_AGENTS[key];
+  cardCounter += 1;
+  return {
+    id: `fa-${key}-${cardCounter}`,
+    playerId: `fa_${key}`,
+    playerName: d.name,
+    team: d.team,
+    position: d.position,
+    action: d.action,
+    label: d.label,
+    side: sideOf(d.action),
+    value: d.value,
+    cost: d.cost,
+  };
+}
+
+export const FB_CONCEPT_LABEL: Partial<Record<FbConceptKey, string>> = {
+  double_stack_bomb: 'Double-Stack Bomb',
+  shootout_stack: 'Shootout Stack',
+  stack_td: 'Stack TD',
+  ground_pound: 'Ground & Pound',
+  checkdown: 'Checkdown',
+  field_goal: 'Field Goal',
+  pick_six: 'Pick Six',
+  takeaway: 'Takeaway',
+};

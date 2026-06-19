@@ -28,6 +28,22 @@ Blockers:
 - ...
 ```
 
+## 2026-06-19 - Claude Code - main (Gridiron: season shell + reward loop)
+
+Goal:
+- Build the season shell (the "one more run" hook) on top of the polished single-match prototype.
+
+Changed:
+- `src/lib/footballRun.ts` (NEW): `FbRunState` (deck, coordinators, playbook, bombGames persist across games), `SEASON_GAMES=5`, `gameTargets` escalation (×(1+0.09·(g-1)), championship ×1.12), reward catalog + `generateRewards` (3 varied picks: free-agent card / hire coordinator / playbook install / trim / strength).
+- `src/lib/footballRogue.ts`: added 3 coordinators incl. season-scaling **Franchise QB** (+0.15 Big Play per earlier Bomb game), plus West Coast Guru, Ball-Hawk DC; `FbScoreContext` now takes `playbook` + `bombGames`; `MAX_COORDINATORS=5`; `createFreeAgentCard`, `FB_CONCEPT_LABEL`. Retuned `DRIVE_TARGET` to [700,880,1120] (game-1 base).
+- Components: `FootballSeason.tsx` (orchestrates match→reward→summary), `FootballMatch.tsx` (refactor of old screen, now props-driven), `FootballReward.tsx` (Front Office 3-choice), `FootballRunSummary.tsx`. Deleted `FootballRogueScreen.tsx`. App `football` route → FootballSeason.
+
+Balance (harness): single game ~85% optimal/g1; full season champion ~42% optimal vs ~40% random, gentle curve 94/84/73/59/42% per game. NOTE: smart vs random reward choice ≈ equal — reward selection not yet strategically decisive (logged as open question #1 in GRIDIRON_HANDOFF.md; bosses/teams should fix).
+
+Validation: lint + build pass. Updated `docs/GRIDIRON_HANDOFF.md` (now describes the season).
+
+Next: teams-as-decks (5 identities) → boss schemes → localStorage persistence → onboarding.
+
 ## 2026-06-18 - Claude Code - main (Gridiron: make primary + UI polish)
 
 Goal:

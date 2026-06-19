@@ -2,7 +2,7 @@
 
 > A self-contained packet for an outside designer, engineer, or AI model to review the game, audit the code, and give feedback. You can hand someone *just this file* and they'll understand where the project is and what to critique.
 
-_Last updated: 2026-06-18 · Branch: `main` · Status: playable single-match prototype with a polished UI._
+_Last updated: 2026-06-19 · Branch: `main` · Status: playable 5-game **season** with a reward loop, scaling coordinators, and a polished UI._
 
 ---
 
@@ -32,7 +32,9 @@ The app boots into the Gridiron title screen → **Kickoff** to play. **How to P
 
 ## 3. The core loop (what a player actually does)
 
-A **match = 3 drives**. Each drive has a **points target that rises** drive to drive. Clear all three to win the match. The flow per drive:
+A **season = 5 games**. Win all five (the last is the **Championship**) to win the run; lose any game and the run ends. After each win you visit the **Front Office** and pick **1 of 3 rewards** to strengthen your team for the next, harder game — this is the "one more run" engine-building loop. Your deck, coordinators, and playbook installs **persist across games** within a run.
+
+Each **game = 3 drives**. Each drive has a **points target that rises** drive to drive and game to game. Clear all three to win the game. The flow per drive:
 
 1. Draw an 8-card hand from your deck. Each card is a **football action** (Deep Ball, Power Run, Deep Catch, Sack, Interception, Field Goal…), and its value is weighted by the source player's archetype.
 2. Tap **up to 4 cards** to assemble a play. A live **preview** shows the play's name and full score *before* you commit — this is the hero UI.
@@ -59,11 +61,16 @@ A build needs all three; pumping one channel stalls. Keeping them separate and v
 Every card has a **cap cost** (1–4, by the source player's salary tier; kick/defense overridden). Each drive grants a budget (24 / 26 / 28); you call as many plays as you can afford. Cheap value cards buy *more* plays; expensive studs hit harder but drain the cap. This is the DFS soul, re-expressed — and it is **one** resource, not a fourth one bolted on top of a play counter (a deliberate design call; see §8).
 
 ### 4c. Scaling coordinators (the compounding engine)
-Coordinators are persistent buffs that **grow as you play** — the difference between a calculator and an engine. Starters:
+Coordinators are persistent buffs that **grow as you play** — the difference between a calculator and an engine. You start with 2 and can hire up to 5 via rewards. Examples:
 - **Air Raid Coordinator** — +0.2 Execution on stack plays for every stack you've *already* completed this match (within-game ramp).
-- **Bell Cow** — +8 Base per run card, and +6 *permanent* Base each Ground & Pound this match.
+- **Bell Cow** — +8 Base per run card, and +6 *permanent* Base each Ground & Pound this match (within-game ramp).
+- **Franchise QB** — +0.15 Big Play on every play for each *earlier game* in which you landed a Bomb (**season-long ramp** — the compounding hook).
+- Plus West Coast Guru, Ball-Hawk DC, Salary Wizard in the reward pool.
 
-You can watch their values tick up on the scoreboard. (Season-long scaling coordinators come with the season shell — see §7.)
+You can watch their values tick up on the scoreboard.
+
+### 4d. Rewards & playbook (run progression)
+After each win, choose 1 of 3: **sign a free-agent card**, **hire a coordinator**, **install a playbook upgrade** (a play concept permanently gains Base/Execution), **trim** your 3 weakest cards (deck thinning → draw your best cards more often), or **Strength & Conditioning** (+Base to your cheapest cards). This is how your engine out-paces the rising targets.
 
 **Anti-spam:** repeating the same concept in a drive applies ×0.85 Big Play ("Defense Adjusted") to push varied play-calling.
 
@@ -73,26 +80,34 @@ You can watch their values tick up on the scoreboard. (Season-long scaling coord
 
 ## 5. Balance snapshot
 
-Measured with a throwaway harness simulating policies over 500 matches (starter Ironhawks deck):
+Measured with throwaway harnesses (starter Ironhawks deck, ~600–800 sims):
 
-| Policy | Win rate | Notes |
-|---|---|---|
-| Optimal (value-per-credit) | ~71% | Skilled play is rewarded |
-| Random | ~0% | Luck alone never wins |
+**Single game** — optimal value-per-credit play wins ~85% of game 1; random wins ~0%.
 
-A player's *first* big play is now ~69% of the drive-1 target (was 118% before the refactor — i.e. it used to clear a drive by itself). Drives take ~2 plays each. All balance constants are tunables at the top of `src/lib/footballRogue.ts` (`DRIVE_BUDGET`, `DRIVE_TARGET`, `HAND_SIZE`, etc.).
+**Full season (win all 5):**
+
+| Reward policy | Champion | Avg games won | Per-game clear (G1→G5) |
+|---|---|---|---|
+| Optimal | ~42% | 3.5 / 5 | 94% · 84% · 73% · 59% · 42% |
+| Random | ~40% | 3.5 / 5 | 95% · 85% · 74% · 61% · 40% |
+
+So: a skilled run wins the championship ~40% of the time, the difficulty curve declines gently game-to-game, and luck alone never wins. **Caveat:** smart vs. random *reward* choice scores nearly the same right now — reward selection isn't yet strategically decisive (see §8). Tunables live at the top of `src/lib/footballRogue.ts` (`DRIVE_TARGET`, `DRIVE_BUDGET`) and `src/lib/footballRun.ts` (`SEASON_GAMES`, `gameTargets` escalation).
 
 ---
 
 ## 6. Code map (what to audit)
 
-**Engine (pure, no React, no `Math.random` in scoring):**
-- `src/lib/footballRogue.ts` — card model, deck factory (from `seedData.ts` fictional players), three-channel `scoreFootballPlay`, coordinators, environments, tunables.
+**Engine / run logic (pure, no React, no `Math.random` in scoring):**
+- `src/lib/footballRogue.ts` — card model, deck factory (from `seedData.ts` fictional players), three-channel `scoreFootballPlay`, coordinators, environments, free-agent cards, tunables.
+- `src/lib/footballRun.ts` — season run state (`FbRunState`), `gameTargets` escalation, the reward catalog + `generateRewards`.
 
 **UI (React, inline styles + shared tokens):**
 - `src/components/footballStyles.ts` — design tokens (the single source of visual truth).
 - `src/components/FootballHome.tsx` — title screen.
-- `src/components/FootballRogueScreen.tsx` — the match (scoreboard, hand, live preview/ledger, end panel).
+- `src/components/FootballSeason.tsx` — orchestrates the run (match → reward → summary).
+- `src/components/FootballMatch.tsx` — one game (scoreboard, hand, live preview/ledger).
+- `src/components/FootballReward.tsx` — the Front Office 3-choice reward screen.
+- `src/components/FootballRunSummary.tsx` — end-of-season summary.
 - `src/components/FootballHelpModal.tsx` — in-game How to Play (reads engine data so it can't drift).
 - `src/App.tsx` — routing; boots to `football_home`. `src/index.css` — global theme + keyframes.
 
@@ -100,15 +115,16 @@ A player's *first* big play is now ~69% of the drive-1 target (was 118% before t
 
 ---
 
-## 7. Roadmap — the next slice (the season shell)
+## 7. Roadmap
 
-The current build is **one match deep**. The genre's stickiness comes from a run *above* the match. Planned, in order:
+**Done:** core match loop, three-channel scoring, Play Budget, scaling coordinators (incl. season-long Franchise QB), the **5-game season shell**, and the **3-choice reward loop** (cards / coordinators / playbook installs / trim / upgrade).
 
-1. **Season shell** — wrap matches in a ~5-game run (`RogueRunState`), escalating across games, lose-on-failed-drive, win the championship.
-2. **Reward loop** — after each win, choose 1 of 3: add a card / upgrade a card / cut a card / hire a coordinator. (A simple choice, not a big shop yet.)
-3. **Teams as decks** — 5 fictional team identities (Air Raid, Ground Control, etc.), each a distinct starter deck + signature coordinator. Names stay display-only data.
-4. **Boss schemes** — 5 opposing defenses shown before the boss drive (No-Fly Zone, Stacked Box, …) that counter specific builds.
-5. **Season-scaling coordinators** + reorderable coordinator slots; a between-game economy (cap rollover).
+**Next, in order:**
+1. **Teams as decks** — 5 fictional team identities (Air Raid, Ground Control, Mobile-QB, Defense, Balanced), each a distinct starter deck + signature coordinator + cost discounts. Names stay display-only data (license-agnostic). This is what makes runs feel different.
+2. **Boss schemes** — opposing defenses shown before the Championship (and maybe mid-season) that counter specific builds (No-Fly Zone, Stacked Box, …). These also make *reward choice* matter more (see §8).
+3. **Persistence** — save the run to `localStorage` so a plane session survives a closed tab.
+4. **Onboarding** — a contextual guided first drive; daily seeded challenge + share string.
+5. Reorderable coordinator slots; a between-game cap-budget economy.
 
 Deferred: art/animation, accounts/backend, multiplayer, real-money, large content catalogs.
 
@@ -116,12 +132,13 @@ Deferred: art/animation, accounts/backend, multiplayer, real-money, large conten
 
 ## 8. Open questions / things to challenge
 
-1. **Pacing:** ~71% optimal win rate — too easy, about right, or should the target curve be steeper so the season's later games *demand* a compounding engine?
-2. **Play Budget vs. a separate currency:** we folded the cap into the play resource rather than adding a 4th scarce resource. Is that the right call, or does a distinct per-quarter wallet add meaningful depth?
-3. **Three channels on a small screen:** clarifying, or too much math surfaced at once for a casual player?
-4. **Cognitive load of "drives":** is 3-drives-per-match intuitive, or should it just be "beat one rising target"?
-5. **Onboarding:** there's a help modal but no guided first match. Where's the line between teaching and a tutorial wall?
-6. **Deck identity:** with one starter deck, runs feel samey. Does the value proposition hold until teams-as-decks lands?
+1. **Reward choice barely matters yet.** In simulation, picking rewards smartly (~42% champion) scores about the same as picking randomly (~40%). The rewards all keep pace with the target curve, but none is clearly *better* given the deck — so there's little strategic agency in the Front Office yet. Bosses (which punish specific builds) and teams (which bias your deck) should fix this, but it's the #1 thing to pressure-test. Should rewards be more differentiated / situational now?
+2. **Pacing:** ~42% optimal championship rate, gentle curve. Too easy, about right, or should the championship bite harder?
+3. **Play Budget vs. a separate currency:** we folded the cap into the play resource rather than adding a 4th scarce resource. Right call, or does a distinct wallet add depth?
+4. **Three channels on a small screen:** clarifying, or too much math at once for a casual player?
+5. **Cognitive load:** is "season → 5 games → 3 drives each" clear, or one nesting level too many?
+6. **Onboarding:** help modal exists but no guided first drive. Where's the line between teaching and a tutorial wall?
+7. **Deck identity:** one starter deck means runs feel samey until teams-as-decks lands. Does the loop hold up in the meantime?
 
 ---
 
