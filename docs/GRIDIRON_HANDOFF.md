@@ -85,15 +85,15 @@ Measured with the **permanent** harness — `npm run balance:gridiron` (`scripts
 
 | Reward policy | Champion | Per-game clear (G1→G5) |
 |---|---|---|
-| Synergy (build a coherent engine) | ~42% | 94 · 84 · 73 · 64 · 42 |
-| Naive (grab coordinators) | ~42% | 95 · 84 · 73 · 63 · 42 |
-| Random (any reward) | ~26% | 95 · 84 · 71 · 56 · 26 |
-| None (skip all rewards) | ~2% | 94 · 81 · 60 · 34 · 2 |
+| Synergy (build a coherent engine) | ~56% | 94 · 86 · 81 · 77 · 56 |
+| Naive (grab coordinators) | ~55% | 94 · 87 · 82 · 78 · 55 |
+| Random (any reward) | ~28% | 93 · 79 · 62 · 52 · 28 |
+| None (skip all rewards) | ~0% | 94 · 71 · 35 · 8 · 0 |
 
-- **Build gap (best − none): ~40 pts ✅** — building at all is now decisive (was effectively the whole problem before).
-- **Reward gap (synergy − random pick): ~16 pts 🟡** — choosing rewards well clearly beats random, though there's room to sharpen.
+- **Build gap (best − none): ~56 pts ✅** — building is decisive.
+- **Reward gap (synergy − random pick): ~28 pts ✅** — choosing rewards well clearly beats random.
 
-This is the headline fix of the 2026-06-19 slice: the prior build had smart ≈ random (~42% vs ~40%, a ~1-pt gap) — the meta-layer was noise. Now the un-built floor is ~2%, taking the keystone engine piece each shop is the winning skill, and the curve steepens late so a compounded engine is *required* to win the championship. Tunables: `DRIVE_TARGET`/`DRIVE_BUDGET` (`footballRogue.ts`), `gameTargets` escalation + reward catalog (`footballRun.ts`). **Keep the harness committed and re-run it on every balance change.**
+This is the headline fix of the 2026-06-19 work: the prior build had smart ≈ random (~42% vs ~40%, a ~1-pt gap) — the meta-layer was noise. Two changes fixed it: (1) the EV restructure (lean-aware keystone rewards + steeper late curve); (2) a **starter-deck ratio fix** — the deck was catch-flooded (3 pass : ~18 catch), so stacks rarely formed; it's now 5 pass : 12 catch (~79% of hands hold a QB pass). Reliable stacks made committing to a build actually pay, which sharpened the reward gap from ~16 to ~28 pts. Skilled play now wins ~56% of seasons, random ~28%, un-built ~0%. Tunables: `DRIVE_TARGET`/`DRIVE_BUDGET` and `cardsForPlayer`/`buildStarterDeck` (`footballRogue.ts`), `gameTargets` escalation + reward catalog (`footballRun.ts`). **Keep the harness committed and re-run it on every balance change.**
 
 ---
 
@@ -134,8 +134,8 @@ Deferred: art/animation, accounts/backend, multiplayer, real-money, large conten
 
 ## 8. Open questions / things to challenge
 
-1. **Reward gap is solid but not huge (~16 pts).** Building now clearly matters (~40-pt build-vs-none gap), but *which* of the three offered rewards you pick is a ~16-pt edge, not yet a dramatic one. Pushing it higher in a bot sim requires making most offered options junk, which would hurt the human experience — so teams (bias the deck) and bosses (punish a build) are the intended way to sharpen reward decisions further. Is ~16 pts enough, or push harder?
-2. **Pacing:** ~42% optimal championship rate, un-built ~2%. About right, or should the championship bite even harder?
+1. **Pacing:** skilled play wins ~56% of seasons (random ~28%, un-built ~0%). Good roguelike range, but is ~56% slightly too generous for a skilled player? Easy to dial via `gameTargets`.
+2. **Deck variety:** one starter deck (Ironhawks, pass-leaning) means every run leans the same way. Teams-as-decks is the fix and the next slice.
 3. **Play Budget vs. a separate currency:** we folded the cap into the play resource rather than adding a 4th scarce resource. Right call, or does a distinct wallet add depth?
 4. **Three channels on a small screen:** clarifying, or too much math at once for a casual player?
 5. **Cognitive load:** is "season → 5 games → 3 drives each" clear, or one nesting level too many?

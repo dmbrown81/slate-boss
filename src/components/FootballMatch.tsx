@@ -91,6 +91,8 @@ export default function FootballMatch(props: MatchProps) {
   const overBudget = selectedCost > match.budgetLeft;
   const cheapest = match.hand.length ? Math.min(...match.hand.map((c) => c.cost)) : 0;
   const canAffordAnything = match.budgetLeft >= cheapest;
+  const handHasPass = match.hand.some((c) => c.side === 'pass');
+  const handHasRun = match.hand.some((c) => c.action === 'power_run' || c.action === 'breakaway_run');
 
   function toggle(id: string) {
     if (match.status !== 'playing') return;
@@ -218,6 +220,9 @@ export default function FootballMatch(props: MatchProps) {
             </button>
           </div>
           {!canAffordAnything && <div style={{ fontSize: 11, color: FB.red, textAlign: 'center' }}>Out of budget — audible for cheaper cards or the drive stalls.</div>}
+          {canAffordAnything && !handHasPass && !handHasRun && match.audiblesLeft > 0 && (
+            <div style={{ fontSize: 11, color: FB.gold, textAlign: 'center' }}>💡 No QB pass or run in hand — select a few catches and Audible to dig for one.</div>
+          )}
           {match.lastPlay && <div style={{ fontSize: 11, color: FB.textFaint, textAlign: 'center' }}>Last: {match.lastPlay.playName} · +{match.lastPlay.total}</div>}
         </>
       )}

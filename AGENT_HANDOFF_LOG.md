@@ -28,6 +28,25 @@ Blockers:
 - ...
 ```
 
+## 2026-06-19 - Claude Code - main (Gridiron: starter-deck ratio fix + rebalance)
+
+Goal:
+- User playtest bug: hands were almost all catch cards, rarely a QB pass, so plays couldn't form and game 1 felt unwinnable.
+
+Root cause: the starter deck was catch-flooded — one QB giving ~3 pass cards vs ~18 catch cards (incl. ~6 non-stacking bring-back catches). A catch needs a QB pass card to score, so catch-heavy hands were dead.
+
+Changed (`footballRogue.ts`):
+- Boosted QB pass output (pocket_qb 4→6 cards = 5 pass + scramble; rushing_qb +1 short_pass) and trimmed WR catch counts (alpha/boom/possession/slot down 1 each).
+- Cut bring-back flood: 2 opponent catchers, ONE card each (was 3 players × full sets).
+- New ratio: 28-card deck = 5 pass / 12 catch (10 stackable) / 6 run / 3 kick / 2 def. ~79% of 8-card hands now hold a QB pass (was ~53%).
+- `FootballMatch.tsx`: hint when a hand has no pass/run — "Audible to dig for one."
+- Re-steepened curve (`gameTargets` 0.14→0.18/game, champ 1.30→1.40) because reliable stacks made built decks too strong.
+
+Harness after fix (`npm run balance:gridiron`): synergy ~56%, naive ~55%, random ~28%, none ~0%.
+- BUILD GAP ~56 pts ✅, REWARD GAP ~28 pts ✅ (was 16). Reliable stacks made building pay → sharper strategy AND a better-feeling deck.
+
+Validation: lint + build pass.
+
 ## 2026-06-19 - Claude Code - main (Gridiron: make skill decisive + permanent harness)
 
 Goal:

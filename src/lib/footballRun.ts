@@ -37,10 +37,10 @@ export function isChampionship(gameNumber: number): boolean {
 // Targets escalate across the season; the championship gets an extra bump.
 export function gameTargets(env: FbEnvironmentKey, gameNumber: number): number[] {
   const base = driveTargets(env);
-  const champ = isChampionship(gameNumber) ? 1.3 : 1;
+  const champ = isChampionship(gameNumber) ? 1.4 : 1;
   // back-half ramps harder so an un-built deck falls short while a compounded
   // engine clears — this is what makes reward/build choices decisive.
-  const scale = (1 + 0.14 * (gameNumber - 1)) * champ;
+  const scale = (1 + 0.18 * (gameNumber - 1)) * champ;
   return base.map((t) => Math.round(t * scale));
 }
 

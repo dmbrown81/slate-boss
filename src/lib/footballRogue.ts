@@ -215,11 +215,21 @@ function cardsForPlayer(t: PlayerTemplate): FbCard[] {
   const ceil = t.baseCeiling;
   const out: FbCard[] = [];
   switch (t.archetype) {
+    // QB is the only passer, so it carries plenty of pass cards — a pass play
+    // needs a QB pass card in hand to connect with your catch cards.
     case 'pocket_qb':
-      out.push(makeCard(t, 'deep_pass', ceil * 1.5), makeCard(t, 'short_pass', proj * 2.4), makeCard(t, 'short_pass', proj * 2.2), makeCard(t, 'scramble', ceil * 0.7));
+      out.push(
+        makeCard(t, 'deep_pass', ceil * 1.5), makeCard(t, 'deep_pass', ceil * 1.3),
+        makeCard(t, 'short_pass', proj * 2.4), makeCard(t, 'short_pass', proj * 2.2),
+        makeCard(t, 'short_pass', proj * 2.0), makeCard(t, 'scramble', ceil * 0.7),
+      );
       break;
     case 'rushing_qb':
-      out.push(makeCard(t, 'deep_pass', ceil * 1.3), makeCard(t, 'short_pass', proj * 2.0), makeCard(t, 'scramble', ceil * 1.1), makeCard(t, 'qb_sneak', 42));
+      out.push(
+        makeCard(t, 'deep_pass', ceil * 1.3), makeCard(t, 'short_pass', proj * 2.0),
+        makeCard(t, 'short_pass', proj * 1.9), makeCard(t, 'scramble', ceil * 1.1),
+        makeCard(t, 'qb_sneak', 42),
+      );
       break;
     case 'workhorse_rb':
       out.push(makeCard(t, 'power_run', proj * 2.8), makeCard(t, 'power_run', proj * 2.4), makeCard(t, 'breakaway_run', ceil * 1.8), makeCard(t, 'checkdown_catch', proj * 1.4));
@@ -228,16 +238,16 @@ function cardsForPlayer(t: PlayerTemplate): FbCard[] {
       out.push(makeCard(t, 'power_run', proj * 2.0), makeCard(t, 'checkdown_catch', proj * 2.4), makeCard(t, 'breakaway_run', ceil * 1.6));
       break;
     case 'alpha_wr':
-      out.push(makeCard(t, 'short_catch', proj * 2.8), makeCard(t, 'deep_catch', ceil * 2.0), makeCard(t, 'deep_catch', ceil * 1.8));
+      out.push(makeCard(t, 'short_catch', proj * 2.8), makeCard(t, 'deep_catch', ceil * 2.0));
       break;
     case 'boom_bust_wr':
-      out.push(makeCard(t, 'deep_catch', ceil * 2.1), makeCard(t, 'deep_catch', ceil * 1.9), makeCard(t, 'short_catch', proj * 1.8));
+      out.push(makeCard(t, 'deep_catch', ceil * 2.1), makeCard(t, 'short_catch', proj * 1.8));
       break;
     case 'possession_wr':
-      out.push(makeCard(t, 'short_catch', proj * 2.8), makeCard(t, 'short_catch', proj * 2.5));
+      out.push(makeCard(t, 'short_catch', proj * 2.8));
       break;
     case 'slot_wr':
-      out.push(makeCard(t, 'short_catch', proj * 2.6), makeCard(t, 'checkdown_catch', proj * 2.0));
+      out.push(makeCard(t, 'short_catch', proj * 2.6));
       break;
     case 'redzone_te':
       out.push(makeCard(t, 'deep_catch', ceil * 1.9), makeCard(t, 'short_catch', proj * 2.4));
@@ -274,10 +284,13 @@ export function buildStarterDeck(): FbDeckInfo {
   const homeId = 'IRN';
   const oppId = 'BLZ';
   const home = PLAYER_TEMPLATES.filter((t) => t.team === homeId);
-  const bringBack = PLAYER_TEMPLATES.filter((t) => t.team === oppId && (t.position === 'WR' || t.position === 'TE')).slice(0, 3);
+  // A few opponent pass-catchers enable the occasional bring-back (Shootout
+  // Stack) — but only one card each, so they don't flood the deck with catches
+  // that can't form your own stacks.
+  const bringBack = PLAYER_TEMPLATES.filter((t) => t.team === oppId && (t.position === 'WR' || t.position === 'TE')).slice(0, 2);
   const cards: FbCard[] = [];
   home.forEach((t) => cards.push(...cardsForPlayer(t)));
-  bringBack.forEach((t) => cards.push(...cardsForPlayer(t)));
+  bringBack.forEach((t) => cards.push(...cardsForPlayer(t).slice(0, 1)));
   cards.push(...kickerCards(homeId));
   return { teamId: homeId, teamName: 'Ironhawks', opponentId: oppId, cards };
 }
