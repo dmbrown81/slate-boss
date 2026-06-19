@@ -28,6 +28,23 @@ Blockers:
 - ...
 ```
 
+## 2026-06-18 - Claude Code - main (Gridiron: make primary + UI polish)
+
+Goal:
+- User is committing to the football rogue ("Gridiron") and tabling Classic DFS / Slate Boss for now. Make Gridiron the headline mode, give it a real visual identity, add a help menu, and leave a reviewer handoff doc.
+
+Changed:
+- App now boots into `football_home` (new Gridiron title screen). Classic Slate Boss demoted to a secondary "legacy" link reachable from the title screen; its home now shows a "NOW PLAYING · Gridiron" banner back to the headline game. Nothing deleted — Classic code is intact.
+- New visual design system: `src/components/footballStyles.ts` (tokens: charcoal/gold/field palette, side-color card accents, shared button styles). Global polish in `src/index.css` (stadium-light radial bg, yard-line utility, pop/rise/glow keyframes, tabular-num scoreboard).
+- New `src/components/FootballHome.tsx` (title hero, tagline, Kickoff/How-to-Play, feature chips) and `src/components/FootballHelpModal.tsx` (goal, Base×Exec×BigPlay, budget, concepts table, weather, coordinators — reads engine data so it can't drift).
+- Rewrote `src/components/FootballRogueScreen.tsx` with the new design: LED-style scoreboard with drive pips + score pop, three-channel preview tiles, card faces with side gradients/cost pills, in-match help (?) button.
+- Added `docs/GRIDIRON_HANDOFF.md` — self-contained packet for outside reviewers/auditors (what it is, how to run, the loop, the 3 engine systems, balance, code map, roadmap, open questions). Hand this to anyone for feedback.
+- Added `.claude/launch.json` for dev-server previews.
+
+Validation: `npm run lint` and `npm run build` pass (exit 0). Game logic/balance unchanged from the refactor slice. Couldn't auto-screenshot (preview MCP mis-resolved the harness cwd); verify visually via `npm run dev`.
+
+Next: unchanged — the season shell (see GRIDIRON_HANDOFF.md §7).
+
 ## 2026-06-17 - Claude Code - football-card-rogue (refactor slice)
 
 Goal:

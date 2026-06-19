@@ -169,59 +169,32 @@ export default function HomeScreen({ profile, onPlayDaily, onCareer, onRogue, on
         </button>
       </div>
 
-      {/* Football Rogue card — new direction */}
-      <div style={{
-        background: '#111',
-        border: '1px solid #1f3350',
-        borderRadius: 12,
-        padding: 16,
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10, gap: 12 }}>
-          <div>
-            <div style={{ fontSize: 10, color: '#6b86b8', letterSpacing: 1 }}>CARD ROGUE · v0</div>
-            <div style={{ fontSize: 20, fontWeight: 900, color: '#fff' }}>Football Rogue</div>
-          </div>
-          <div style={{
-            background: '#101826',
-            border: '1px solid #2a6ef5',
-            borderRadius: 6,
-            padding: '4px 9px',
-            fontSize: 11,
-            color: '#6fb0ff',
-            fontWeight: 800,
-            whiteSpace: 'nowrap',
-          }}>
-            Playable
-          </div>
+      {/* Back to the headline game */}
+      <button
+        onClick={onFootball}
+        style={{
+          background: 'linear-gradient(180deg,#11202c,#0b1119)',
+          border: '1px solid #2a3a4d',
+          borderRadius: 12,
+          padding: '13px 14px',
+          cursor: 'pointer',
+          textAlign: 'left',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: 12,
+        }}
+      >
+        <div>
+          <div style={{ fontSize: 10, color: '#f0b429', letterSpacing: 1.5, fontWeight: 800 }}>NOW PLAYING</div>
+          <div style={{ fontSize: 17, fontWeight: 900, color: '#fff' }}>🏈 Gridiron</div>
+          <div style={{ fontSize: 11, color: '#8595aa' }}>The football card roguelike — our main game.</div>
         </div>
-        <div style={{
-          background: '#0a0a0a',
-          border: '1px solid #1f3350',
-          borderRadius: 8,
-          padding: '9px 10px',
-          marginBottom: 10,
-          color: '#aaa',
-          fontSize: 12,
-          lineHeight: 1.45,
-        }}>
-          Cards are football plays. Each quarter, assemble a drive — stack a QB with his receivers, pound the rock, or bring it back — and watch it score Base × Mult. Beat the target in 4 quarters.
-        </div>
-        <button
-          onClick={onFootball}
-          style={{
-            width: '100%',
-            padding: '12px 0',
-            background: '#2a6ef5',
-            border: 'none',
-            color: '#fff',
-            borderRadius: 8,
-            fontSize: 15,
-            fontWeight: 800,
-            cursor: 'pointer',
-          }}
-        >
-          Play Football Rogue
-        </button>
+        <span style={{ color: '#f0b429', fontSize: 20, fontWeight: 900 }}>→</span>
+      </button>
+
+      <div style={{ fontSize: 10, color: '#444', letterSpacing: 1, textAlign: 'center', marginTop: 4 }}>
+        ── CLASSIC SLATE BOSS (DFS) · LEGACY ──
       </div>
 
       {/* Rogue prototype card */}

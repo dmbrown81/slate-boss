@@ -15,6 +15,7 @@ import CareerScreen from './components/CareerScreen';
 import RunOverScreen from './components/RunOverScreen';
 import RogueResultsScreen from './components/RogueResultsScreen';
 import FootballRogueScreen from './components/FootballRogueScreen';
+import FootballHome from './components/FootballHome';
 
 const DAILY_TOURNAMENT_KEY = 'slateboss_daily_tournament';
 
@@ -32,7 +33,7 @@ function saveDailyTournament(t: TournamentType) {
 }
 
 export default function App() {
-  const [screen, setScreen] = useState<Screen>('home');
+  const [screen, setScreen] = useState<Screen>('football_home');
   const [profile, setProfile] = useState<UserProfile>(() => loadProfile());
   const [contestResult, setContestResult] = useState<ContestResult | null>(null);
   const [lockedLineup, setLockedLineup] = useState<Lineup | null>(null);
@@ -80,10 +81,14 @@ export default function App() {
     setScreen('builder');
   }, []);
 
-  const handleFootball = useCallback(() => {
+  const handleFootballHome = useCallback(() => {
     setIsCareerMode(false);
     setIsRogueMode(false);
     setRogueScore(null);
+    setScreen('football_home');
+  }, []);
+
+  const handleFootballPlay = useCallback(() => {
     setScreen('football');
   }, []);
 
@@ -215,7 +220,10 @@ export default function App() {
 
   switch (screen) {
     case 'home':
-      return <HomeScreen profile={profile} onPlayDaily={handlePlayDaily} onCareer={handleCareer} onRogue={handleRogue} onFootball={handleFootball} />;
+      return <HomeScreen profile={profile} onPlayDaily={handlePlayDaily} onCareer={handleCareer} onRogue={handleRogue} onFootball={handleFootballHome} />;
+
+    case 'football_home':
+      return <FootballHome onPlay={handleFootballPlay} onClassic={() => setScreen('home')} />;
 
     case 'builder':
       return (
@@ -269,7 +277,7 @@ export default function App() {
       );
 
     case 'football':
-      return <FootballRogueScreen onHome={handleBackHome} />;
+      return <FootballRogueScreen onHome={handleFootballHome} />;
 
     case 'career':
       return (
