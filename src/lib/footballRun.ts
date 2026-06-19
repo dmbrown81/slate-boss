@@ -37,10 +37,11 @@ export function isChampionship(gameNumber: number): boolean {
 // Targets escalate across the season; the championship gets an extra bump.
 export function gameTargets(env: FbEnvironmentKey, gameNumber: number): number[] {
   const base = driveTargets(env);
-  const champ = isChampionship(gameNumber) ? 1.4 : 1;
-  // back-half ramps harder so an un-built deck falls short while a compounded
-  // engine clears — this is what makes reward/build choices decisive.
-  const scale = (1 + 0.18 * (gameNumber - 1)) * champ;
+  const champ = isChampionship(gameNumber) ? 1.32 : 1;
+  // GEOMETRIC escalation (Balatro-style): targets compound ~20%/game, so flat
+  // Base/Execution plateaus and a committed multiplicative engine is REQUIRED to
+  // keep pace late. This is the early-flat → late-multiplicative power curve.
+  const scale = Math.pow(1.2, gameNumber - 1) * champ;
   return base.map((t) => Math.round(t * scale));
 }
 
@@ -80,24 +81,17 @@ function coordinatorReward(key: FbCoordinatorKey): Reward {
   };
 }
 
-const PLAYBOOK_OPTIONS: { concept: FbConceptKey; base: number; exec: number }[] = [
-  { concept: 'stack_td', base: 0, exec: 0.35 },
-  { concept: 'double_stack_bomb', base: 0, exec: 0.45 },
-  { concept: 'ground_pound', base: 55, exec: 0 },
-  { concept: 'checkdown', base: 34, exec: 0.2 },
-  { concept: 'field_goal', base: 60, exec: 0 },
-  { concept: 'pick_six', base: 0, exec: 0.45 },
-];
-
-function playbookReward(opt: { concept: FbConceptKey; base: number; exec: number }): Reward {
-  const name = FB_CONCEPT_LABEL[opt.concept] ?? opt.concept;
-  const bits = [opt.base ? `+${opt.base} Base` : '', opt.exec ? `+${opt.exec} Execution` : ''].filter(Boolean).join(' & ');
+// A "Game Plan" reward levels a concept (+1). Levels compound: more Execution
+// each level, plus a growing Big Play multiplier once it's your core play — so
+// stacking levels on ONE concept is how you commit and snowball.
+function playbookReward(concept: FbConceptKey, nextLevel: number): Reward {
+  const name = FB_CONCEPT_LABEL[concept] ?? concept;
+  const commit = nextLevel >= 2 ? ' (now compounding Big Play)' : '';
   return {
-    id: `pb-${opt.concept}`, kind: 'playbook', emoji: '📘', title: `Install: ${name}`, detail: `${name} plays permanently gain ${bits}.`,
-    apply: (run) => {
-      const cur = run.playbook[opt.concept] ?? { base: 0, exec: 0 };
-      return { ...run, playbook: { ...run.playbook, [opt.concept]: { base: cur.base + opt.base, exec: cur.exec + opt.exec } } };
-    },
+    id: `pb-${concept}`, kind: 'playbook', emoji: '📘',
+    title: `Game Plan: ${name} → Lv ${nextLevel}`,
+    detail: `Permanently level up ${name}: more scoring every time you call it${commit}. Stack it to ride one strategy all season.`,
+    apply: (run) => ({ ...run, playbook: { ...run.playbook, [concept]: (run.playbook[concept] ?? 0) + 1 } }),
   };
 }
 
@@ -145,39 +139,31 @@ function firstAvailableCoord(lean: Lean, owned: FbCoordinatorKey[]): FbCoordinat
   const ordered = [...LEAN_COORD[lean], ...(Object.keys(FB_COORDINATORS) as FbCoordinatorKey[])];
   return ordered.find((k) => !owned.includes(k)) ?? null;
 }
-function leanPlaybook(lean: Lean, exclude: Set<FbConceptKey>) {
-  const want = LEAN_PB[lean].find((c) => !exclude.has(c));
-  const opt = PLAYBOOK_OPTIONS.find((o) => o.concept === want) ?? PLAYBOOK_OPTIONS.find((o) => !exclude.has(o.concept))!;
-  return opt;
-}
 
-// Offer 3 rewards built around the player's deck lean. Every shop contains a
-// build-defining KEYSTONE (a scaling coordinator, or a strong on-scheme install
-// when slots are full) plus an on-scheme playbook and a flex pick — so choosing
-// the keystone for your build is the decision that matters.
+// Offer 3 rewards built around the player's deck lean:
+//   1) a KEYSTONE engine piece (a scaling coordinator, or a Game-Plan level),
+//   2) the COMMITMENT lever — level your core Game Plan (stack it to snowball),
+//   3) a flex stabilizer.
+// The skill is committing: stack one Game Plan + the coordinators that feed it.
 export function generateRewards(run: FbRunState): Reward[] {
   const lean = deckLean(run.deck);
-  const used = new Set<FbConceptKey>();
+  const primary = LEAN_PB[lean][0];
+  const secondary = LEAN_PB[lean][1] ?? primary;
+  const lvl = (c: FbConceptKey) => run.playbook[c] ?? 0;
   const picks: Reward[] = [];
 
-  // 1) Keystone — the build-defining engine piece (a scaling coordinator, or a
-  //    strong on-scheme install once coordinator slots are full). This is the
-  //    pick that compounds; recognizing it for your build is the skill.
+  // 1) Keystone
   const coord = run.coordinators.length < MAX_COORDINATORS ? firstAvailableCoord(lean, run.coordinators) : null;
-  if (coord && Math.random() < 0.7) {
-    picks.push(coordinatorReward(coord));
-  } else {
-    const pb = leanPlaybook(lean, used); used.add(pb.concept);
-    picks.push(playbookReward(pb));
-  }
+  if (coord && Math.random() < 0.6) picks.push(coordinatorReward(coord));
+  else picks.push(playbookReward(primary, lvl(primary) + 1));
 
-  // 2) On-scheme card — a solid stabilizer, but not an engine multiplier.
-  picks.push(cardReward(LEAN_CARD[lean][0]));
+  // 2) Commitment lever — level a Game Plan you can ride
+  const slot2 = picks[0].id === `pb-${primary}` ? secondary : primary;
+  picks.push(playbookReward(slot2, lvl(slot2) + 1));
 
-  // 3) Flex — consistency / value option.
+  // 3) Flex stabilizer
   const flex: Reward[] = [STRENGTH];
-  if (run.deck.length > 26) flex.push(TRIM);
-  else flex.push(cardReward(LEAN_CARD[lean][LEAN_CARD[lean].length - 1]));
+  if (run.deck.length > 26) flex.push(TRIM); else flex.push(cardReward(LEAN_CARD[lean][0]));
   picks.push(shuffle(flex)[0]);
 
   return shuffle(picks);

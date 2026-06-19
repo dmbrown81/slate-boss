@@ -70,8 +70,11 @@ Coordinators are persistent buffs that **grow as you play** — the difference b
 
 You can watch their values tick up on the scoreboard.
 
-### 4d. Rewards & playbook (run progression)
-After each win, choose 1 of 3: **sign a free-agent card**, **hire a coordinator**, **install a playbook upgrade** (a play concept permanently gains Base/Execution), **trim** your 3 weakest cards (deck thinning → draw your best cards more often), or **Strength & Conditioning** (+Base to your cheapest cards). This is how your engine out-paces the rising targets.
+### 4d. Rewards & the Game Plan (run progression + commitment)
+After each win, choose 1 of 3. The keystone is the **Game Plan**: level up a play concept (Stack TD, Ground & Pound, Pick Six…). Each level adds flat scoring *and*, once it's your core play (Lv 2+), a **growing Big Play (X-mult)**. So **stacking levels on one concept compounds** — the Balatro "commit to flush early and ride it" dynamic. Other picks: hire a **coordinator**, **trim** weak cards (consistency), or **Strength & Conditioning** (+Base).
+
+### 4e. Geometric targets — the early-flat → late-multiplicative pivot
+Targets escalate **~20% per game (geometric)** plus a Championship bump. Flat Base/Execution plateaus against that curve (adding +40 base to a 3000-point target is noise), so a committed **multiplicative engine** (leveled Game Plan × scaling coordinators) becomes *required* to win the late season. This is the power curve the design was missing: early games reward flat value; late games demand the compounding engine.
 
 **Anti-spam:** repeating the same concept in a drive applies ×0.85 Big Play ("Defense Adjusted") to push varied play-calling.
 
@@ -85,15 +88,16 @@ Measured with the **permanent** harness — `npm run balance:gridiron` (`scripts
 
 | Reward policy | Champion | Per-game clear (G1→G5) |
 |---|---|---|
-| Synergy (build a coherent engine) | ~56% | 94 · 86 · 81 · 77 · 56 |
-| Naive (grab coordinators) | ~55% | 94 · 87 · 82 · 78 · 55 |
-| Random (any reward) | ~28% | 93 · 79 · 62 · 52 · 28 |
-| None (skip all rewards) | ~0% | 94 · 71 · 35 · 8 · 0 |
+| **Synergy** — commit to one Game Plan + feed it | **~43%** | 94 · 82 · 73 · 67 · 43 |
+| Naive — grab coordinators, don't commit | ~22% | 94 · 82 · 70 · 60 · 22 |
+| Random — any reward | ~16% | 94 · 79 · 57 · 39 · 16 |
+| None — skip all rewards | ~0% | 94 · 69 · 26 · 3 · 0 |
 
-- **Build gap (best − none): ~56 pts ✅** — building is decisive.
-- **Reward gap (synergy − random pick): ~28 pts ✅** — choosing rewards well clearly beats random.
+- **Build gap (best − none): ~43 pts ✅** — building is decisive.
+- **Reward gap (synergy − random): ~27 pts ✅** — picking well clearly beats random.
+- **Commitment gap (synergy − naive): ~21 pts** — *committing* to one Game Plan and stacking it beats grabbing pieces without a plan. This is the new strategic spine.
 
-This is the headline fix of the 2026-06-19 work: the prior build had smart ≈ random (~42% vs ~40%, a ~1-pt gap) — the meta-layer was noise. Two changes fixed it: (1) the EV restructure (lean-aware keystone rewards + steeper late curve); (2) a **starter-deck ratio fix** — the deck was catch-flooded (3 pass : ~18 catch), so stacks rarely formed; it's now 5 pass : 12 catch (~79% of hands hold a QB pass). Reliable stacks made committing to a build actually pay, which sharpened the reward gap from ~16 to ~28 pts. Skilled play now wins ~56% of seasons, random ~28%, un-built ~0%. Tunables: `DRIVE_TARGET`/`DRIVE_BUDGET` and `cardsForPlayer`/`buildStarterDeck` (`footballRogue.ts`), `gameTargets` escalation + reward catalog (`footballRun.ts`). **Keep the harness committed and re-run it on every balance change.**
+History: the build started with smart ≈ random (~1-pt gap — meta-layer was noise). It was fixed in stages: lean-aware keystone rewards + a starter-deck ratio fix (catch-flood → reliable stacks), then the **game-theory pass** that added (a) leveled **Game Plan** commitment with a compounding Big Play, and (b) a **geometric** target curve that forces the flat→multiplicative pivot — which is what makes *commitment* (not just "take rewards") the deciding skill. Tunables: `DRIVE_TARGET`/`DRIVE_BUDGET`, `GAME_PLAN_STEP`/`GAME_PLAN_COMMIT_XMULT`, `cardsForPlayer`/`buildStarterDeck` (`footballRogue.ts`); `gameTargets` geometric scale + reward catalog (`footballRun.ts`). **Keep the harness committed and re-run it on every balance change.**
 
 ---
 
@@ -119,7 +123,9 @@ This is the headline fix of the 2026-06-19 work: the prior build had smart ≈ r
 
 ## 7. Roadmap
 
-**Done:** core match loop, three-channel scoring, Play Budget, scaling coordinators (incl. season-long Franchise QB), the **5-game season shell**, the **3-choice reward loop**, a **permanent balance harness**, and the **skill-decisive rebalance** (build-vs-none now ~40 pts; see §5).
+**Done:** core match loop, three-channel scoring, Play Budget, scaling coordinators (incl. season-long Franchise QB), the **5-game season shell**, the **3-choice reward loop**, a **permanent balance harness**, the **skill-decisive rebalance**, and the **game-theory pass** — leveled **Game Plan** commitment + a **geometric** target curve that creates the early-flat → late-multiplicative power curve and makes *committing to a strategy* the deciding skill (§4d–4e, §5).
+
+> **Presentation idea on the table (not yet built):** push Gridiron as a landscape/tablet-first app for more screen real estate (coordinators + Game Plans + hand side-by-side). Worth prototyping once content (teams/bosses) lands; the current layout is mobile-portrait single-column.
 
 **Next, in order** (now unblocked — the meta-layer is decisive, so content adds *texture* on a solid base):
 1. **Teams as decks** — 5 fictional team identities, each a distinct starter deck + signature coordinator + cost discounts. Names stay display-only data (license-agnostic). Makes runs feel different and sharpens the reward gap (§8).

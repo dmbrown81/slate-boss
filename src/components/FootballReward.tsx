@@ -1,5 +1,5 @@
 import { FB, card, sectionLabel } from './footballStyles';
-import { FB_COORDINATORS } from '../lib/footballRogue';
+import { FB_COORDINATORS, FB_CONCEPT_LABEL } from '../lib/footballRogue';
 import { deckValueSummary, SEASON_GAMES, type FbRunState, type Reward } from '../lib/footballRun';
 
 interface Props {
@@ -56,6 +56,11 @@ export default function FootballReward({ run, rewards, onPick }: Props) {
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {run.coordinators.map((k) => (
             <span key={k} style={{ fontSize: 10, fontWeight: 800, color: '#b7a7ff', background: '#140f24', border: '1px solid #2a2440', borderRadius: 7, padding: '4px 8px' }}>{FB_COORDINATORS[k].name}</span>
+          ))}
+          {(Object.entries(run.playbook) as [string, number][]).filter(([, l]) => l > 0).map(([c, l]) => (
+            <span key={c} style={{ fontSize: 10, fontWeight: 800, color: '#5fe0a0', background: '#0c2419', border: '1px solid #1f6b44', borderRadius: 7, padding: '4px 8px' }}>
+              {FB_CONCEPT_LABEL[c as keyof typeof FB_CONCEPT_LABEL] ?? c} <span style={{ color: FB.gold }}>Lv{l}</span>
+            </span>
           ))}
         </div>
       </div>

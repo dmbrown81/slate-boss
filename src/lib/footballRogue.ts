@@ -96,8 +96,23 @@ export const FB_COORDINATORS: Record<FbCoordinatorKey, FbCoordinator> = {
 export const STARTER_COORDINATORS: FbCoordinatorKey[] = ['air_raid', 'bell_cow'];
 export const MAX_COORDINATORS = 5;
 
-// Run-level playbook upgrades: concept -> permanent channel bonuses.
-export type FbPlaybook = Partial<Record<FbConceptKey, { exec: number; base: number }>>;
+// Run-level "Game Plan": commit to a concept and level it (Planet-card analog).
+// Each level adds flat Base/Execution; committing PAST level 1 adds a growing
+// Big Play (X-mult) — so concentrating levels on one concept compounds, while
+// spreading them stays flat. This is the early-flat → late-multiplicative pivot.
+export type FbPlaybook = Partial<Record<FbConceptKey, number>>; // concept -> level
+
+export const GAME_PLAN_STEP: Partial<Record<FbConceptKey, { base: number; exec: number }>> = {
+  double_stack_bomb: { base: 0, exec: 0.26 },
+  stack_td: { base: 0, exec: 0.22 },
+  shootout_stack: { base: 0, exec: 0.24 },
+  ground_pound: { base: 48, exec: 0.05 },
+  checkdown: { base: 30, exec: 0.12 },
+  field_goal: { base: 58, exec: 0 },
+  pick_six: { base: 0, exec: 0.3 },
+  takeaway: { base: 0, exec: 0.18 },
+};
+export const GAME_PLAN_COMMIT_XMULT = 0.13; // Big Play added per level beyond 1
 
 // ── Environments (per-match modifier) ───────────────────────────────────────
 export type FbEnvironmentKey = 'clear' | 'dome' | 'snow' | 'wind' | 'primetime';
@@ -398,14 +413,19 @@ export function scoreFootballPlay(cards: FbCard[], ctx: FbScoreContext): FbPlayR
     ledger.push({ id: 'fqb', kind: 'coordinator', label: 'Franchise QB', detail: `Big Play ×${round2(mult)} (${bombGames} prior Bomb game${bombGames === 1 ? '' : 's'}).` });
   }
 
-  // ── Run-level playbook upgrades ──
-  const pb = ctx.playbook?.[concept];
-  if (pb && concept !== 'busted_play') {
-    if (pb.base) { base += pb.base; }
-    if (pb.exec) { execution += pb.exec; }
-    if (pb.base || pb.exec) {
-      ledger.push({ id: 'pb', kind: 'coordinator', label: 'Playbook', detail: `${playName} install${pb.base ? ` +${pb.base} Base` : ''}${pb.exec ? ` +${pb.exec} Exec` : ''}.` });
+  // ── Game Plan (leveled concept commitment) ──
+  const lvl = ctx.playbook?.[concept] ?? 0;
+  const step = GAME_PLAN_STEP[concept];
+  if (lvl > 0 && step && concept !== 'busted_play') {
+    if (step.base) base += lvl * step.base;
+    if (step.exec) execution += lvl * step.exec;
+    let detail = `${playName} Lv${lvl}`;
+    if (lvl >= 2) {
+      const xm = round2(1 + GAME_PLAN_COMMIT_XMULT * (lvl - 1));
+      bigPlay *= xm;
+      detail += ` — commit ×${xm} Big Play`;
     }
+    ledger.push({ id: 'pb', kind: 'coordinator', label: `Game Plan Lv${lvl}`, detail });
   }
 
   // ── Busted play penalty ──

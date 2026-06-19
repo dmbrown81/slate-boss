@@ -13,7 +13,7 @@ interface Props {
 
 export default function FootballRunSummary({ won, gamesWon, run, lostDrive, onNewSeason, onHome }: Props) {
   const deck = deckValueSummary(run.deck);
-  const installs = Object.keys(run.playbook).length;
+  const topPlan = Math.max(0, ...Object.values(run.playbook));
 
   return (
     <div style={{ minHeight: '100svh', padding: '28px 16px 28px', display: 'flex', flexDirection: 'column' }}>
@@ -32,7 +32,7 @@ export default function FootballRunSummary({ won, gamesWon, run, lostDrive, onNe
           <Stat label="Games won" value={`${gamesWon}/${SEASON_GAMES}`} accent={won ? FB.gold : FB.text} />
           <Stat label="Final deck" value={`${deck.size}`} />
           <Stat label="Coordinators" value={`${run.coordinators.length}`} />
-          <Stat label="Installs" value={`${installs}`} />
+          <Stat label="Top Plan" value={topPlan ? `Lv${topPlan}` : '—'} />
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 12 }}>
           {run.coordinators.map((k) => (

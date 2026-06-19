@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import {
   buildStarterDeck, scoreFootballPlay, shuffle,
   HAND_SIZE, DRIVES_PER_MATCH, AUDIBLES_PER_DRIVE, MAX_PLAY_CARDS, DRIVE_BUDGET,
-  FB_COORDINATORS, FB_ENVIRONMENTS,
+  FB_COORDINATORS, FB_ENVIRONMENTS, FB_CONCEPT_LABEL,
   type FbCard, type FbCoordinatorKey, type FbEnvironmentKey, type FbPlaybook, type FbPlayResult, type FbConceptKey,
 } from '../lib/footballRogue';
 import { FB, SIDE, btnPrimary, btnGhost } from './footballStyles';
@@ -186,15 +186,20 @@ export default function FootballMatch(props: MatchProps) {
         </div>
         <div style={{ display: 'flex', gap: 6, marginTop: 9, flexWrap: 'wrap' }}>
           {coordinators.map((k) => {
-            const ramp = k === 'air_raid' && match.stacksThisMatch > 0 ? `+${(0.2 * match.stacksThisMatch).toFixed(1)} EXE`
+            const ramp = k === 'air_raid' && match.stacksThisMatch > 0 ? `+${(0.25 * match.stacksThisMatch).toFixed(2)} EXE`
               : k === 'bell_cow' && match.groundBonusThisMatch > 0 ? `+${match.groundBonusThisMatch} BASE`
-              : k === 'franchise_qb' && bombGames > 0 ? `×${(1 + 0.15 * bombGames).toFixed(2)} BP` : '';
+              : k === 'franchise_qb' && bombGames > 0 ? `×${(1 + 0.2 * bombGames).toFixed(2)} BP` : '';
             return (
               <span key={k} style={{ fontSize: 10, fontWeight: 800, color: '#b7a7ff', background: '#140f24', border: '1px solid #2a2440', borderRadius: 7, padding: '4px 8px' }}>
                 {FB_COORDINATORS[k].name}{ramp && <span style={{ color: FB.gold }}> · {ramp}</span>}
               </span>
             );
           })}
+          {(Object.entries(playbook) as [string, number][]).filter(([, l]) => l > 0).map(([c, l]) => (
+            <span key={c} style={{ fontSize: 10, fontWeight: 800, color: '#5fe0a0', background: '#0c2419', border: '1px solid #1f6b44', borderRadius: 7, padding: '4px 8px' }}>
+              {FB_CONCEPT_LABEL[c as keyof typeof FB_CONCEPT_LABEL] ?? c} <span style={{ color: FB.gold }}>Lv{l}</span>
+            </span>
+          ))}
         </div>
       </div>
 

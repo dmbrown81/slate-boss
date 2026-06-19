@@ -85,9 +85,11 @@ function synergyScore(rw: Reward, run: FbRunState, gameNumber: number): number {
   if (id === 'coord-ball_hawk') return 25 + (defLean ? 30 : 0);
   if (id === 'coord-salary_wizard') return 35;
   if (id.startsWith('pb-')) {
-    const con = id.slice(3);
-    const onLean = ((con.includes('stack') || con === 'checkdown') && passLean) || (con === 'ground_pound' && runLean) || (con === 'pick_six' && defLean);
-    return 30 + (onLean ? 30 : 5) + early * 3;
+    const con = id.slice(3) as keyof typeof run.playbook;
+    const conS = String(con);
+    const onLean = ((conS.includes('stack') || conS === 'checkdown') && passLean) || (conS === 'ground_pound' && runLean) || (conS === 'pick_six' && defLean);
+    const committedLevel = run.playbook[con] ?? 0; // concentration: ride what you've already leveled
+    return 28 + (onLean ? 26 : 4) + committedLevel * 22 + early * 3;
   }
   if (id.startsWith('card-')) {
     const k = id.slice(5);

@@ -101,6 +101,14 @@ export default function FootballHelpModal({ onClose }: Props) {
           </div>
         </Block>
 
+        <Block title="Game Plan — commit & scale">
+          After each win you can <b>level a Game Plan</b> (a play concept like Stack TD or Ground & Pound).
+          Each level scores more every time you call that play — and once it's your core play, it adds a
+          <b> growing Big Play multiplier</b>. Targets rise <i>geometrically</i> across the season, so flat
+          value alone plateaus: <b>pick a strategy early and stack its Game Plan</b> to build the
+          multiplicative engine that beats the late games. Riding one plan beats spreading thin.
+        </Block>
+
         <Block title="Weather">
           Each match has a condition that shifts the math.
           <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 8 }}>
