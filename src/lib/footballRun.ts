@@ -3,7 +3,7 @@
 
 import {
   buildStarterDeck, driveTargets, createFreeAgentCard,
-  FB_COORDINATORS, STARTER_COORDINATORS, MAX_COORDINATORS, FREE_AGENT_KEYS, FB_CONCEPT_LABEL,
+  FB_COORDINATORS, STARTER_COORDINATORS, MAX_COORDINATORS, FB_CONCEPT_LABEL,
   shuffle,
   type FbCard, type FbCoordinatorKey, type FbPlaybook, type FbEnvironmentKey, type FbConceptKey, type FreeAgentKey,
 } from './footballRogue';
@@ -37,8 +37,10 @@ export function isChampionship(gameNumber: number): boolean {
 // Targets escalate across the season; the championship gets an extra bump.
 export function gameTargets(env: FbEnvironmentKey, gameNumber: number): number[] {
   const base = driveTargets(env);
-  const champ = isChampionship(gameNumber) ? 1.12 : 1;
-  const scale = (1 + 0.09 * (gameNumber - 1)) * champ;
+  const champ = isChampionship(gameNumber) ? 1.3 : 1;
+  // back-half ramps harder so an un-built deck falls short while a compounded
+  // engine clears — this is what makes reward/build choices decisive.
+  const scale = (1 + 0.14 * (gameNumber - 1)) * champ;
   return base.map((t) => Math.round(t * scale));
 }
 
@@ -79,12 +81,12 @@ function coordinatorReward(key: FbCoordinatorKey): Reward {
 }
 
 const PLAYBOOK_OPTIONS: { concept: FbConceptKey; base: number; exec: number }[] = [
-  { concept: 'stack_td', base: 0, exec: 0.2 },
-  { concept: 'double_stack_bomb', base: 0, exec: 0.25 },
-  { concept: 'ground_pound', base: 30, exec: 0 },
-  { concept: 'checkdown', base: 28, exec: 0.15 },
-  { concept: 'field_goal', base: 40, exec: 0 },
-  { concept: 'pick_six', base: 0, exec: 0.3 },
+  { concept: 'stack_td', base: 0, exec: 0.35 },
+  { concept: 'double_stack_bomb', base: 0, exec: 0.45 },
+  { concept: 'ground_pound', base: 55, exec: 0 },
+  { concept: 'checkdown', base: 34, exec: 0.2 },
+  { concept: 'field_goal', base: 60, exec: 0 },
+  { concept: 'pick_six', base: 0, exec: 0.45 },
 ];
 
 function playbookReward(opt: { concept: FbConceptKey; base: number; exec: number }): Reward {
@@ -116,41 +118,69 @@ const STRENGTH: Reward = {
   },
 };
 
-// Offer 3 varied rewards.
+type Lean = 'pass' | 'run' | 'def';
+function deckLean(deck: FbCard[]): Lean {
+  let p = 0, r = 0, d = 0;
+  for (const c of deck) { if (c.side === 'pass' || c.side === 'catch') p++; else if (c.side === 'run') r++; else if (c.side === 'defense') d++; }
+  return d > p && d > r ? 'def' : r > p ? 'run' : 'pass';
+}
+
+const LEAN_COORD: Record<Lean, FbCoordinatorKey[]> = {
+  pass: ['franchise_qb', 'air_raid', 'west_coast'],
+  run: ['bell_cow', 'salary_wizard'],
+  def: ['ball_hawk', 'franchise_qb'],
+};
+const LEAN_PB: Record<Lean, FbConceptKey[]> = {
+  pass: ['double_stack_bomb', 'stack_td', 'checkdown'],
+  run: ['ground_pound', 'field_goal'],
+  def: ['pick_six'],
+};
+const LEAN_CARD: Record<Lean, FreeAgentKey[]> = {
+  pass: ['deep_wr', 'gunslinger', 'value_slot'],
+  run: ['bell_rb'],
+  def: ['shutdown_dst'],
+};
+
+function firstAvailableCoord(lean: Lean, owned: FbCoordinatorKey[]): FbCoordinatorKey | null {
+  const ordered = [...LEAN_COORD[lean], ...(Object.keys(FB_COORDINATORS) as FbCoordinatorKey[])];
+  return ordered.find((k) => !owned.includes(k)) ?? null;
+}
+function leanPlaybook(lean: Lean, exclude: Set<FbConceptKey>) {
+  const want = LEAN_PB[lean].find((c) => !exclude.has(c));
+  const opt = PLAYBOOK_OPTIONS.find((o) => o.concept === want) ?? PLAYBOOK_OPTIONS.find((o) => !exclude.has(o.concept))!;
+  return opt;
+}
+
+// Offer 3 rewards built around the player's deck lean. Every shop contains a
+// build-defining KEYSTONE (a scaling coordinator, or a strong on-scheme install
+// when slots are full) plus an on-scheme playbook and a flex pick — so choosing
+// the keystone for your build is the decision that matters.
 export function generateRewards(run: FbRunState): Reward[] {
-  const pool: Reward[] = [];
+  const lean = deckLean(run.deck);
+  const used = new Set<FbConceptKey>();
+  const picks: Reward[] = [];
 
-  // a couple of free agents
-  shuffle(FREE_AGENT_KEYS).slice(0, 2).forEach((k) => pool.push(cardReward(k)));
-
-  // a coordinator if there's room
-  if (run.coordinators.length < MAX_COORDINATORS) {
-    const available = (Object.keys(FB_COORDINATORS) as FbCoordinatorKey[]).filter((k) => !run.coordinators.includes(k));
-    if (available.length) pool.push(coordinatorReward(shuffle(available)[0]));
+  // 1) Keystone — the build-defining engine piece (a scaling coordinator, or a
+  //    strong on-scheme install once coordinator slots are full). This is the
+  //    pick that compounds; recognizing it for your build is the skill.
+  const coord = run.coordinators.length < MAX_COORDINATORS ? firstAvailableCoord(lean, run.coordinators) : null;
+  if (coord && Math.random() < 0.7) {
+    picks.push(coordinatorReward(coord));
+  } else {
+    const pb = leanPlaybook(lean, used); used.add(pb.concept);
+    picks.push(playbookReward(pb));
   }
 
-  // a playbook install
-  pool.push(playbookReward(shuffle(PLAYBOOK_OPTIONS)[0]));
+  // 2) On-scheme card — a solid stabilizer, but not an engine multiplier.
+  picks.push(cardReward(LEAN_CARD[lean][0]));
 
-  // utility
-  if (run.deck.length > 22) pool.push(TRIM);
-  pool.push(STRENGTH);
+  // 3) Flex — consistency / value option.
+  const flex: Reward[] = [STRENGTH];
+  if (run.deck.length > 26) flex.push(TRIM);
+  else flex.push(cardReward(LEAN_CARD[lean][LEAN_CARD[lean].length - 1]));
+  picks.push(shuffle(flex)[0]);
 
-  // pick 3, preferring kind variety
-  const picked: Reward[] = [];
-  const kinds = new Set<RewardKind>();
-  for (const r of shuffle(pool)) {
-    if (picked.length >= 3) break;
-    if (kinds.has(r.kind) && pool.length - picked.length > 3) continue;
-    picked.push(r);
-    kinds.add(r.kind);
-  }
-  while (picked.length < 3 && pool.length) {
-    const r = shuffle(pool).find((x) => !picked.includes(x));
-    if (!r) break;
-    picked.push(r);
-  }
-  return picked.slice(0, 3);
+  return shuffle(picks);
 }
 
 export function deckValueSummary(deck: FbCard[]): { size: number; avgValue: number; avgCost: number } {

@@ -24,6 +24,7 @@ npm install
 npm run dev -- --host 127.0.0.1     # http://127.0.0.1:5173/slate-boss/
 npm run lint                         # eslint, must pass
 npm run build                        # tsc + vite, must pass
+npm run balance:gridiron             # Monte-Carlo balance harness (skill-gap report)
 ```
 
 The app boots into the Gridiron title screen → **Kickoff** to play. **How to Play** opens the in-game help. A small "Classic Slate Boss (DFS)" link at the bottom reaches the legacy mode.
@@ -80,18 +81,19 @@ After each win, choose 1 of 3: **sign a free-agent card**, **hire a coordinator*
 
 ## 5. Balance snapshot
 
-Measured with throwaway harnesses (starter Ironhawks deck, ~600–800 sims):
+Measured with the **permanent** harness — `npm run balance:gridiron` (`scripts/gridironBalance.ts`), ~2000–3000 seasons per policy. It plays full seasons under four reward policies and prints two gaps:
 
-**Single game** — optimal value-per-credit play wins ~85% of game 1; random wins ~0%.
+| Reward policy | Champion | Per-game clear (G1→G5) |
+|---|---|---|
+| Synergy (build a coherent engine) | ~42% | 94 · 84 · 73 · 64 · 42 |
+| Naive (grab coordinators) | ~42% | 95 · 84 · 73 · 63 · 42 |
+| Random (any reward) | ~26% | 95 · 84 · 71 · 56 · 26 |
+| None (skip all rewards) | ~2% | 94 · 81 · 60 · 34 · 2 |
 
-**Full season (win all 5):**
+- **Build gap (best − none): ~40 pts ✅** — building at all is now decisive (was effectively the whole problem before).
+- **Reward gap (synergy − random pick): ~16 pts 🟡** — choosing rewards well clearly beats random, though there's room to sharpen.
 
-| Reward policy | Champion | Avg games won | Per-game clear (G1→G5) |
-|---|---|---|---|
-| Optimal | ~42% | 3.5 / 5 | 94% · 84% · 73% · 59% · 42% |
-| Random | ~40% | 3.5 / 5 | 95% · 85% · 74% · 61% · 40% |
-
-So: a skilled run wins the championship ~40% of the time, the difficulty curve declines gently game-to-game, and luck alone never wins. **Caveat:** smart vs. random *reward* choice scores nearly the same right now — reward selection isn't yet strategically decisive (see §8). Tunables live at the top of `src/lib/footballRogue.ts` (`DRIVE_TARGET`, `DRIVE_BUDGET`) and `src/lib/footballRun.ts` (`SEASON_GAMES`, `gameTargets` escalation).
+This is the headline fix of the 2026-06-19 slice: the prior build had smart ≈ random (~42% vs ~40%, a ~1-pt gap) — the meta-layer was noise. Now the un-built floor is ~2%, taking the keystone engine piece each shop is the winning skill, and the curve steepens late so a compounded engine is *required* to win the championship. Tunables: `DRIVE_TARGET`/`DRIVE_BUDGET` (`footballRogue.ts`), `gameTargets` escalation + reward catalog (`footballRun.ts`). **Keep the harness committed and re-run it on every balance change.**
 
 ---
 
@@ -117,13 +119,13 @@ So: a skilled run wins the championship ~40% of the time, the difficulty curve d
 
 ## 7. Roadmap
 
-**Done:** core match loop, three-channel scoring, Play Budget, scaling coordinators (incl. season-long Franchise QB), the **5-game season shell**, and the **3-choice reward loop** (cards / coordinators / playbook installs / trim / upgrade).
+**Done:** core match loop, three-channel scoring, Play Budget, scaling coordinators (incl. season-long Franchise QB), the **5-game season shell**, the **3-choice reward loop**, a **permanent balance harness**, and the **skill-decisive rebalance** (build-vs-none now ~40 pts; see §5).
 
-**Next, in order:**
-1. **Teams as decks** — 5 fictional team identities (Air Raid, Ground Control, Mobile-QB, Defense, Balanced), each a distinct starter deck + signature coordinator + cost discounts. Names stay display-only data (license-agnostic). This is what makes runs feel different.
-2. **Boss schemes** — opposing defenses shown before the Championship (and maybe mid-season) that counter specific builds (No-Fly Zone, Stacked Box, …). These also make *reward choice* matter more (see §8).
-3. **Persistence** — save the run to `localStorage` so a plane session survives a closed tab.
-4. **Onboarding** — a contextual guided first drive; daily seeded challenge + share string.
+**Next, in order** (now unblocked — the meta-layer is decisive, so content adds *texture* on a solid base):
+1. **Teams as decks** — 5 fictional team identities, each a distinct starter deck + signature coordinator + cost discounts. Names stay display-only data (license-agnostic). Makes runs feel different and sharpens the reward gap (§8).
+2. **Boss schemes** — opposing defenses shown before the Championship (and mid-season) that counter specific builds (No-Fly Zone, Stacked Box, …). Adds the second mechanism that makes build choices decisive.
+3. **Persistence** — save the run to `localStorage` (reuse Classic's versioned storage pattern) so a plane session survives a closed tab.
+4. **Onboarding** — a contextual guided first drive; later, a daily seeded challenge + share string (needs seeded RNG).
 5. Reorderable coordinator slots; a between-game cap-budget economy.
 
 Deferred: art/animation, accounts/backend, multiplayer, real-money, large content catalogs.
@@ -132,8 +134,8 @@ Deferred: art/animation, accounts/backend, multiplayer, real-money, large conten
 
 ## 8. Open questions / things to challenge
 
-1. **Reward choice barely matters yet.** In simulation, picking rewards smartly (~42% champion) scores about the same as picking randomly (~40%). The rewards all keep pace with the target curve, but none is clearly *better* given the deck — so there's little strategic agency in the Front Office yet. Bosses (which punish specific builds) and teams (which bias your deck) should fix this, but it's the #1 thing to pressure-test. Should rewards be more differentiated / situational now?
-2. **Pacing:** ~42% optimal championship rate, gentle curve. Too easy, about right, or should the championship bite harder?
+1. **Reward gap is solid but not huge (~16 pts).** Building now clearly matters (~40-pt build-vs-none gap), but *which* of the three offered rewards you pick is a ~16-pt edge, not yet a dramatic one. Pushing it higher in a bot sim requires making most offered options junk, which would hurt the human experience — so teams (bias the deck) and bosses (punish a build) are the intended way to sharpen reward decisions further. Is ~16 pts enough, or push harder?
+2. **Pacing:** ~42% optimal championship rate, un-built ~2%. About right, or should the championship bite even harder?
 3. **Play Budget vs. a separate currency:** we folded the cap into the play resource rather than adding a 4th scarce resource. Right call, or does a distinct wallet add depth?
 4. **Three channels on a small screen:** clarifying, or too much math at once for a casual player?
 5. **Cognitive load:** is "season → 5 games → 3 drives each" clear, or one nesting level too many?

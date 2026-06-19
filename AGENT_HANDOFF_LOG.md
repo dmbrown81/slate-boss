@@ -28,6 +28,26 @@ Blockers:
 - ...
 ```
 
+## 2026-06-19 - Claude Code - main (Gridiron: make skill decisive + permanent harness)
+
+Goal:
+- Act on the 2nd round of multi-model reviews. Unanimous Priority 0: reward/build choice wasn't strategically decisive (smart ≈ random, ~1-pt gap) — the roguelike meta-layer was noise. Fix the EV structure and make the harness permanent BEFORE adding teams/bosses. (Deliberately did NOT build teams/bosses/persistence/onboarding this slice — sequencing per the review.)
+
+Changed:
+- `scripts/gridironBalance.ts` (NEW, PERMANENT) + `npm run balance:gridiron`. Simulates full seasons under 4 reward policies (synergy / naive / random / none) and prints two headline gaps: BUILD GAP (best − none) and REWARD GAP (synergy − random). Reviewer asked to stop deleting the harness — this one is committed.
+- Reward restructure (`footballRun.ts`): `generateRewards` is now lean-aware and KEYSTONE-guaranteed — every shop offers a build-defining engine piece (scaling coordinator, or strong on-scheme install when slots full) + an on-scheme stabilizer card + a flex/consistency pick. Bigger playbook installs.
+- Buffed scaling engine (`footballRogue.ts`): Air Raid +0.2→+0.25/stack, Franchise QB +0.15→+0.2/bomb-game.
+- Steepened the back-half curve (`gameTargets`: scale 0.09→0.14/game, championship ×1.12→1.30) so an un-built deck falls short while a compounded engine clears.
+
+Harness result (was: smart 42% ≈ random 40%, ~1-pt gap):
+- BUILD GAP best−none ≈ **40 pts ✅** (synergy ~42% vs none ~2%).
+- REWARD GAP synergy−random ≈ **16 pts 🟡** (synergy ~42% vs random ~26%).
+- Verdict line: "✅ the roguelike meta-layer is decisive." Un-built floor ~2%; building is now the game.
+
+Validation: lint + build pass; `npm run balance:gridiron` green.
+
+Next (now on a decisive base): teams-as-decks → boss schemes → localStorage persistence → onboarding. Re-run the harness on every balance change and record the gaps here.
+
 ## 2026-06-19 - Claude Code - main (Gridiron: season shell + reward loop)
 
 Goal:

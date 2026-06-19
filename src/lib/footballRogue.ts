@@ -69,7 +69,7 @@ export interface FbCoordinator {
 export const FB_COORDINATORS: Record<FbCoordinatorKey, FbCoordinator> = {
   air_raid: {
     key: 'air_raid', name: 'Air Raid Coordinator', channel: 'execution', scaling: 'within_game',
-    description: '+0.2 Execution on stack plays for every stack you have already completed this match.',
+    description: '+0.25 Execution on stack plays for every stack you have already completed this match.',
   },
   bell_cow: {
     key: 'bell_cow', name: 'Bell Cow', channel: 'base', scaling: 'within_game',
@@ -81,7 +81,7 @@ export const FB_COORDINATORS: Record<FbCoordinatorKey, FbCoordinator> = {
   },
   franchise_qb: {
     key: 'franchise_qb', name: 'Franchise QB', channel: 'big_play', scaling: 'season',
-    description: '+0.15 Big Play on every play for each earlier game in which you landed a Bomb.',
+    description: '+0.2 Big Play on every play for each earlier game in which you landed a Bomb.',
   },
   west_coast: {
     key: 'west_coast', name: 'West Coast Guru', channel: 'execution', scaling: 'flat',
@@ -366,7 +366,7 @@ export function scoreFootballPlay(cards: FbCard[], ctx: FbScoreContext): FbPlayR
     if (cheap > 0) { const add = cheap * 12; base += add; ledger.push({ id: 'sw', kind: 'coordinator', label: 'Salary Wizard', detail: `+${add} Base from ${cheap} value card${cheap === 1 ? '' : 's'}.` }); }
   }
   if (co.has('air_raid') && isStack && ctx.stacksThisMatch > 0) {
-    const add = round2(0.2 * ctx.stacksThisMatch);
+    const add = round2(0.25 * ctx.stacksThisMatch);
     execution += add;
     ledger.push({ id: 'ar', kind: 'coordinator', label: 'Air Raid Coordinator', detail: `+${add} Execution (scales with ${ctx.stacksThisMatch} prior stack${ctx.stacksThisMatch === 1 ? '' : 's'}).` });
   }
@@ -380,7 +380,7 @@ export function scoreFootballPlay(cards: FbCard[], ctx: FbScoreContext): FbPlayR
   }
   const bombGames = ctx.bombGames ?? 0;
   if (co.has('franchise_qb') && bombGames > 0) {
-    const mult = 1 + 0.15 * bombGames;
+    const mult = 1 + 0.2 * bombGames;
     bigPlay *= mult;
     ledger.push({ id: 'fqb', kind: 'coordinator', label: 'Franchise QB', detail: `Big Play ×${round2(mult)} (${bombGames} prior Bomb game${bombGames === 1 ? '' : 's'}).` });
   }
