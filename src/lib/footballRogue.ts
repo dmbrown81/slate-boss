@@ -15,6 +15,7 @@
 // drives with escalating targets. Variance lives in the draw, never in a roll.
 
 import { PLAYER_TEMPLATES, type PlayerTemplate } from './seedData';
+import { GRIDIRON_ENVIRONMENT_WEIGHTS, weightedKey } from './gridironCalibration';
 import type { RNG } from './rng';
 
 // ── Tunables (balance lives here) ──────────────────────────────────────────
@@ -153,6 +154,7 @@ export const FB_ENVIRONMENTS: Record<FbEnvironmentKey, FbEnvironment> = {
 };
 
 export const FB_ENVIRONMENT_KEYS: FbEnvironmentKey[] = ['clear', 'dome', 'snow', 'wind', 'primetime'];
+export const FB_ENVIRONMENT_WEIGHTS = GRIDIRON_ENVIRONMENT_WEIGHTS;
 
 // ── Opposing defensive schemes (Boss Blind analog) ──────────────────────────
 export type FbBossSchemeKey =
@@ -763,7 +765,7 @@ export function shuffle<T>(arr: T[], rng: RNG = Math.random): T[] {
 }
 
 export function randomEnvironment(rng: RNG = Math.random): FbEnvironmentKey {
-  return FB_ENVIRONMENT_KEYS[Math.floor(rng() * FB_ENVIRONMENT_KEYS.length)];
+  return weightedKey(FB_ENVIRONMENT_WEIGHTS, rng);
 }
 
 export function driveTargets(env: FbEnvironmentKey): number[] {

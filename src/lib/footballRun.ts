@@ -318,6 +318,80 @@ export function buildIdentity(run: Pick<FbRunState, 'deck' | 'playbook'>): { tit
   return { title: 'Air Raid Starter', detail: 'No Game Plan yet. Level Stack TD or Double-Stack Bomb to make QB stacks scale.', concept: 'double_stack_bomb', level: 0, tag: 'Pick a plan' };
 }
 
+export interface CoachDebrief {
+  title: string;
+  takeaway: string;
+  nextFocus: string;
+  tags: { label: string; value: string }[];
+}
+
+export function buildCoachDebrief(run: FbRunState, won: boolean, gamesWon: number, lostDrive: number): CoachDebrief {
+  const identity = buildIdentity(run);
+  const deck = deckValueSummary(run.deck);
+  const lean = deckLean(run.deck);
+  const topPlan = topGamePlan(run.playbook);
+  const scalingCoordinators = run.coordinators.filter((key) => FB_COORDINATORS[key].scaling !== 'flat').length;
+  const coreOnline = identity.level >= 2;
+  const concept = topPlan?.label ?? (identity.concept ? FB_CONCEPT_LABEL[identity.concept] ?? identity.concept : 'a core concept');
+
+  const tags = [
+    { label: 'Build', value: identity.tag },
+    { label: 'Deck', value: `${deck.size} cards / $${deck.avgCost}` },
+    { label: 'Scalers', value: `${scalingCoordinators}` },
+  ];
+
+  if (won) {
+    return {
+      title: 'Coach Debrief',
+      takeaway: coreOnline
+        ? `Your ${concept} engine came online and kept scaling into the Championship.`
+        : `You won with flexible value, but the build never fully committed to one compounding concept.`,
+      nextFocus: lean === 'pass'
+        ? 'Next run, test how far the pass engine can go when you add a second support plan for No-Fly Zone.'
+        : lean === 'run'
+          ? 'Next run, pair the ground plan with one passing escape hatch so Stacked Box cannot freeze you.'
+          : 'Next run, keep the defensive spike plan but draft a steadier offensive floor earlier.',
+      tags,
+    };
+  }
+
+  if (!coreOnline) {
+    return {
+      title: 'Coach Debrief',
+      takeaway: `The season ended before a Lv2 Game Plan turned ${concept} into a true multiplier. Flat value fades late.`,
+      nextFocus: 'Prioritize one Game Plan by the second War Room, then draft cards and coordinators that trigger it repeatedly.',
+      tags: [...tags, { label: 'Stalled', value: `G${gamesWon + 1} D${lostDrive}` }],
+    };
+  }
+
+  if (run.coordinators.length < 4) {
+    return {
+      title: 'Coach Debrief',
+      takeaway: `The ${concept} plan was online, but the staff room was thin for late-season scaling.`,
+      nextFocus: 'Buy one more on-lean coordinator before over-upgrading cards; staff multipliers carry better into Game 4 and 5.',
+      tags: [...tags, { label: 'Stalled', value: `G${gamesWon + 1} D${lostDrive}` }],
+    };
+  }
+
+  if (deck.avgCost >= 2.6) {
+    return {
+      title: 'Coach Debrief',
+      takeaway: `The build had power, but the deck got expensive enough to squeeze the Play Budget.`,
+      nextFocus: 'Look for Discounted traits, value-slot cards, or a trim so your best concept can be called more often per drive.',
+      tags: [...tags, { label: 'Stalled', value: `G${gamesWon + 1} D${lostDrive}` }],
+    };
+  }
+
+  return {
+    title: 'Coach Debrief',
+    takeaway: `The ${concept} engine existed, but the final deck needed a cleaner supporting plan into boss counters.`,
+    nextFocus: lean === 'def'
+      ? 'Add one safe offensive concept so Turnover Drill cannot shut off your entire scoring path.'
+      : 'Add one backup concept that scores through the boss your main plan hates most.',
+    tags: [...tags, { label: 'Stalled', value: `G${gamesWon + 1} D${lostDrive}` }],
+  };
+}
+
 function bestCard(deck: FbCard[], pred: (c: FbCard) => boolean, exclude = new Set<string>()): FbCard | undefined {
   return [...deck]
     .filter((c) => pred(c) && !exclude.has(c.id))

@@ -1,7 +1,7 @@
 import { FB, btnPrimary, sectionLabel, SIDE } from './footballStyles';
 import {
   FB_BOSS_SCHEMES, FB_COORDINATORS, FB_ENVIRONMENTS, FB_CARD_MODIFIERS, STARTER_COORDINATORS,
-  DRIVES_PER_MATCH, AUDIBLES_PER_DRIVE, MAX_PLAY_CARDS,
+  DRIVES_PER_MATCH, AUDIBLES_PER_DRIVE, MAX_PLAY_CARDS, FB_ENVIRONMENT_WEIGHTS,
   type FbBossSchemeKey,
   type FbCardModifier,
   type FbEnvironmentKey,
@@ -153,12 +153,13 @@ export default function FootballHelpModal({ onClose }: Props) {
         </Block>
 
         <Block title="Weather">
-          Each match has a condition that shifts the math.
+          Each match has a condition that shifts the math. The scouting model makes normal games more common
+          than bad-weather games, with Primetime kept as a special chaos slot.
           <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 8 }}>
             {(Object.keys(FB_ENVIRONMENTS) as FbEnvironmentKey[]).map((k) => (
               <div key={k} style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
                 <span style={{ fontSize: 12, fontWeight: 800, color: FB.text, minWidth: 116 }}>{FB_ENVIRONMENTS[k].label}</span>
-                <span style={{ fontSize: 11.5, color: FB.textDim }}>{FB_ENVIRONMENTS[k].description}</span>
+                <span style={{ fontSize: 11.5, color: FB.textDim }}>{FB_ENVIRONMENTS[k].description} Scout weight: {FB_ENVIRONMENT_WEIGHTS[k]}.</span>
               </div>
             ))}
           </div>
