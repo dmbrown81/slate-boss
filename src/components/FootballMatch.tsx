@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  buildStarterDeck, scoreFootballPlay, shuffle,
+  buildStarterDeck, scoreFootballPlay, shuffle, cardCost,
   HAND_SIZE, DRIVES_PER_MATCH, AUDIBLES_PER_DRIVE, MAX_PLAY_CARDS, DRIVE_BUDGET,
-  FB_BOSS_SCHEMES, FB_COORDINATORS, FB_ENVIRONMENTS, FB_CONCEPT_LABEL,
+  FB_BOSS_SCHEMES, FB_COORDINATORS, FB_ENVIRONMENTS, FB_CONCEPT_LABEL, FB_CARD_MODIFIERS,
   type FbBossSchemeKey, type FbCard, type FbCoordinatorKey, type FbEnvironmentKey, type FbPlaybook, type FbPlayResult, type FbConceptKey,
 } from '../lib/footballRogue';
+import { mulberry32, stringSeed, type RNG } from '../lib/rng';
 import { buildIdentity } from '../lib/footballRun';
 import { FB, SIDE, btnPrimary, btnGhost } from './footballStyles';
 import FootballHelpModal from './FootballHelpModal';
@@ -20,6 +21,7 @@ export interface MatchProps {
   gameNumber: number;
   totalGames: number;
   championship: boolean;
+  seed: number;
   onWon: (summary: { bombLanded: boolean; score: number }) => void;
   onLost: (info: { drive: number }) => void;
   onHome: () => void;
@@ -43,25 +45,26 @@ interface MatchState {
   popKey: number;
 }
 
-function freshDrive(deck: FbCard[], discard: FbCard[]) {
-  const pool = shuffle([...deck, ...discard]);
+function freshDrive(deck: FbCard[], discard: FbCard[], rng: RNG) {
+  const pool = shuffle([...deck, ...discard], rng);
   return { deck: pool.slice(HAND_SIZE), hand: pool.slice(0, HAND_SIZE), discard: [] as FbCard[] };
 }
 
-function drawUp(deck: FbCard[], hand: FbCard[], discard: FbCard[]) {
+function drawUp(deck: FbCard[], hand: FbCard[], discard: FbCard[], rng: RNG) {
   let d = [...deck]; let dp = [...discard]; const h = [...hand];
   while (h.length < HAND_SIZE) {
-    if (d.length === 0) { if (dp.length === 0) break; d = shuffle(dp); dp = []; }
+    if (d.length === 0) { if (dp.length === 0) break; d = shuffle(dp, rng); dp = []; }
     h.push(d.shift()!);
   }
   return { deck: d, hand: h, discard: dp };
 }
 
 export default function FootballMatch(props: MatchProps) {
-  const { deck: runDeck, coordinators, playbook, bombGames, targets, environment, bossScheme, gameNumber, totalGames, championship } = props;
+  const { deck: runDeck, coordinators, playbook, bombGames, targets, environment, bossScheme, gameNumber, totalGames, championship, seed } = props;
+  const [matchRng] = useState<RNG>(() => mulberry32(stringSeed(`gridiron-match:${seed}:g${gameNumber}:${environment}:${bossScheme}`)));
 
   const [match, setMatch] = useState<MatchState>(() => {
-    const full = shuffle(runDeck.length ? runDeck : buildStarterDeck().cards);
+    const full = shuffle(runDeck.length ? runDeck : buildStarterDeck().cards, matchRng);
     return {
       deck: full.slice(HAND_SIZE), hand: full.slice(0, HAND_SIZE), discard: [],
       driveIndex: 0, driveScore: 0, totalScore: 0,
@@ -83,7 +86,9 @@ export default function FootballMatch(props: MatchProps) {
     stacksThisMatch: match.stacksThisMatch,
     groundBonusThisMatch: match.groundBonusThisMatch,
     conceptCountsThisDrive: match.conceptCountsThisDrive,
-  }), [coordinators, environment, bossScheme, playbook, bombGames, match.stacksThisMatch, match.groundBonusThisMatch, match.conceptCountsThisDrive]);
+    driveIndex: match.driveIndex,
+    championship,
+  }), [coordinators, environment, bossScheme, playbook, bombGames, match.stacksThisMatch, match.groundBonusThisMatch, match.conceptCountsThisDrive, match.driveIndex, championship]);
   const preview = useMemo(() => scoreFootballPlay(selectedCards, scoreCtx), [selectedCards, scoreCtx]);
 
   const env = FB_ENVIRONMENTS[environment];
@@ -92,9 +97,9 @@ export default function FootballMatch(props: MatchProps) {
   const target = targets[match.driveIndex];
   const remaining = Math.max(0, target - match.driveScore);
   const pct = Math.min(100, (match.driveScore / target) * 100);
-  const selectedCost = selectedCards.reduce((s, c) => s + c.cost, 0);
+  const selectedCost = selectedCards.reduce((s, c) => s + cardCost(c), 0);
   const overBudget = selectedCost > match.budgetLeft;
-  const cheapest = match.hand.length ? Math.min(...match.hand.map((c) => c.cost)) : 0;
+  const cheapest = match.hand.length ? Math.min(...match.hand.map((c) => cardCost(c))) : 0;
   const canAffordAnything = match.budgetLeft >= cheapest;
   const handHasPass = match.hand.some((c) => c.side === 'pass');
   const handHasRun = match.hand.some((c) => c.action === 'power_run' || c.action === 'breakaway_run');
@@ -135,11 +140,11 @@ export default function FootballMatch(props: MatchProps) {
         if (nextIndex >= DRIVES_PER_MATCH) {
           return { ...base, driveScore: newScore, totalScore: m.totalScore + newScore, budgetLeft: newBudget, conceptCountsThisDrive: counts, status: 'won' };
         }
-        const fd = freshDrive(m.deck, discardAfter);
+        const fd = freshDrive(m.deck, discardAfter, matchRng);
         return { ...base, ...fd, driveIndex: nextIndex, driveScore: 0, totalScore: m.totalScore + newScore, budgetLeft: DRIVE_BUDGET[nextIndex], audiblesLeft: AUDIBLES_PER_DRIVE, conceptCountsThisDrive: {}, status: 'playing' };
       }
 
-      const drawn = drawUp(m.deck, handAfter, discardAfter);
+      const drawn = drawUp(m.deck, handAfter, discardAfter, matchRng);
       const broke = newBudget < (drawn.hand.length ? Math.min(...drawn.hand.map((c) => c.cost)) : Infinity);
       return { ...base, ...drawn, driveScore: newScore, totalScore: m.totalScore + result.total, budgetLeft: newBudget, conceptCountsThisDrive: counts, status: broke ? 'lost' : 'playing' };
     });
@@ -152,7 +157,7 @@ export default function FootballMatch(props: MatchProps) {
       const ids = new Set(selected);
       const handAfter = m.hand.filter((c) => !ids.has(c.id));
       const discardAfter = [...m.discard, ...m.hand.filter((c) => ids.has(c.id))];
-      const drawn = drawUp(m.deck, handAfter, discardAfter);
+      const drawn = drawUp(m.deck, handAfter, discardAfter, matchRng);
       return { ...m, ...drawn, audiblesLeft: m.audiblesLeft - 1 };
     });
     setSelected([]);
@@ -238,7 +243,7 @@ export default function FootballMatch(props: MatchProps) {
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 7 }}>
                     {group.cards.map((c) => (
-                      <CardView key={c.id} card={c} active={selected.includes(c.id)} highlighted={coachHighlights.has(c.id)} affordable={c.cost <= match.budgetLeft} onClick={() => toggle(c.id)} />
+                      <CardView key={c.id} card={c} active={selected.includes(c.id)} highlighted={coachHighlights.has(c.id)} affordable={cardCost(c) <= match.budgetLeft} onClick={() => toggle(c.id)} />
                     ))}
                   </div>
                 </div>
@@ -303,10 +308,13 @@ function Scout({ label, title, detail, color }: { label: string; title: string; 
 
 function CardView({ card, active, highlighted, affordable, onClick }: { card: FbCard; active: boolean; highlighted: boolean; affordable: boolean; onClick: () => void }) {
   const c = SIDE[card.side];
+  const eff = cardCost(card);
+  const discounted = eff < card.cost;
+  const trait = card.modifier ? FB_CARD_MODIFIERS[card.modifier] : null;
   return (
     <button onClick={onClick} className={active ? 'fb-glow' : undefined} style={{
       background: active ? c.grad : FB.panelSoft,
-      border: `1.5px solid ${active || highlighted ? c.border : FB.borderSoft}`,
+      border: `1.5px solid ${active || highlighted ? c.border : trait ? `${trait.color}55` : FB.borderSoft}`,
       borderRadius: 11, padding: '8px 6px 7px', cursor: 'pointer', textAlign: 'left',
       transform: active ? 'translateY(-5px)' : 'none', transition: 'transform .14s ease, border-color .14s',
       minHeight: 84, display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
@@ -316,12 +324,16 @@ function CardView({ card, active, highlighted, affordable, onClick }: { card: Fb
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: 8, fontWeight: 900, color: c.text, background: c.chip, border: `1px solid ${c.border}55`, borderRadius: 4, padding: '1px 4px' }}>{card.position}</span>
-          <span className="fb-num" style={{ fontSize: 9, fontWeight: 900, color: FB.gold, background: FB.goldSoft, border: '1px solid #5a4112', borderRadius: 4, padding: '1px 5px' }}>${card.cost}</span>
+          <span className="fb-num" style={{ fontSize: 9, fontWeight: 900, color: discounted ? FB.green : FB.gold, background: discounted ? FB.greenSoft : FB.goldSoft, border: `1px solid ${discounted ? '#1f6b44' : '#5a4112'}`, borderRadius: 4, padding: '1px 5px' }}>${eff}</span>
         </div>
         <div style={{ fontSize: 10.5, fontWeight: 800, color: c.text, marginTop: 5, lineHeight: 1.05 }}>{card.label}</div>
         <div className="fb-num" style={{ fontSize: 16, fontWeight: 900, color: FB.text, marginTop: 1 }}>{card.value}</div>
       </div>
-      <div style={{ fontSize: 8, color: FB.textFaint, lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.playerName} · {card.team}</div>
+      {trait ? (
+        <div style={{ fontSize: 8, fontWeight: 900, color: trait.color, background: `${trait.color}1a`, border: `1px solid ${trait.color}55`, borderRadius: 4, padding: '1px 4px', textAlign: 'center', letterSpacing: 0.4 }}>{trait.label.toUpperCase()}</div>
+      ) : (
+        <div style={{ fontSize: 8, color: FB.textFaint, lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.playerName} · {card.team}</div>
+      )}
     </button>
   );
 }

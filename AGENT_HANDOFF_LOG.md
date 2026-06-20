@@ -28,6 +28,105 @@ Blockers:
 - ...
 ```
 
+## 2026-06-20 - Codex - gridiron/complete-vehicle-economy-warroom-traits
+
+Goal:
+- Verify Claude's complete-vehicle branch against `game design 4.md`, fix any release-blocking test issues, and prepare it for GitHub testing.
+
+Changed:
+- War Room persistence now saves and restores shelf reward ids, reroll count, purchase count, and credit info. This prevents refresh exploits where bought items could reappear or skip bonuses could be granted after purchases.
+- Added `rewardFromId()` in `footballRun.ts` so persisted War Room shelves hydrate back into real clickable rewards after reload.
+- Added `MAX_WAR_ROOM_PURCHASES = 2` to match the design intent: buy one reward, optionally a second. UI now communicates the purchase limit; harness uses the same cap.
+- `Salary Wizard` now uses effective `cardCost()` so Discounted cards count consistently as value cards.
+- Tuned `gameTargets()` geometric escalation from 20% to 24% per game after the new economy/traits layer pushed smart champion rate too high.
+
+Validation:
+- `npm run lint` ✅
+- `npm run build` ✅
+- `npm run smoke:gridiron` ✅
+- `npm run balance:gridiron -- 3000` ✅
+  - Synergy 47.4%, naive 24.1%, random 8.3%, none 0.0%; build gap 47.4 pts ✅, reward gap 39.1 pts ✅.
+  - Per-team champion: Ironhawks 47.4 / Blazers 45.2 / Stormers 40.0 / Volts 37.7 / Ghosts 35.8.
+  - Spread 11.6 pts ✅, competitive 5/5 ✅, dead-draw 5.7% ✅.
+  - Smart-spend gap 39.1 pts ✅; greedy vs patient gap 3.3 pts ✅.
+
+Decisions:
+- Kept Front Office Funds + War Room + Player Traits as the scope of this slice. Film Tools, coordinator ordering, concept containment, vouchers/packs, and daily challenge remain next slices.
+- Random policy is slightly below the long-term 10-20% target at 8.3%; acceptable for this alpha branch because smart play, team viability, and economy gates are all green, but watch it during playtests.
+
+Next:
+- Visual/manual test of the War Room loop.
+- Film Tools + coordinator ordering are the next highest-value vehicle systems.
+
+Blockers:
+- None.
+
+## 2026-06-20 - Claude Code - main (Gridiron: the Vehicle — Funds economy + War Room + Player Traits)
+
+Goal:
+- Act on the unanimous multi-model "complete vehicle" package (game design 4.md). The car had an engine but no transmission. All three reviews converged on the SAME sequence: economy first (the transmission — "nothing flows without it"), the shop it flows through, then card modifiers ("the biggest missing vein"). Built that integrated foundation — the jump from "pick 1 of 3 free" to "manage a season" — with full harness coverage. Deliberately deferred Film Tools, coordinator ordering, packs/vouchers, and meta-unlocks to the next slice (they need match-time UI surfaces; shipping a tested loop beats a half-wired pile).
+
+Changed:
+- NEW `src/lib/gridironEconomy.ts` — Front Office Funds. Start $6; win purse $5/$6/$7/$8 (games 1-4); interest +$1 per $5 banked, cap +$3 (the spend-now-vs-bank spine); reroll $2 +$1 each; skip banks +$2. `shopCredit()` / `interestOn()` / `rerollCost()` + `ShopCreditInfo`.
+- `footballRun.ts`: `FbRunState.funds`. `Reward.cost` + `REWARD_COST` price list (rare coordinators = $7). NEW Training reward family (`train-<modifier>`) that applies a Player Trait to a deterministically best-fit untagged card (no card-picker UI needed yet — `trainingTarget()`). `generateRewards` flex slot can now offer a lean-keyed trait. `rewardFitLabel`/`rewardImpact` handle training.
+- `footballRogue.ts`: NEW `FbCardModifier` (Player Traits) + `FB_CARD_MODIFIERS` meta + `cardCost()` (one source of truth for Discounted). Six traits wired into `scoreFootballPlay`: Reliable (waive busted penalty), Explosive (+0.10 BigPlay/card on clean concepts), Discounted (−1 cost), Clutch (+20 Base on drive 3 / championship — needs new `ctx.driveIndex`/`ctx.championship`), Protected (halves boss-scheme penalties), Hot Route (catch stacks with any QB). Each emits a ledger line; renders as a badge on the card face.
+- War Room: rewrote `FootballReward.tsx` (was "Front Office" single-pick) into a shop — Funds header + credit breakdown, priced reward buttons (buy as many as affordable; each leaves the shelf), reroll, skip/next. `FootballSeason.tsx` reworked: credit Funds on win, `handleBuy`/`handleReroll`/`handleProceed`, reroll-scoped reward RNG (`rewards:<n>`). `FootballMatch.tsx`: feeds driveIndex/championship into scoring, uses `cardCost` for budget, renders trait badges + discounted cost in green.
+- `gridironStorage.ts`: STORAGE_VERSION 2 (Funds + traits). Reads v1 saves and migrates (backfills funds) so an in-progress season survives the upgrade.
+- `FootballHelpModal.tsx`: added War Room + Player Traits sections (reads engine data so it can't drift).
+- `scripts/gridironBalance.ts`: now ECONOMY-AWARE — every policy credits the purse+interest and buys from a shrinking shelf (`runShop`). New `eco_greedy`/`eco_patient` policies + ③ FRONT OFFICE ECONOMY section. Training-reward synergy scoring. `cardCost` in the combo search; driveIndex/championship threaded.
+
+Validation (`npm run balance:gridiron -- 3000`):
+- ① BUILD GAP **61.0** ✅ (was 44.5), REWARD GAP **40.7** ✅ (was 29.9). The economy made building MUCH more decisive — spending well now compounds.
+- ② PER-TEAM champion IRN 61 / BLZ 61.5 / STO 45.9 / VLT 53.3 / GHO 41.8. COMPETITIVE 5/5 ✅, DEAD-DRAW 6.1% ✅. SPREAD **19.6 🟡** (was 11.7) — the economy widened it: the passing teams have deeper purchasable upgrade trees to sink Funds into, so they convert the new currency to power better. Confirmed structural (changing the run/def training trait moved the aggregate 0.0 pts). Fix = run/def REWARD DEPTH (the planned ~24-coordinator catalog), NOT a deck nerf. All five teams still clearly viable (≥41%).
+- ③ SMART-SPEND (synergy − random spend) **40.7** ✅; SPEND vs BANK |greedy − patient| **1.5** ✅ — neither dominates, so spend-now-vs-bank is a real decision. "✅ the economy is a real decision, not a formality."
+- `npm run lint` ✅, `npm run build` ✅, `npm run smoke:gridiron` ✅ (smoke updated for War Room props + FUNDS).
+
+Decisions:
+- Included a GENTLE interest despite Phase-1's "no interest yet" (the systems bible calls it "the spine"). Harness confirms hoarding is viable-but-not-dominant, so it stays. Cap is $3; raise to $5 only if a War-Chest voucher ships.
+- Training rewards auto-target the best-fit card (deterministic) instead of adding a card-picker — keeps the slice clean. A picker is a later refinement.
+- Reliable's "once per game" limit and the Star/injury trait dropped for v1 (pure-scoring can't track per-game state cleanly yet).
+
+Next (the documented sequence, now on a real economy):
+- Slice: Film Tools (one-use consumables, 1 slot, ~6 tools, buyable in War Room) + coordinator ordering (reorder slots, resolve left-to-right, +ordering-sensitivity harness policy). Both need match-time UI; spec is in `game design 4.md` §3 / Phases 4-5.
+- Compress team SPREAD via run/def reward depth: expand the coordinator catalog toward ~24 with economy/enabler/keystone archetypes for ground & defense so those leans have as much to BUY as the passing leans.
+- Then: concept containment, run-summary coach debrief, daily challenge, meta-unlock grid (Phases 6-10).
+
+Blockers:
+- None. Visual check of the War Room pending — verify via `npm run dev` (preview MCP still mis-resolves the `slate-boss && cd slate-boss` cwd). SSR smoke confirms it renders.
+
+## 2026-06-20 - Codex - main (Gridiron: productized-alpha foundation)
+
+Goal:
+- Begin moving Gridiron from prototype toward app/product alpha while preserving design flexibility.
+
+Changed:
+- Added seeded Gridiron infrastructure: `FbRunState.seed`, `createGridironSeed()`, `runRng()`, seedable `shuffle()`, `randomEnvironment()`, `randomBossScheme()`, deterministic reward generation, and seeded match draws.
+- Added `src/lib/gridironStorage.ts` with versioned localStorage persistence under `gridiron_run_v1`; Football Home now shows Resume Season / Abandon & New Season when an active season exists.
+- Football Season now restores active runs at the current match/reward point and regenerates weather, boss, and rewards from the run seed.
+- Added next-game boss/weather scout to Front Office reward selection.
+- Structured scoring ledger entries with stage/channel/operation/value metadata for future score pipeline animation/debugging.
+- Added summary share seed string and `npm run smoke:gridiron` (`scripts/gridironSmoke.tsx`) for lightweight screen-render and ledger smoke coverage.
+- Updated app metadata, README, and `docs/GRIDIRON_HANDOFF.md` to reflect Gridiron-first productized alpha.
+
+Validation:
+- `npm run lint` ✅
+- `npm run build` ✅
+- `npm run smoke:gridiron` ✅
+- `npm run balance:gridiron -- 3000` ✅
+  - Synergy 44.4%, random 14.1%, none 0.0%; reward gap 30.3 pts ✅.
+  - Per-team champion: Ironhawks 44.4 / Blazers 39.2 / Stormers 35.8 / Volts 35.9 / Ghosts 31.3.
+  - Spread 13.1 pts ✅, competitive 5/5 ✅, dead-draw 6.1% ✅.
+
+Decisions:
+- Persistence intentionally resumes at active game/reward level, not exact mid-drive state yet. This keeps v1 save format simple while still making the season feel real.
+- Boss preview was added to the existing Front Office surface rather than introducing a new screen.
+
+Next:
+- Coordinator ordering + containment, counter-aware harness policy, daily challenge entry point, and small deck manipulation rewards.
+
+Blockers:
+- None known.
+
 ## 2026-06-20 - Claude Code - main (Gridiron: teams-as-decks + per-team diagnostic harness)
 
 Goal:

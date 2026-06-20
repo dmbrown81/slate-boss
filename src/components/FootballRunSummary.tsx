@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { FB, btnPrimary, btnGhost, card } from './footballStyles';
-import { FB_CONCEPT_LABEL, FB_COORDINATORS } from '../lib/footballRogue';
+import { FB_CONCEPT_LABEL, FB_COORDINATORS, TEAM_PROFILES } from '../lib/footballRogue';
 import { buildIdentity, deckValueSummary, SEASON_GAMES, type FbRunState } from '../lib/footballRun';
 
 interface Props {
@@ -12,9 +13,20 @@ interface Props {
 }
 
 export default function FootballRunSummary({ won, gamesWon, run, lostDrive, onNewSeason, onHome }: Props) {
+  const [copied, setCopied] = useState(false);
   const deck = deckValueSummary(run.deck);
   const topPlan = Math.max(0, ...Object.values(run.playbook));
   const identity = buildIdentity(run);
+  const team = TEAM_PROFILES[run.team];
+  const shareText = `GRIDIRON · ${team.displayName} · ${won ? 'Champions' : `Lost G${gamesWon + 1}`} · ${identity.title} · Seed ${run.seed}`;
+
+  function copyShare() {
+    if (typeof navigator === 'undefined' || !navigator.clipboard) return;
+    navigator.clipboard.writeText(shareText).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1300);
+    }).catch(() => undefined);
+  }
 
   return (
     <div style={{ minHeight: '100svh', padding: '28px 16px 28px', display: 'flex', flexDirection: 'column' }}>
@@ -50,6 +62,12 @@ export default function FootballRunSummary({ won, gamesWon, run, lostDrive, onNe
             </span>
           ))}
         </div>
+        <button
+          onClick={copyShare}
+          style={{ width: '100%', marginTop: 12, background: FB.inset, border: `1px solid ${FB.borderSoft}`, borderRadius: 10, color: copied ? FB.green : FB.gold, fontSize: 11.5, fontWeight: 800, padding: '9px 10px', cursor: 'pointer', textAlign: 'left' }}
+        >
+          {copied ? 'Copied run string' : shareText}
+        </button>
       </div>
 
       <div style={{ flex: 1 }} />

@@ -1,10 +1,12 @@
 import { FB, btnPrimary, sectionLabel, SIDE } from './footballStyles';
 import {
-  FB_BOSS_SCHEMES, FB_COORDINATORS, FB_ENVIRONMENTS, STARTER_COORDINATORS,
+  FB_BOSS_SCHEMES, FB_COORDINATORS, FB_ENVIRONMENTS, FB_CARD_MODIFIERS, STARTER_COORDINATORS,
   DRIVES_PER_MATCH, AUDIBLES_PER_DRIVE, MAX_PLAY_CARDS,
   type FbBossSchemeKey,
+  type FbCardModifier,
   type FbEnvironmentKey,
 } from '../lib/footballRogue';
+import { STARTING_FUNDS } from '../lib/gridironEconomy';
 
 interface Props { onClose: () => void; }
 
@@ -114,6 +116,27 @@ export default function FootballHelpModal({ onClose }: Props) {
           <b> growing Big Play multiplier</b>. Targets rise <i>geometrically</i> across the season, so flat
           value alone plateaus: <b>pick a strategy early and stack its Game Plan</b> to build the
           multiplicative engine that beats the late games. Riding one plan beats spreading thin.
+        </Block>
+
+        <Block title="The War Room (between games)">
+          Win a game and you visit the <b>War Room</b> with <b>Funds</b> (you start with
+          <b> ${STARTING_FUNDS}</b>). Each win pays a purse, and banked Funds earn a little
+          <b> interest</b> — so every shop is a real choice: <b>buy power now</b>, <b>reroll</b> the board
+          for a better fit, or <b>bank</b> toward a keystone coordinator later. Skipping the shop banks a
+          small bonus. Funds are separate from in-match Play Budget.
+        </Block>
+
+        <Block title="Player Traits">
+          Some War Room rewards develop one of your cards, giving it a permanent <b>trait</b> shown as a badge
+          on the card face. One trait per card.
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 8 }}>
+            {(Object.keys(FB_CARD_MODIFIERS) as FbCardModifier[]).map((k) => (
+              <div key={k} style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
+                <span style={{ fontSize: 12, fontWeight: 800, color: FB_CARD_MODIFIERS[k].color, minWidth: 78 }}>{FB_CARD_MODIFIERS[k].label}</span>
+                <span style={{ fontSize: 11.5, color: FB.textDim }}>{FB_CARD_MODIFIERS[k].description}</span>
+              </div>
+            ))}
+          </div>
         </Block>
 
         <Block title="Boss defenses">

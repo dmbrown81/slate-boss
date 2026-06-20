@@ -26,6 +26,19 @@ export function slateNumber(dateStr: string): number {
 
 export type RNG = () => number;
 
+export function stringSeed(input: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < input.length; i += 1) {
+    h ^= input.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+export function rngFromString(input: string): RNG {
+  return mulberry32(stringSeed(input));
+}
+
 // Weighted random pick
 export function weightedPick<T>(items: T[], weights: number[], rng: RNG): T {
   const total = weights.reduce((a, b) => a + b, 0);

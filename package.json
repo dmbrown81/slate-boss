@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "balance": "tsx scripts/balance.ts",
-    "balance:gridiron": "tsx scripts/gridironBalance.ts"
+    "balance:gridiron": "tsx scripts/gridironBalance.ts",
+    "smoke:gridiron": "tsx --tsconfig tsconfig.app.json scripts/gridironSmoke.tsx"
   },
   "dependencies": {
     "@rollup/wasm-node": "^4.61.1",
