@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { FB, btnPrimary, btnGhost, card } from './footballStyles';
 import { FB_CONCEPT_LABEL, FB_COORDINATORS, TEAM_PROFILES } from '../lib/footballRogue';
-import { buildIdentity, deckValueSummary, SEASON_GAMES, type FbRunState } from '../lib/footballRun';
+import { buildCoachDebrief, buildIdentity, deckValueSummary, SEASON_GAMES, type FbRunState } from '../lib/footballRun';
 
 interface Props {
   won: boolean;
@@ -17,6 +17,7 @@ export default function FootballRunSummary({ won, gamesWon, run, lostDrive, onNe
   const deck = deckValueSummary(run.deck);
   const topPlan = Math.max(0, ...Object.values(run.playbook));
   const identity = buildIdentity(run);
+  const debrief = buildCoachDebrief(run, won, gamesWon, lostDrive);
   const team = TEAM_PROFILES[run.team];
   const shareText = `GRIDIRON · ${team.displayName} · ${won ? 'Champions' : `Lost G${gamesWon + 1}`} · ${identity.title} · Seed ${run.seed}`;
 
@@ -61,6 +62,18 @@ export default function FootballRunSummary({ won, gamesWon, run, lostDrive, onNe
               {FB_CONCEPT_LABEL[c] ?? c} <span style={{ color: FB.gold }}>Lv{l}</span>
             </span>
           ))}
+        </div>
+        <div style={{ marginTop: 13, background: FB.inset, border: `1px solid ${FB.borderSoft}`, borderRadius: 10, padding: '11px 12px' }}>
+          <div style={{ fontSize: 10, color: FB.gold, letterSpacing: 1.1, fontWeight: 900 }}>{debrief.title.toUpperCase()}</div>
+          <div style={{ fontSize: 12.5, color: FB.text, lineHeight: 1.4, fontWeight: 700, marginTop: 5 }}>{debrief.takeaway}</div>
+          <div style={{ fontSize: 11.5, color: FB.textDim, lineHeight: 1.45, marginTop: 6 }}>{debrief.nextFocus}</div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 9 }}>
+            {debrief.tags.map((tag) => (
+              <span key={`${tag.label}-${tag.value}`} style={{ fontSize: 9.5, color: FB.textDim, background: FB.panelSoft, border: `1px solid ${FB.borderSoft}`, borderRadius: 7, padding: '3px 7px', fontWeight: 800 }}>
+                {tag.label}: <span style={{ color: FB.text }}>{tag.value}</span>
+              </span>
+            ))}
+          </div>
         </div>
         <button
           onClick={copyShare}

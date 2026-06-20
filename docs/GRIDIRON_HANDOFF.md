@@ -2,7 +2,7 @@
 
 > A self-contained packet for an outside designer, engineer, or AI model to review the game, audit the code, and give feedback. You can hand someone *just this file* and they'll understand where the project is and what to critique.
 
-_Last updated: 2026-06-20 · Branch: `main` · Status: productized alpha with playable 5-game **season**, team-as-deck selection, save/resume, seeded run scaffolding, War Room economy, Player Traits, boss preview, and balance diagnostics._
+_Last updated: 2026-06-20 · Branch: `codex/nfl-dfs-calibration` · Status: productized alpha with playable 5-game **season**, team-as-deck selection, save/resume, seeded run scaffolding, War Room economy, Player Traits, boss preview, NFL/DFS-derived calibration notes, Coach Debrief, and balance diagnostics._
 
 ---
 
@@ -85,7 +85,7 @@ Targets escalate **~24% per game (geometric)** plus a Championship bump. Flat Ba
 
 **Anti-spam:** repeating the same concept in a drive applies ×0.85 Big Play ("Defense Adjusted") to push varied play-calling.
 
-**Weather:** each match rolls a condition (Dome / Snow / Wind / Primetime / Clear) that shifts the math — e.g. Snow punishes passing and rewards the ground game.
+**Weather:** each match rolls a weighted condition (Clear 45 / Dome 25 / Wind 12 / Snow 8 / Primetime 10) from the NFL/DFS calibration pass. Conditions shift the math — e.g. Snow punishes passing and rewards the ground game — but normal games are now much more common than bad-weather chaos.
 
 ### 4f. Boss defenses (adaptation pressure)
 From Game 2 onward, each match shows an opposing defensive scheme on the scoreboard. These are the Boss Blind analogs: they counter a style without deleting it, forcing a supporting plan.
@@ -103,16 +103,16 @@ Measured with the **permanent** harness — `npm run balance:gridiron` (`scripts
 
 | Reward policy | Champion | Per-game clear (G1→G5) |
 |---|---|---|
-| **Synergy** — commit to one Game Plan + feed it | **~47%** | 97 · 84 · 74 · 68 · 47 |
-| Naive — grab coordinators, don't commit | ~24% | 97 · 84 · 73 · 61 · 24 |
-| Random — any reward | ~8% | 96 · 74 · 46 · 30 · 8 |
-| None — skip all rewards | ~0% | 97 · 66 · 16 · 1 · 0 |
+| **Synergy** — commit to one Game Plan + feed it | **52.6%** | 97 · 88 · 81 · 75 · 53 |
+| Naive — grab coordinators, don't commit | 30.8% | 98 · 89 · 79 · 68 · 31 |
+| Random — any reward | 12.0% | 97 · 79 · 52 · 35 · 12 |
+| None — skip all rewards | 0.0% | 98 · 74 · 22 · 1 · 0 |
 
-- **Build gap (best − none): ~47 pts ✅** — building is decisive.
-- **Reward gap (synergy − random): ~39 pts ✅** — picking well clearly beats random.
-- **Commitment gap (synergy − naive): ~23 pts** — *committing* to one Game Plan and stacking it beats grabbing pieces without a plan. This is the strategic spine.
-- **Per-team viability:** Ironhawks ~47%, Blazers ~45%, Stormers ~40%, Volts ~38%, Ghosts ~36%; spread ~12 pts ✅, competitive teams 5/5 ✅, dead-draw losses ~6% ✅.
-- **Economy:** smart-spend gap ~39 pts ✅; greedy vs patient gap ~3 pts ✅, so spend-now vs bank is a real decision.
+- **Build gap (best − none): 52.6 pts ✅** — building is decisive.
+- **Reward gap (synergy − random): 40.7 pts ✅** — picking well clearly beats random.
+- **Commitment gap (synergy − naive): 21.8 pts** — *committing* to one Game Plan and stacking it beats grabbing pieces without a plan. This is the strategic spine.
+- **Per-team viability:** Ironhawks 52.6%, Blazers 52.3%, Stormers 55.0%, Volts 40.6%, Ghosts 39.1%; spread 15.9 pts 🟡, competitive teams 5/5 ✅, dead-draw losses 5.5% ✅.
+- **Economy:** smart-spend gap 40.7 pts ✅; greedy vs patient gap 4.4 pts ✅, so spend-now vs bank is a real decision.
 
 History: the build started with smart ≈ random (~1-pt gap — meta-layer was noise). It was fixed in stages: lean-aware keystone rewards + a starter-deck ratio fix (catch-flood → reliable stacks), then the **game-theory pass** that added leveled **Game Plan** commitment and a **geometric** target curve. The latest pass added boss defenses, first-drive onboarding, build identity surfacing, reward impact projections, grouped hands, and staged scoring feedback. Tunables: `DRIVE_TARGET`/`DRIVE_BUDGET`, `GAME_PLAN_STEP`/`GAME_PLAN_COMMIT_XMULT`, `FB_BOSS_SCHEMES`, `cardsForPlayer`/`buildStarterDeck` (`footballRogue.ts`); `gameTargets` geometric scale + reward catalog/build helpers (`footballRun.ts`). **Keep the harness committed and re-run it on every balance change.**
 
@@ -121,8 +121,9 @@ History: the build started with smart ≈ random (~1-pt gap — meta-layer was n
 ## 6. Code map (what to audit)
 
 **Engine / run logic (pure, no React, no `Math.random` in scoring):**
-- `src/lib/footballRogue.ts` — card model, Player Traits, team deck factories (from `seedData.ts` fictional players), three-channel `scoreFootballPlay`, structured ledger metadata, coordinators, environments, boss defenses, free-agent cards, tunables.
-- `src/lib/footballRun.ts` — season run state (`FbRunState`), seeded run helpers, `gameTargets` escalation, reward catalog + `generateRewards`, War Room reward hydration, build identity helpers, reward impact projections.
+- `src/lib/footballRogue.ts` — card model, Player Traits, team deck factories (from `seedData.ts` fictional players), three-channel `scoreFootballPlay`, structured ledger metadata, coordinators, weighted environments, boss defenses, free-agent cards, tunables.
+- `src/lib/footballRun.ts` — season run state (`FbRunState`), seeded run helpers, `gameTargets` escalation, reward catalog + `generateRewards`, War Room reward hydration, build identity helpers, reward impact projections, Coach Debrief.
+- `src/lib/gridironCalibration.ts` — read-only calibration constants derived from the local `nfl_dfs` research folder; use them to tune fictional archetypes and match conditions, not to ship NFL content.
 - `src/lib/gridironEconomy.ts` — Front Office Funds, win purse, interest, reroll/skip economy, War Room purchase cap.
 - `src/lib/gridironStorage.ts` — versioned Gridiron save/resume state under `gridiron_run_v1`.
 
@@ -142,14 +143,14 @@ History: the build started with smart ≈ random (~1-pt gap — meta-layer was n
 
 ## 7. Roadmap
 
-**Done:** core match loop, three-channel scoring, Play Budget, scaling coordinators (incl. season-long Franchise QB), the **5-game season shell**, a **permanent balance harness**, the **skill-decisive rebalance**, the **game-theory pass** (leveled Game Plan + geometric targets), the **clarity/boss pass** — guided first drive, grouped hand, current build identity, reward impact projections, boss defensive schemes, and staged scoring feedback (§3–5) — plus **five team-as-deck identities**, seeded run scaffolding, save/resume, next-game boss/weather scout, War Room/Funds economy, Player Traits, and a lightweight Gridiron smoke test.
+**Done:** core match loop, three-channel scoring, Play Budget, scaling coordinators (incl. season-long Franchise QB), the **5-game season shell**, a **permanent balance harness**, the **skill-decisive rebalance**, the **game-theory pass** (leveled Game Plan + geometric targets), the **clarity/boss pass** — guided first drive, grouped hand, current build identity, reward impact projections, boss defensive schemes, and staged scoring feedback (§3–5) — plus **five team-as-deck identities**, seeded run scaffolding, save/resume, next-game boss/weather scout, War Room/Funds economy, Player Traits, weighted environment calibration, Coach Debrief, and a lightweight Gridiron smoke test.
 
 > **Presentation idea on the table (not yet built):** push Gridiron as a landscape/tablet-first app for more screen real estate (coordinators + Game Plans + hand side-by-side). Worth prototyping once content (teams/bosses) lands; the current layout is mobile-portrait single-column.
 
 **Next, in order** (productized alpha, still design-flexible):
 1. **Film Tools** — one-use consumables, one slot, buyable in the War Room.
 2. **Coordinator ordering + containment** — resolve coordinators left-to-right, expose up/down controls, and make bigger concepts trigger contained concept effects where readable.
-3. **Run-summary coach debrief** — explain best concept, MVP card/staff, boss problem, and one suggested next build.
+3. **Calibration-backed archetype tuning** — use `docs/NFL_DFS_GRIDIRON_CALIBRATION.md` to deepen run/defense reward options without copying real players.
 4. **Daily challenge + stronger share strings** — the seed path exists; next step is a daily seed entry point and replayable summary.
 5. **More deck manipulation rewards** — copy/convert/cost-reduce/respec in small, readable doses.
 

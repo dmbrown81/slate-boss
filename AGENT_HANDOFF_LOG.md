@@ -28,6 +28,40 @@ Blockers:
 - ...
 ```
 
+## 2026-06-20 - Codex - codex/nfl-dfs-calibration
+
+Goal:
+- Use the local `/Users/dominicbrown/Desktop/nfl_dfs` research folder to make Gridiron more football-smart without shipping real NFL content, then push the work for GitHub testing.
+
+Changed:
+- Added `src/lib/gridironCalibration.ts` with NFL/DFS-derived calibration metadata, outcome/usage/matchup bands, weighted environment constants, and a reusable weighted selection helper.
+- Changed Gridiron match weather from uniform random to calibrated weights: Clear 45, Dome 25, Wind 12, Snow 8, Primetime 10.
+- Surfaced those scouting weights in the How to Play weather section.
+- Added a run-summary Coach Debrief that explains whether the final build had a compounding Game Plan, enough scaling staff, manageable card costs, and a support plan into boss counters.
+- Added `docs/NFL_DFS_GRIDIRON_CALIBRATION.md` and refreshed README / Gridiron handoff docs.
+
+Validation:
+- `npm run lint` ✅
+- `npm run build` ✅
+- `npm run smoke:gridiron` ✅
+- `npm run balance:gridiron -- 3000` ✅
+  - Synergy 52.6%, naive 30.8%, random 12.0%, none 0.0%; build gap 52.6 pts ✅, reward gap 40.7 pts ✅.
+  - Per-team champion: Ironhawks 52.6 / Blazers 52.3 / Stormers 55.0 / Volts 40.6 / Ghosts 39.1.
+  - Spread 15.9 pts 🟡, competitive 5/5 ✅, dead-draw 5.5% ✅.
+  - Smart-spend gap 40.7 pts ✅; greedy vs patient gap 4.4 pts ✅.
+
+Decisions:
+- Kept all NFL/DFS data as calibration only: no real players, teams, marks, salaries, slate labels, or live projections in the shipped game.
+- Did not tune from `snap_offense_pct`; the local snapshot made that field look suspicious.
+- Accepted the 15.9-pt team spread because all five teams remain comfortably competitive and the harness still marks the meta as multi-path; watch run/defense reward depth in the next tuning slice.
+
+Next:
+- Use the saved calibration bands for archetype/trait tuning, especially run and defense reward depth.
+- Film Tools plus coordinator ordering remain the next product slice.
+
+Blockers:
+- None.
+
 ## 2026-06-20 - Codex - main
 
 Goal:
