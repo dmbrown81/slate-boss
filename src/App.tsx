@@ -7,7 +7,6 @@ import { getLineupPlayers } from './lib/lineupValidation';
 import { scoreRogueLineup, type RogueScoreResult } from './lib/rogueScoring';
 import { loadProfile, saveProfile, updateStreak, applyContestResult, todayDateStr } from './lib/storage';
 import { DEFAULT_TOURNAMENT_TYPE, isTournamentType } from './lib/payout';
-import HomeScreen from './components/HomeScreen';
 import LineupBuilder from './components/LineupBuilder';
 import SweatScreen from './components/SweatScreen';
 import ResultsScreen from './components/ResultsScreen';
@@ -58,28 +57,6 @@ export default function App() {
     setSelectedTournament(t);
     if (!isCareerMode) saveDailyTournament(t);
   }, [isCareerMode]);
-
-  const handlePlayDaily = useCallback(() => {
-    setIsCareerMode(false);
-    setIsRogueMode(false);
-    setRogueScore(null);
-    setScreen('builder');
-  }, []);
-
-  const handleCareer = useCallback(() => {
-    setIsRogueMode(false);
-    setRogueScore(null);
-    setScreen('career');
-  }, []);
-
-  const handleRogue = useCallback(() => {
-    setIsCareerMode(false);
-    setIsRogueMode(true);
-    setContestResult(null);
-    setLockedLineup(null);
-    setRogueScore(null);
-    setScreen('builder');
-  }, []);
 
   const handleFootballHome = useCallback(() => {
     setIsCareerMode(false);
@@ -168,7 +145,7 @@ export default function App() {
   }, [contestResult, isCareerMode, isRogueMode, lockedLineup]);
 
   const handleBackHome = useCallback(() => {
-    setScreen('home');
+    setScreen('football_home');
     setContestResult(null);
     setLockedLineup(null);
     setRogueScore(null);
@@ -182,7 +159,7 @@ export default function App() {
       handleBackHome();
       return;
     }
-    setScreen(isCareerMode ? 'career' : 'home');
+    setScreen(isCareerMode ? 'career' : 'football_home');
   }, [handleBackHome, isCareerMode, isRogueMode]);
 
   const handleRogueReplay = useCallback(() => {
@@ -213,17 +190,17 @@ export default function App() {
 
   const handleRunOverHome = useCallback(() => {
     setRunSummary(null);
-    setScreen('home');
+    setScreen('football_home');
   }, []);
 
   const entryFee = isCareerMode ? TIER_ENTRY_FEE[profile.run.tier] : 1;
 
   switch (screen) {
     case 'home':
-      return <HomeScreen profile={profile} onPlayDaily={handlePlayDaily} onCareer={handleCareer} onRogue={handleRogue} onFootball={handleFootballHome} />;
+      return <FootballHome onPlay={handleFootballPlay} />;
 
     case 'football_home':
-      return <FootballHome onPlay={handleFootballPlay} onClassic={() => setScreen('home')} />;
+      return <FootballHome onPlay={handleFootballPlay} />;
 
     case 'builder':
       return (
@@ -285,7 +262,7 @@ export default function App() {
           profile={profile}
           onStartRun={handleStartRun}
           onContinueRun={handleContinueRun}
-          onHome={() => setScreen('home')}
+          onHome={handleFootballHome}
         />
       );
 

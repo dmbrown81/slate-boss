@@ -2,6 +2,12 @@
 
 ## 2026-06-20
 
+### Gridiron becomes the visible app surface
+
+- Merged the complete-vehicle Gridiron branch into `main`.
+- Archived the old Classic Slate Boss / DFS experience from normal navigation so testers land in Gridiron without mode confusion.
+- Kept legacy DFS source files in the repository for reference, but removed the visible "Classic Slate Boss (DFS)" link and routes old home fallbacks back to the Gridiron title screen.
+
 ### Gridiron "complete vehicle" — Front Office economy + War Room + Player Traits
 
 - Acted on the unanimous multi-model design package: gave the scoring engine a transmission.

@@ -7,10 +7,9 @@ import { SEASON_GAMES } from '../lib/footballRun';
 
 interface Props {
   onPlay: () => void;
-  onClassic: () => void;
 }
 
-export default function FootballHome({ onPlay, onClassic }: Props) {
+export default function FootballHome({ onPlay }: Props) {
   const [showHelp, setShowHelp] = useState(false);
   const [activeRun, setActiveRun] = useState(() => loadGridironRun());
   const activeTeam = activeRun ? TEAM_PROFILES[activeRun.run.team] : null;
@@ -101,13 +100,6 @@ export default function FootballHome({ onPlay, onClassic }: Props) {
           How to Play
         </button>
       </div>
-
-      <button
-        onClick={onClassic}
-        style={{ background: 'none', border: 'none', color: FB.textFaint, fontSize: 11.5, marginTop: 16, cursor: 'pointer', textDecoration: 'underline', alignSelf: 'center' }}
-      >
-        Classic Slate Boss (DFS) →
-      </button>
 
       <div style={{ fontSize: 10, color: '#2c3645', textAlign: 'center', lineHeight: 1.5, marginTop: 12 }}>
         Fictional football strategy game. No real teams or players. No real money. No prizes.

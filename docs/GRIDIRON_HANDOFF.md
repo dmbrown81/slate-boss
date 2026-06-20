@@ -2,13 +2,13 @@
 
 > A self-contained packet for an outside designer, engineer, or AI model to review the game, audit the code, and give feedback. You can hand someone *just this file* and they'll understand where the project is and what to critique.
 
-_Last updated: 2026-06-20 · Branch: `gridiron/complete-vehicle-economy-warroom-traits` · Status: productized alpha with playable 5-game **season**, team-as-deck selection, save/resume, seeded run scaffolding, War Room economy, Player Traits, boss preview, and balance diagnostics._
+_Last updated: 2026-06-20 · Branch: `main` · Status: productized alpha with playable 5-game **season**, team-as-deck selection, save/resume, seeded run scaffolding, War Room economy, Player Traits, boss preview, and balance diagnostics._
 
 ---
 
 ## 1. What this is
 
-**Gridiron** is a single-player, football-native **card roguelike** — Balatro-style engine-building, but the scoring language is football instead of poker. It lives inside the **Slate Boss** repository, which also contains the original **Classic Slate Boss** (a fictional DFS lineup simulator). Gridiron is now the **headline mode**; Classic is preserved but demoted to a secondary "legacy" area.
+**Gridiron** is a single-player, football-native **card roguelike** — Balatro-style engine-building, but the scoring language is football instead of poker. It lives inside the **Slate Boss** repository, which also contains the original **Classic Slate Boss** (a fictional DFS lineup simulator). Gridiron is now the app product; Classic is preserved only as archived legacy code and is no longer exposed in normal navigation.
 
 - **No real IP.** Fictional teams and players only. No NFL marks, no real names, no real money, no prizes. The architecture is intentionally "license-agnostic" (names are display-only data) so a licensed dataset could drop in later without a rewrite — but that is a far-future dream, not a near-term plan.
 - **Design ethos:** clean, text-and-math-forward, mobile-first. The fun is *outsmarting a transparent system*, not graphics. No animation budget beyond small touches.
@@ -27,7 +27,7 @@ npm run build                        # tsc + vite, must pass
 npm run balance:gridiron             # Monte-Carlo balance harness (skill-gap report)
 ```
 
-The app boots into the Gridiron title screen → **Kickoff** to play. **How to Play** opens the in-game help. A small "Classic Slate Boss (DFS)" link at the bottom reaches the legacy mode.
+The app boots into the Gridiron title screen → **Kickoff** to play. **How to Play** opens the in-game help. Legacy DFS screens remain in the repository for reference, but the visible product path stays in Gridiron.
 
 ---
 

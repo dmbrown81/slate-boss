@@ -5,7 +5,8 @@ The current headline mode is Gridiron: build a team deck, call football concepts
 clear three drives per game, and survive a five-game season.
 
 Classic Slate Boss, the original fictional DFS lineup simulator, is still kept in
-the app as a legacy mode.
+the repository as archived legacy code, but it is no longer exposed in the app
+navigation.
 
 ## Run Locally
 

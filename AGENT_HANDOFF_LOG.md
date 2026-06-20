@@ -28,6 +28,31 @@ Blockers:
 - ...
 ```
 
+## 2026-06-20 - Codex - main
+
+Goal:
+- Merge the Gridiron complete-vehicle PR into `main` and remove tester confusion around the older DFS/Slate Boss mode.
+
+Changed:
+- Merged PR #3 into `main`.
+- Removed the visible `Classic Slate Boss (DFS)` link from the Gridiron title screen.
+- Routed legacy `home` fallbacks back to Gridiron so the normal app path stays Gridiron-first.
+- Updated README, project log, and Gridiron handoff docs to say Classic DFS is archived legacy code, not an exposed app mode.
+
+Validation:
+- `npm run lint` ✅
+- `npm run build` ✅
+- `npm run smoke:gridiron` ✅
+
+Decisions:
+- Kept legacy DFS source files for reference instead of deleting them; this is a navigation/archive cleanup, not a destructive removal.
+
+Next:
+- Test the normal deployed/default path from `main`; it should open Gridiron with no Classic DFS link.
+
+Blockers:
+- None.
+
 ## 2026-06-20 - Codex - gridiron/complete-vehicle-economy-warroom-traits
 
 Goal:
