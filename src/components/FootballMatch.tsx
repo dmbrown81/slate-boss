@@ -15,6 +15,8 @@ export interface MatchProps {
   coordinators: FbCoordinatorKey[];
   playbook: FbPlaybook;
   bombGames: number;
+  keeperGames: number;
+  takeawayGames: number;
   targets: number[];
   environment: FbEnvironmentKey;
   bossScheme: FbBossSchemeKey;
@@ -22,7 +24,7 @@ export interface MatchProps {
   totalGames: number;
   championship: boolean;
   seed: number;
-  onWon: (summary: { bombLanded: boolean; score: number }) => void;
+  onWon: (summary: { bombLanded: boolean; keeperLanded: boolean; takeawayGame: boolean; score: number }) => void;
   onLost: (info: { drive: number }) => void;
   onHome: () => void;
 }
@@ -38,7 +40,10 @@ interface MatchState {
   audiblesLeft: number;
   stacksThisMatch: number;
   groundBonusThisMatch: number;
+  qbRunsThisMatch: number;
+  defPlaysThisMatch: number;
   bombLanded: boolean;
+  keeperLanded: boolean;
   conceptCountsThisDrive: Partial<Record<FbConceptKey, number>>;
   status: 'playing' | 'won' | 'lost';
   lastPlay: FbPlayResult | null;
@@ -60,7 +65,7 @@ function drawUp(deck: FbCard[], hand: FbCard[], discard: FbCard[], rng: RNG) {
 }
 
 export default function FootballMatch(props: MatchProps) {
-  const { deck: runDeck, coordinators, playbook, bombGames, targets, environment, bossScheme, gameNumber, totalGames, championship, seed } = props;
+  const { deck: runDeck, coordinators, playbook, bombGames, keeperGames, takeawayGames, targets, environment, bossScheme, gameNumber, totalGames, championship, seed } = props;
   const [matchRng] = useState<RNG>(() => mulberry32(stringSeed(`gridiron-match:${seed}:g${gameNumber}:${environment}:${bossScheme}`)));
 
   const [match, setMatch] = useState<MatchState>(() => {
@@ -69,7 +74,8 @@ export default function FootballMatch(props: MatchProps) {
       deck: full.slice(HAND_SIZE), hand: full.slice(0, HAND_SIZE), discard: [],
       driveIndex: 0, driveScore: 0, totalScore: 0,
       budgetLeft: DRIVE_BUDGET[0], audiblesLeft: AUDIBLES_PER_DRIVE,
-      stacksThisMatch: 0, groundBonusThisMatch: 0, bombLanded: false,
+      stacksThisMatch: 0, groundBonusThisMatch: 0, qbRunsThisMatch: 0, defPlaysThisMatch: 0,
+      bombLanded: false, keeperLanded: false,
       conceptCountsThisDrive: {}, status: 'playing', lastPlay: null, popKey: 0,
     };
   });
@@ -82,13 +88,15 @@ export default function FootballMatch(props: MatchProps) {
     [selected, match.hand],
   );
   const scoreCtx = useMemo(() => ({
-    coordinators, environment, bossScheme, playbook, bombGames,
+    coordinators, environment, bossScheme, playbook, bombGames, keeperGames, takeawayGames,
     stacksThisMatch: match.stacksThisMatch,
     groundBonusThisMatch: match.groundBonusThisMatch,
+    qbRunsThisMatch: match.qbRunsThisMatch,
+    defPlaysThisMatch: match.defPlaysThisMatch,
     conceptCountsThisDrive: match.conceptCountsThisDrive,
     driveIndex: match.driveIndex,
     championship,
-  }), [coordinators, environment, bossScheme, playbook, bombGames, match.stacksThisMatch, match.groundBonusThisMatch, match.conceptCountsThisDrive, match.driveIndex, championship]);
+  }), [coordinators, environment, bossScheme, playbook, bombGames, keeperGames, takeawayGames, match.stacksThisMatch, match.groundBonusThisMatch, match.qbRunsThisMatch, match.defPlaysThisMatch, match.conceptCountsThisDrive, match.driveIndex, championship]);
   const preview = useMemo(() => scoreFootballPlay(selectedCards, scoreCtx), [selectedCards, scoreCtx]);
 
   const env = FB_ENVIRONMENTS[environment];
@@ -129,11 +137,16 @@ export default function FootballMatch(props: MatchProps) {
       const newScore = m.driveScore + result.total;
       const newBudget = m.budgetLeft - result.cost;
       const isStackCon = result.concept === 'stack_td' || result.concept === 'double_stack_bomb' || result.concept === 'shootout_stack';
+      const isDefSplash = result.concept === 'pick_six' || result.concept === 'takeaway' || result.concept === 'sack';
+      const playedQbRun = result.valid && selectedCards.some((c) => c.action === 'scramble' || c.action === 'qb_sneak');
       const stacks = m.stacksThisMatch + (isStackCon ? 1 : 0);
       const ground = m.groundBonusThisMatch + (result.concept === 'ground_pound' ? 6 : 0);
+      const qbRuns = m.qbRunsThisMatch + (playedQbRun ? 1 : 0);
+      const defPlays = m.defPlaysThisMatch + (isDefSplash ? 1 : 0);
       const bomb = m.bombLanded || result.concept === 'double_stack_bomb';
+      const keeper = m.keeperLanded || result.concept === 'qb_keeper';
       const counts = { ...m.conceptCountsThisDrive, [result.concept]: (m.conceptCountsThisDrive[result.concept] ?? 0) + 1 };
-      const base = { ...m, stacksThisMatch: stacks, groundBonusThisMatch: ground, bombLanded: bomb, lastPlay: result, popKey: m.popKey + 1 };
+      const base = { ...m, stacksThisMatch: stacks, groundBonusThisMatch: ground, qbRunsThisMatch: qbRuns, defPlaysThisMatch: defPlays, bombLanded: bomb, keeperLanded: keeper, lastPlay: result, popKey: m.popKey + 1 };
 
       if (newScore >= target) {
         const nextIndex = m.driveIndex + 1;
@@ -212,7 +225,11 @@ export default function FootballMatch(props: MatchProps) {
           {coordinators.map((k) => {
             const ramp = k === 'air_raid' && match.stacksThisMatch > 0 ? `+${(0.25 * match.stacksThisMatch).toFixed(2)} EXE`
               : k === 'bell_cow' && match.groundBonusThisMatch > 0 ? `+${match.groundBonusThisMatch} BASE`
-              : k === 'franchise_qb' && bombGames > 0 ? `×${(1 + 0.2 * bombGames).toFixed(2)} BP` : '';
+              : k === 'franchise_qb' && bombGames > 0 ? `×${(1 + 0.2 * bombGames).toFixed(2)} BP`
+              : k === 'read_option' && match.qbRunsThisMatch > 0 ? `+${(0.2 * match.qbRunsThisMatch).toFixed(2)} EXE`
+              : k === 'pressure_chain' && match.defPlaysThisMatch > 0 ? `+${(0.14 * match.defPlaysThisMatch).toFixed(2)} EXE`
+              : k === 'improviser' && keeperGames > 0 ? `×${(1 + 0.18 * keeperGames).toFixed(2)} BP`
+              : k === 'takeaway_machine' && takeawayGames > 0 ? `×${(1 + 0.05 * takeawayGames).toFixed(2)} BP` : '';
             return (
               <span key={k} style={{ fontSize: 10, fontWeight: 800, color: '#b7a7ff', background: '#140f24', border: '1px solid #2a2440', borderRadius: 7, padding: '4px 8px' }}>
                 {FB_COORDINATORS[k].name}{ramp && <span style={{ color: FB.gold }}> · {ramp}</span>}
@@ -274,7 +291,7 @@ export default function FootballMatch(props: MatchProps) {
         <ResultPanel won title={championship ? 'Champions!' : `Game ${gameNumber} Won`}
           detail={championship ? 'You cleared the championship.' : 'All three drives cleared.'}
           cta={championship ? 'See Results →' : 'Choose Reward →'}
-          onCta={() => props.onWon({ bombLanded: match.bombLanded, score: match.totalScore })} />
+          onCta={() => props.onWon({ bombLanded: match.bombLanded, keeperLanded: match.keeperLanded, takeawayGame: match.defPlaysThisMatch >= 2, score: match.totalScore })} />
       )}
       {match.status === 'lost' && (
         <ResultPanel won={false} title="Drive Stalled"

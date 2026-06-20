@@ -28,6 +28,41 @@ Blockers:
 - ...
 ```
 
+## 2026-06-20 - Codex - main
+
+Goal:
+- Recover and finish Claude's interrupted `game design 5.md` pass without blindly following the contradictory Film Tools/order-first prompt.
+
+Changed:
+- Continued the corrected design direction from the pasted Claude conversation: widen/repair Volts and Ghosts identity lanes before adding Film Tools or coordinator ordering.
+- Added mobile-QB lane depth: QB Keeper Game Plan support, Read-Option Guru, The Improviser, Broken Play Artist, Scrambler free agent, Volts mobile starter staff, and `keeperGames` season counter.
+- Added defensive-pressure lane depth: Pressure Chain, Takeaway Machine, defensive season counter, and defense-aware reward scoring.
+- Fixed deck-lean detection so catch cards no longer make every deck pass-lean; rewards now key off identity signals (QB pass, run, QB run, defense).
+- Added `scripts/gridironBalance.ts` per-lane commitment gauge for pass / ground / defense / mobile.
+- Bumped Gridiron save format to v3 with migration backfills for `keeperGames` and `takeawayGames`.
+
+Validation:
+- `npm run lint` ✅
+- `npm run build` ✅
+- `npm run smoke:gridiron` ✅
+- `npm run balance:gridiron -- 3000` ✅
+  - Synergy 53.0%, naive 30.9%, random 10.7%, none 0.0%; build gap 53.0 pts ✅, reward gap 42.3 pts ✅.
+  - Per-team champion: Ironhawks 53.0 / Blazers 53.3 / Stormers 52.7 / Volts 51.5 / Ghosts 55.8.
+  - Team spread 4.3 pts ✅, competitive 5/5 ✅, dead-draw 6.5% ✅.
+  - Per-lane commit: pass 48.3 / ground 47.7 / defense 58.8 / mobile 51.3; lane spread 11.1 pts 🟡 but all four lanes viable.
+  - Smart-spend gap 42.3 pts ✅; greedy vs patient gap 2.7 pts ✅.
+
+Decisions:
+- Did not implement Film Tools, coordinator ordering, or concept containment in this pass because the latest evidence showed the real unfinished problem was lane viability, not more tactical depth.
+- Accepted defense as the hottest forced lane (58.8%) because team spread is excellent and all four lane identities are now viable; watch defense if future tools favor it.
+
+Next:
+- Film Tools + War Room clarity are now the best next product slice.
+- Coordinator ordering + formal concept containment should follow once Film Tools exist.
+
+Blockers:
+- None.
+
 ## 2026-06-20 - Codex - codex/nfl-dfs-calibration
 
 Goal:

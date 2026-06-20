@@ -2,6 +2,16 @@
 
 ## 2026-06-20
 
+### Gridiron lane-depth recovery after interrupted Claude pass
+
+- Finished the interrupted `game design 5.md` implementation pass by following the corrected direction from the pasted Claude conversation: widen/repair the weak identities before adding Film Tools or coordinator ordering.
+- Added real mobile-QB and defensive-pressure lane support: QB Keeper Game Plan, Read-Option Guru, The Improviser, Broken Play Artist, Pressure Chain, Takeaway Machine, Scrambler free agent, and season counters for keeper/takeaway games.
+- Fixed the deck-lean classifier so catch cards no longer make every team look pass-lean. This unlocked Stormers/Ghosts reward shelves and kept Volts on the mobile lane.
+- Bumped Gridiron save format to v3 and backfilled `keeperGames` / `takeawayGames` for old saves.
+- Added a per-lane commitment gauge to `scripts/gridironBalance.ts` so pass, ground, defense, and mobile can be measured as explicit optimal lines instead of hiding behind per-team averages.
+- Harness after tuning: synergy 53.0%, random 10.7%, BUILD GAP 53.0, REWARD GAP 42.3, smart-spend 42.3, spend-vs-bank 2.7; all five teams viable with 4.3-point team spread and 6.5% dead-draw.
+- Forced lane commit: pass 48.3%, ground 47.7%, defense 58.8%, mobile 51.3%; 11.1-point lane spread, all four lanes viable.
+
 ### Gridiron becomes the visible app surface
 
 - Merged the complete-vehicle Gridiron branch into `main`.

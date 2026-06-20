@@ -21,6 +21,8 @@ export interface FbRunState {
   coordinators: FbCoordinatorKey[];
   playbook: FbPlaybook;
   bombGames: number;         // games in which you landed a Bomb (Franchise QB)
+  keeperGames: number;       // games in which you landed a QB Keeper (The Improviser)
+  takeawayGames: number;     // games with 2+ takeaways (Takeaway Machine)
   funds: number;             // Front Office Funds — the between-game economy
   status: 'playing' | 'won' | 'lost';
 }
@@ -43,6 +45,8 @@ export function createRun(team: TeamArchetype = 'balanced', seed = createGridiro
     coordinators: [...profile.startingCoordinators],
     playbook: {},
     bombGames: 0,
+    keeperGames: 0,
+    takeawayGames: 0,
     funds: STARTING_FUNDS,
     status: 'playing',
   };
@@ -81,7 +85,8 @@ export interface Reward {
 export const REWARD_COST: Record<RewardKind, number> = {
   card: 3, coordinator: 5, playbook: 5, trim: 4, upgrade: 3, training: 3,
 };
-const RARE_COORDINATORS = new Set<FbCoordinatorKey>(['franchise_qb']);
+// The season-long compounders are the premium keystones, priced like Franchise QB.
+const RARE_COORDINATORS = new Set<FbCoordinatorKey>(['franchise_qb', 'improviser', 'takeaway_machine']);
 
 const FA_TITLE: Record<FreeAgentKey, { emoji: string; title: string; detail: string }> = {
   deep_wr: { emoji: '🎯', title: 'Sign a Deep Threat', detail: 'Add a $3 WR Deep Catch (88) to your deck.' },
@@ -89,6 +94,7 @@ const FA_TITLE: Record<FreeAgentKey, { emoji: string; title: string; detail: str
   shutdown_dst: { emoji: '🛡️', title: 'Sign a Ball-Hawk', detail: 'Add a $3 Interception (80) to your deck.' },
   value_slot: { emoji: '💸', title: 'Sign a Value Slot', detail: 'Add a $1 Quick Catch (40) — cheap, flexible.' },
   gunslinger: { emoji: '🚀', title: 'Sign a Gunslinger', detail: 'Add a $3 QB Deep Ball (70) to your deck.' },
+  scrambler: { emoji: '🏃', title: 'Sign a Dual-Threat QB', detail: 'Add a $2 QB Scramble (58) — fuels the keeper game.' },
 };
 
 function includesKey<T extends string>(keys: readonly T[], value: string): value is T {
@@ -100,8 +106,10 @@ const HYDRATABLE_PLAYBOOK_CONCEPTS: readonly FbConceptKey[] = [
   'stack_td',
   'checkdown',
   'ground_pound',
+  'qb_keeper',
   'field_goal',
   'pick_six',
+  'takeaway',
 ];
 
 function cardReward(key: FreeAgentKey): Reward {
@@ -223,32 +231,50 @@ export function rewardFromId(id: string, run: FbRunState): Reward | null {
   return null;
 }
 
-type Lean = 'pass' | 'run' | 'def';
+type Lean = 'pass' | 'run' | 'def' | 'mobile';
 function deckLean(deck: FbCard[]): Lean {
-  let p = 0, r = 0, d = 0;
-  for (const c of deck) { if (c.side === 'pass' || c.side === 'catch') p++; else if (c.side === 'run') r++; else if (c.side === 'defense') d++; }
+  // Count the IDENTITY signal of each lane, not raw card volume. Catches are
+  // shared support (every team carries a pile of them), so they don't vote — a
+  // QB-pass card drives the stack game, a run card the ground game, etc. Counting
+  // catches as "pass" made every deck read pass-lean (the ground/defense teams
+  // included), which then starved their on-lane reward shelves.
+  let p = 0, r = 0, d = 0, qb = 0;
+  for (const c of deck) {
+    if (c.action === 'scramble' || c.action === 'qb_sneak') qb++;
+    else if (c.side === 'pass') p++;
+    else if (c.side === 'run') r++;
+    else if (c.side === 'defense') d++;
+  }
+  // A dual-threat deck (heavy on QB-run cards) is its OWN lane — it should be
+  // pushed toward the keeper engine, not played as a worse passing deck. The
+  // threshold is high (only the Volts build clears it at 6) so a pocket-QB deck
+  // with an incidental scramble or two is NOT dragged onto the mobile lane.
+  if (qb >= 5 && qb >= d) return 'mobile';
   return d > p && d > r ? 'def' : r > p ? 'run' : 'pass';
 }
 
 const LEAN_COORD: Record<Lean, FbCoordinatorKey[]> = {
   pass: ['franchise_qb', 'air_raid', 'west_coast'],
   run: ['bell_cow', 'salary_wizard'],
-  def: ['ball_hawk', 'franchise_qb'],
+  def: ['takeaway_machine', 'pressure_chain', 'ball_hawk'],
+  mobile: ['improviser', 'read_option', 'broken_play'],
 };
 const LEAN_PB: Record<Lean, FbConceptKey[]> = {
   pass: ['double_stack_bomb', 'stack_td', 'checkdown'],
   run: ['ground_pound', 'field_goal'],
-  def: ['pick_six'],
+  def: ['pick_six', 'takeaway'],
+  mobile: ['qb_keeper', 'stack_td'],
 };
 const LEAN_CARD: Record<Lean, FreeAgentKey[]> = {
   pass: ['deep_wr', 'gunslinger', 'value_slot'],
   run: ['bell_rb'],
   def: ['shutdown_dst'],
+  mobile: ['scrambler'],
 };
 const LEAN_TRAINING: Record<Lean, FbCardModifier> = {
   // Each lean gets a trait that scales ITS identity: pass → ceiling, run →
-  // tempo (an extra carry per drive), def → a Big-Play scaler for splash plays.
-  pass: 'explosive', run: 'discounted', def: 'explosive',
+  // tempo, def → a Big-Play scaler for splash plays, mobile → late-game heroics.
+  pass: 'explosive', run: 'discounted', def: 'explosive', mobile: 'clutch',
 };
 
 function firstAvailableCoord(lean: Lean, owned: FbCoordinatorKey[]): FbCoordinatorKey | null {
@@ -315,6 +341,7 @@ export function buildIdentity(run: Pick<FbRunState, 'deck' | 'playbook'>): { tit
   const lean = deckLean(run.deck);
   if (lean === 'run') return { title: 'Ground Game Starter', detail: 'No Game Plan yet. Level Ground & Pound to turn carries into an engine.', concept: 'ground_pound', level: 0, tag: 'Pick a plan' };
   if (lean === 'def') return { title: 'Defensive Starter', detail: 'No Game Plan yet. Level Pick Six or Takeaway if defense becomes your identity.', concept: 'pick_six', level: 0, tag: 'Pick a plan' };
+  if (lean === 'mobile') return { title: 'Dual-Threat Starter', detail: 'No Game Plan yet. Level QB Keeper and hire the Read-Option/Improviser staff to make scrambles scale.', concept: 'qb_keeper', level: 0, tag: 'Pick a plan' };
   return { title: 'Air Raid Starter', detail: 'No Game Plan yet. Level Stack TD or Double-Stack Bomb to make QB stacks scale.', concept: 'double_stack_bomb', level: 0, tag: 'Pick a plan' };
 }
 
@@ -435,6 +462,13 @@ function representativeCards(deck: FbCard[], concept: FbConceptKey): FbCard[] | 
     return run1 && run2 ? [run1, run2] : null;
   }
 
+  if (concept === 'qb_keeper') {
+    const keep1 = take((c) => c.action === 'scramble' || c.action === 'qb_sneak');
+    if (!keep1) return null;
+    const keep2 = take((c) => c.action === 'scramble' || c.action === 'qb_sneak');
+    return keep2 ? [keep1, keep2] : [keep1];
+  }
+
   if (concept === 'field_goal') {
     const kick = take((c) => c.action === 'field_goal');
     return kick ? [kick] : null;
@@ -462,9 +496,13 @@ export function estimateConceptScore(run: FbRunState, concept: FbConceptKey, bos
     bossScheme,
     stacksThisMatch: 1,
     groundBonusThisMatch: concept === 'ground_pound' ? 6 : 0,
+    qbRunsThisMatch: concept === 'qb_keeper' ? 1 : 0,
+    defPlaysThisMatch: concept === 'pick_six' || concept === 'takeaway' || concept === 'sack' ? 1 : 0,
     conceptCountsThisDrive: {},
     playbook: run.playbook,
     bombGames: run.bombGames,
+    keeperGames: run.keeperGames,
+    takeawayGames: run.takeawayGames,
   });
   return result.valid ? result.total : null;
 }
@@ -476,7 +514,8 @@ export function rewardFitLabel(run: FbRunState, reward: Reward): string {
   if (reward.kind === 'coordinator') {
     if (identity.concept?.includes('stack') && ['coord-franchise_qb', 'coord-air_raid', 'coord-west_coast'].includes(reward.id)) return 'Feeds current plan';
     if (identity.concept === 'ground_pound' && ['coord-bell_cow', 'coord-salary_wizard'].includes(reward.id)) return 'Feeds current plan';
-    if ((identity.concept === 'pick_six' || identity.concept === 'takeaway') && reward.id === 'coord-ball_hawk') return 'Feeds current plan';
+    if ((identity.concept === 'pick_six' || identity.concept === 'takeaway') && ['coord-ball_hawk', 'coord-pressure_chain', 'coord-takeaway_machine'].includes(reward.id)) return 'Feeds current plan';
+    if (identity.concept === 'qb_keeper' && ['coord-read_option', 'coord-improviser', 'coord-broken_play'].includes(reward.id)) return 'Feeds current plan';
     return 'Engine piece';
   }
   if (reward.kind === 'trim') return 'Consistency';

@@ -40,16 +40,17 @@ Gridiron is moving into productized alpha. The foundation now includes:
 - the **War Room** shop: priced rewards, buy up to two, reroll, and skip-for-funds
 - **Player Traits** (card modifiers: Reliable, Explosive, Discounted, Clutch, Protected, Hot Route), bought via Training rewards and wired into the scoring ledger
 - an NFL/DFS research calibration layer that keeps real stats out of the shipped game while using them to tune fictional archetypes, weather frequency, traits, and boss logic
+- mobile-QB and defensive-pressure identity lanes with their own scaling coordinators, Game Plans, and per-lane balance gauge
 - a run-summary **Coach Debrief** that explains the final build and suggests the next strategic focus
-- versioned localStorage save/resume under `gridiron_run_v1` (save format v2, migrates v1)
+- versioned localStorage save/resume under `gridiron_run_v1` (save format v3, migrates v1/v2)
 - boss preview during War Room reward selection
 - staged scoring ledger with stage/channel/operation metadata
 - a lightweight screen render smoke test
 
 Near-term work should stay focused on app hardening and strategic depth, in order:
-Film Tools (one-use consumables) + coordinator ordering; then expanding the
-coordinator catalog so run/defense leans have as much to buy as passing (compresses
-team spread); then concept containment and seeded daily challenges. Avoid backend, accounts, multiplayer, real-money features,
+Film Tools (one-use consumables) + War Room decision clarity; then coordinator
+ordering plus concept containment; then Coach Debrief 2.0 / run history and seeded
+daily challenges. Avoid backend, accounts, multiplayer, real-money features,
 licensed IP, or a mobile wrapper until the alpha loop is steadier.
 
 ## Useful Files
@@ -58,7 +59,7 @@ licensed IP, or a mobile wrapper until the alpha loop is steadier.
 - `src/lib/footballRun.ts` - season state, seeded run helpers, priced rewards, training, and build identity.
 - `src/lib/gridironCalibration.ts` - read-only NFL/DFS-derived calibration constants for fictional tuning.
 - `src/lib/gridironEconomy.ts` - Front Office Funds: purse, interest, reroll/skip economy.
-- `src/lib/gridironStorage.ts` - Gridiron save/resume persistence (v2 with v1 migration).
+- `src/lib/gridironStorage.ts` - Gridiron save/resume persistence (v3 with v1/v2 migration).
 - `src/components/FootballSeason.tsx` - season orchestration.
 - `scripts/gridironBalance.ts` - Monte Carlo balance harness.
 - `scripts/gridironSmoke.tsx` - lightweight render smoke test.

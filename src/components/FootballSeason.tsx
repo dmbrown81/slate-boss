@@ -92,8 +92,13 @@ export default function FootballSeason({ onHome }: { onHome: () => void }) {
     setPhase('match');
   }
 
-  function handleWon(summary: { bombLanded: boolean; score: number }) {
-    const withBomb: FbRunState = { ...run, bombGames: run.bombGames + (summary.bombLanded ? 1 : 0) };
+  function handleWon(summary: { bombLanded: boolean; keeperLanded: boolean; takeawayGame: boolean; score: number }) {
+    const withBomb: FbRunState = {
+      ...run,
+      bombGames: run.bombGames + (summary.bombLanded ? 1 : 0),
+      keeperGames: run.keeperGames + (summary.keeperLanded ? 1 : 0),
+      takeawayGames: run.takeawayGames + (summary.takeawayGame ? 1 : 0),
+    };
     if (isChampionship(run.gameNumber)) {
       setRun({ ...withBomb, status: 'won' });
       setGamesWon(SEASON_GAMES);
@@ -184,6 +189,8 @@ export default function FootballSeason({ onHome }: { onHome: () => void }) {
       coordinators={run.coordinators}
       playbook={run.playbook}
       bombGames={run.bombGames}
+      keeperGames={run.keeperGames}
+      takeawayGames={run.takeawayGames}
       targets={targets}
       environment={env}
       bossScheme={scheme}

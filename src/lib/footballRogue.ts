@@ -82,7 +82,13 @@ export type FbConceptKey =
 // ── Coordinators (scaling "jokers") ─────────────────────────────────────────
 export type FbCoordinatorKey =
   | 'air_raid' | 'bell_cow' | 'salary_wizard'
-  | 'franchise_qb' | 'west_coast' | 'ball_hawk';
+  | 'franchise_qb' | 'west_coast' | 'ball_hawk'
+  // Mobile-QB lane (Volts): a within-game ramp, a season compounder, and the
+  // anti-volatility identity tool — the same two-tier+identity shape passing has.
+  | 'read_option' | 'improviser' | 'broken_play'
+  // Defense lane (Ghosts): the within-game ramp + season compounder it was missing
+  // (it previously had only the flat ball_hawk, while passing had air_raid + franchise_qb).
+  | 'pressure_chain' | 'takeaway_machine';
 
 export interface FbCoordinator {
   key: FbCoordinatorKey;
@@ -117,6 +123,26 @@ export const FB_COORDINATORS: Record<FbCoordinatorKey, FbCoordinator> = {
     key: 'ball_hawk', name: 'Ball-Hawk DC', channel: 'big_play', scaling: 'flat',
     description: 'Defensive plays (Sack, Takeaway, Pick Six) gain ×1.3 Big Play.',
   },
+  read_option: {
+    key: 'read_option', name: 'Read-Option Guru', channel: 'execution', scaling: 'within_game',
+    description: '+0.2 Execution on QB Keeper / Designed Run plays for every QB run you have already broken this match.',
+  },
+  improviser: {
+    key: 'improviser', name: 'The Improviser', channel: 'big_play', scaling: 'season',
+    description: '+0.18 Big Play on every play for each earlier game in which you landed a QB Keeper.',
+  },
+  broken_play: {
+    key: 'broken_play', name: 'Broken Play Artist', channel: 'base', scaling: 'flat',
+    description: 'A Busted Play that includes a QB run card is salvaged into a scramble: no penalty, +32 Base.',
+  },
+  pressure_chain: {
+    key: 'pressure_chain', name: 'Pressure Chain', channel: 'execution', scaling: 'within_game',
+    description: '+0.14 Execution on defensive plays for every defensive play you have already made this match.',
+  },
+  takeaway_machine: {
+    key: 'takeaway_machine', name: 'Takeaway Machine', channel: 'big_play', scaling: 'season',
+    description: '+0.05 Big Play on every play for each earlier game with 2+ takeaways (Sack / Takeaway / Pick Six).',
+  },
 };
 
 export const STARTER_COORDINATORS: FbCoordinatorKey[] = ['air_raid', 'bell_cow'];
@@ -128,15 +154,22 @@ export const MAX_COORDINATORS = 5;
 // spreading them stays flat. This is the early-flat → late-multiplicative pivot.
 export type FbPlaybook = Partial<Record<FbConceptKey, number>>; // concept -> level
 
-export const GAME_PLAN_STEP: Partial<Record<FbConceptKey, { base: number; exec: number }>> = {
+// Each Game Plan level adds flat base/exec. The optional `big` field adds a
+// per-level Big Play ramp — reserved for the non-passing lanes (ground / mobile /
+// defense), which are otherwise base+exec heavy and plateau against the geometric
+// curve. Passing concepts get no `big` here: they already scale multiplicatively
+// through Double-Stack / Shootout / Franchise QB, so they don't need the help.
+export const GAME_PLAN_STEP: Partial<Record<FbConceptKey, { base: number; exec: number; big?: number }>> = {
   double_stack_bomb: { base: 0, exec: 0.26 },
   stack_td: { base: 0, exec: 0.22 },
   shootout_stack: { base: 0, exec: 0.24 },
-  ground_pound: { base: 64, exec: 0.18 },
+  ground_pound: { base: 64, exec: 0.18, big: 0.05 },
+  qb_keeper: { base: 60, exec: 0.15, big: 0.09 },
   checkdown: { base: 30, exec: 0.12 },
   field_goal: { base: 58, exec: 0 },
   pick_six: { base: 0, exec: 0.3 },
-  takeaway: { base: 0, exec: 0.18 },
+  takeaway: { base: 0, exec: 0.22, big: 0.05 },
+  sack: { base: 24, exec: 0, big: 0.05 },
 };
 export const GAME_PLAN_COMMIT_XMULT = 0.16; // Big Play added per level beyond 1
 
@@ -226,9 +259,13 @@ export interface FbScoreContext {
   bossScheme?: FbBossSchemeKey;
   stacksThisMatch: number;                       // for Air Raid scaling
   groundBonusThisMatch: number;                  // accumulated Bell Cow base
+  qbRunsThisMatch?: number;                       // QB runs already broken (Read-Option ramp)
+  defPlaysThisMatch?: number;                     // defensive plays already made (Pressure Chain ramp)
   conceptCountsThisDrive: Partial<Record<FbConceptKey, number>>; // anti-spam
   playbook?: FbPlaybook;                          // run-level concept upgrades
   bombGames?: number;                            // earlier games with a Bomb (Franchise QB)
+  keeperGames?: number;                          // earlier games with a QB Keeper (Improviser)
+  takeawayGames?: number;                        // earlier games with 2+ takeaways (Takeaway Machine)
   driveIndex?: number;                           // 0-based drive; 2 = final drive (Clutch trait)
   championship?: boolean;                        // championship game (Clutch trait)
 }
@@ -342,8 +379,8 @@ function cardsForPlayer(t: PlayerTemplate): FbCard[] {
     case 'rushing_qb':
       out.push(
         makeCard(t, 'deep_pass', ceil * 1.3), makeCard(t, 'short_pass', proj * 2.0),
-        makeCard(t, 'short_pass', proj * 1.9), makeCard(t, 'scramble', ceil * 1.1),
-        makeCard(t, 'qb_sneak', 42),
+        makeCard(t, 'short_pass', proj * 1.9), makeCard(t, 'short_pass', proj * 1.7),
+        makeCard(t, 'scramble', ceil * 1.1), makeCard(t, 'scramble', ceil * 0.95), makeCard(t, 'qb_sneak', 46),
       );
       break;
     case 'workhorse_rb':
@@ -471,7 +508,7 @@ export const TEAM_PROFILES: Record<TeamArchetype, TeamDeckProfile> = {
     strengths: ['Stack TD / Double-Stack Bomb', 'Shootout correlation', 'Dome / Primetime spikes'],
     weaknesses: ['No-Fly Zone', 'Snow / Wind', 'Thin run game'],
     bestConcepts: ['double_stack_bomb', 'shootout_stack', 'stack_td'],
-    startingCoordinators: ['air_raid', 'west_coast'],
+    startingCoordinators: ['air_raid', 'franchise_qb'],
     perkLabel: 'Air Raid: checkdown catches cost 1 less (min 1) — keeps the underneath cheap.',
     bringBackCount: 1,
     extra: (deck) => cloneTop(deck, isPass, 2),
@@ -488,7 +525,9 @@ export const TEAM_PROFILES: Record<TeamArchetype, TeamDeckProfile> = {
     startingCoordinators: ['bell_cow', 'salary_wizard'],
     perkLabel: 'Ground Game: every run card costs 1 less (min 1).',
     bringBackCount: 1,
-    extra: (deck) => cloneTop(deck, isPowerRun, 3),
+    // Enough carries to run the ground game for three drives, plus a spare kicker
+    // so it can vary off the rock (anti-spam) without leaving the lane.
+    extra: (deck) => [...cloneTop(deck, isPowerRun, 4), ...kickerCards('STO').slice(0, 1)],
     discount: (c) => c.side === 'run',
   },
   mobile_qb: {
@@ -499,10 +538,18 @@ export const TEAM_PROFILES: Record<TeamArchetype, TeamDeckProfile> = {
     strengths: ['QB Keeper / Scramble', 'Improvises off bad hands', 'High variance upside'],
     weaknesses: ['Volatile draws', 'Awkward hands', 'Punished by takeaway bosses'],
     bestConcepts: ['qb_keeper', 'stack_td', 'designed_run'],
-    startingCoordinators: ['air_raid', 'bell_cow'],
+    // Start with the tools that make the deck's actual fantasy work: read the
+    // option, then rescue stranded QB-run hands instead of treating Volts like a
+    // worse passing deck.
+    startingCoordinators: ['read_option', 'broken_play'],
+    // Only one bring-back: the Volts deck already runs thin on QB-pass cards, so a
+    // second opp catch (usable only in a rare Shootout) was mostly dead weight
+    // that bloated hands into dead draws.
     perkLabel: 'Dual-Threat: QB run cards (scramble / sneak) cost 1 less (min 1).',
-    bringBackCount: 2,
-    extra: (deck) => cloneTop(deck, isQbRun, 2),
+    bringBackCount: 1,
+    // Enough QB-run cards that the keeper line shows up every drive (and pairs up
+    // for the Option Pitch), rather than being a rare off-hand wrinkle.
+    extra: (deck) => cloneTop(deck, isQbRun, 4),
     discount: (c) => isQbRun(c),
   },
   defensive_pressure: {
@@ -517,7 +564,8 @@ export const TEAM_PROFILES: Record<TeamArchetype, TeamDeckProfile> = {
     perkLabel: 'Lockdown: every defensive card costs 1 less (min 1).',
     bringBackCount: 1,
     // Ghosts' own DST can't take it to the house — borrow a risky unit so the
-    // Pick Six line exists, then deepen the defensive bench.
+    // Pick Six line exists, then deepen the bench enough to field defense every
+    // drive (a takeaway engine needs the cards to actually keep making splashes).
     extra: (deck) => [...dstCardsFor('VLT'), ...cloneTop(deck, isDefense, 2)],
     discount: (c) => isDefense(c),
   },
@@ -630,6 +678,9 @@ export function scoreFootballPlay(cards: FbCard[], ctx: FbScoreContext): FbPlayR
     concept = 'designed_run'; playName = 'Designed Run'; flavor = 'One carry, one read.';
   } else if (qbRuns.length > 0 && passCards.length === 0 && catches.length === 0) {
     concept = 'qb_keeper'; playName = 'QB Keeper'; flavor = 'The quarterback tucks and runs.';
+    execution += 0.45; ledger.push({ id: 'ex', kind: 'execution', stage: 'concept', channel: 'execution', operation: 'add', value: 0.45, label: 'QB Keeper', detail: 'Execution +0.45.' });
+    // Read off the option: a second QB run card breaks contain for a Big Play.
+    if (qbRuns.length >= 2) { bigPlay *= 1.35; ledger.push({ id: 'option', kind: 'big_play', stage: 'concept', channel: 'big_play', operation: 'multiply', value: 1.35, label: 'Option Pitch', detail: '2+ QB runs — Big Play ×1.35.' }); }
   } else if (kicks.length > 0 && cards.every((c) => c.side === 'kick')) {
     const fg = kicks.some((c) => c.action === 'field_goal');
     concept = fg ? 'field_goal' : 'extra_point'; playName = fg ? 'Field Goal' : 'Extra Point'; flavor = 'Reliable points on the board.';
@@ -663,6 +714,32 @@ export function scoreFootballPlay(cards: FbCard[], ctx: FbScoreContext): FbPlayR
     bigPlay *= mult;
     ledger.push({ id: 'fqb', kind: 'coordinator', stage: 'coordinator', channel: 'big_play', operation: 'multiply', value: mult, label: 'Franchise QB', detail: `Big Play ×${round2(mult)} (${bombGames} prior Bomb game${bombGames === 1 ? '' : 's'}).` });
   }
+  // Read-Option Guru: within-game Execution ramp on the QB run game (Air Raid analog).
+  if (co.has('read_option') && (concept === 'qb_keeper' || concept === 'designed_run') && (ctx.qbRunsThisMatch ?? 0) > 0) {
+    const add = round2(0.2 * (ctx.qbRunsThisMatch ?? 0));
+    execution += add;
+    ledger.push({ id: 'ro', kind: 'coordinator', stage: 'coordinator', channel: 'execution', operation: 'add', value: add, label: 'Read-Option Guru', detail: `+${add} Execution (scales with ${ctx.qbRunsThisMatch} prior QB run${(ctx.qbRunsThisMatch ?? 0) === 1 ? '' : 's'}).` });
+  }
+  // The Improviser: season-long Big Play compounder for the mobile QB (Franchise QB analog).
+  const keeperGames = ctx.keeperGames ?? 0;
+  if (co.has('improviser') && keeperGames > 0) {
+    const mult = 1 + 0.18 * keeperGames;
+    bigPlay *= mult;
+    ledger.push({ id: 'imp', kind: 'coordinator', stage: 'coordinator', channel: 'big_play', operation: 'multiply', value: mult, label: 'The Improviser', detail: `Big Play ×${round2(mult)} (${keeperGames} prior Keeper game${keeperGames === 1 ? '' : 's'}).` });
+  }
+  // Pressure Chain: within-game Execution ramp on defense (Air Raid analog).
+  if (co.has('pressure_chain') && defense.length > 0 && (ctx.defPlaysThisMatch ?? 0) > 0) {
+    const add = round2(0.14 * (ctx.defPlaysThisMatch ?? 0));
+    execution += add;
+    ledger.push({ id: 'pc', kind: 'coordinator', stage: 'coordinator', channel: 'execution', operation: 'add', value: add, label: 'Pressure Chain', detail: `+${add} Execution (scales with ${ctx.defPlaysThisMatch} prior defensive play${(ctx.defPlaysThisMatch ?? 0) === 1 ? '' : 's'}).` });
+  }
+  // Takeaway Machine: season-long Big Play compounder for defense (Franchise QB analog).
+  const takeawayGames = ctx.takeawayGames ?? 0;
+  if (co.has('takeaway_machine') && takeawayGames > 0) {
+    const mult = 1 + 0.05 * takeawayGames;
+    bigPlay *= mult;
+    ledger.push({ id: 'tm', kind: 'coordinator', stage: 'coordinator', channel: 'big_play', operation: 'multiply', value: mult, label: 'Takeaway Machine', detail: `Big Play ×${round2(mult)} (${takeawayGames} prior takeaway game${takeawayGames === 1 ? '' : 's'}).` });
+  }
 
   // ── Game Plan (leveled concept commitment) ──
   const lvl = ctx.playbook?.[concept] ?? 0;
@@ -670,13 +747,18 @@ export function scoreFootballPlay(cards: FbCard[], ctx: FbScoreContext): FbPlayR
   if (lvl > 0 && step && concept !== 'busted_play') {
     if (step.base) base += lvl * step.base;
     if (step.exec) execution += lvl * step.exec;
+    // Lane Big Play ramp (non-passing lanes): a multiplicative path so a committed
+    // ground / mobile / defense plan keeps pace with the late-season curve.
+    if (step.big) { const lm = round2(1 + lvl * step.big); bigPlay *= lm; }
     let detail = `${playName} Lv${lvl}`;
     if (lvl >= 2) {
       const xm = round2(1 + GAME_PLAN_COMMIT_XMULT * (lvl - 1));
       bigPlay *= xm;
       detail += ` — commit ×${xm} Big Play`;
+    } else if (step.big) {
+      detail += ` — ×${round2(1 + lvl * step.big)} Big Play`;
     }
-    ledger.push({ id: 'pb', kind: 'coordinator', stage: 'playbook', channel: lvl >= 2 ? 'big_play' : step.base ? 'base' : 'execution', operation: lvl >= 2 ? 'multiply' : 'add', value: lvl, label: `Game Plan Lv${lvl}`, detail });
+    ledger.push({ id: 'pb', kind: 'coordinator', stage: 'playbook', channel: lvl >= 2 || step.big ? 'big_play' : step.base ? 'base' : 'execution', operation: lvl >= 2 || step.big ? 'multiply' : 'add', value: lvl, label: `Game Plan Lv${lvl}`, detail });
   }
 
   // ── Player Traits (card modifiers) ──
@@ -691,9 +773,14 @@ export function scoreFootballPlay(cards: FbCard[], ctx: FbScoreContext): FbPlayR
     if (explosive > 0) { const m = round2(1 + 0.1 * explosive); bigPlay *= m; ledger.push({ id: 'explosive', kind: 'big_play', stage: 'cards', channel: 'big_play', operation: 'multiply', value: m, label: 'Explosive', detail: `Big Play ×${m} (${explosive} Explosive card${explosive === 1 ? '' : 's'}).` }); }
   }
 
-  // ── Busted play penalty (waived by a Reliable card) ──
+  // ── Busted play penalty (salvaged by Broken Play Artist or a Reliable card) ──
   if (concept === 'busted_play') {
-    if (cards.some((c) => c.modifier === 'reliable')) {
+    if (co.has('broken_play') && qbRuns.length > 0) {
+      // Broken Play Artist: turn a stranded QB-run draw into a positive scramble.
+      concept = 'designed_run'; playName = 'Scramble'; flavor = 'Broken play — the QB improvises a positive gain.';
+      base += 32;
+      ledger.push({ id: 'broken', kind: 'coordinator', stage: 'adjustment', channel: 'base', operation: 'add', value: 32, label: 'Broken Play Artist', detail: 'Salvaged into a scramble — no penalty, +32 Base.' });
+    } else if (cards.some((c) => c.modifier === 'reliable')) {
       ledger.push({ id: 'reliable', kind: 'coordinator', stage: 'adjustment', channel: 'big_play', operation: 'set', value: 1, label: 'Reliable', detail: 'A reliable player salvaged the play — no busted penalty.' });
     } else {
       bigPlay *= 0.5; ledger.push({ id: 'busted', kind: 'big_play', stage: 'adjustment', channel: 'big_play', operation: 'penalty', value: 0.5, label: 'No Concept', detail: 'Mismatched cards — Big Play ×0.5.' });
@@ -774,7 +861,7 @@ export function driveTargets(env: FbEnvironmentKey): number[] {
 }
 
 // ── Free-agent cards (for the reward shop) ──────────────────────────────────
-export type FreeAgentKey = 'deep_wr' | 'bell_rb' | 'shutdown_dst' | 'value_slot' | 'gunslinger';
+export type FreeAgentKey = 'deep_wr' | 'bell_rb' | 'shutdown_dst' | 'value_slot' | 'gunslinger' | 'scrambler';
 
 interface FreeAgentDef { name: string; team: string; position: FbPosition; action: FbActionType; value: number; cost: number; label: string; }
 
@@ -784,9 +871,10 @@ const FREE_AGENTS: Record<FreeAgentKey, FreeAgentDef> = {
   shutdown_dst: { name: 'Ironhawks D', team: 'IRN', position: 'DST', action: 'interception', value: 80, cost: 3, label: 'Interception' },
   value_slot: { name: 'R. Pike', team: 'IRN', position: 'WR', action: 'short_catch', value: 40, cost: 1, label: 'Quick Catch' },
   gunslinger: { name: 'A. Royce', team: 'IRN', position: 'QB', action: 'deep_pass', value: 70, cost: 3, label: 'Deep Ball' },
+  scrambler: { name: 'J. Knox', team: 'IRN', position: 'QB', action: 'scramble', value: 58, cost: 2, label: 'Scramble' },
 };
 
-export const FREE_AGENT_KEYS: FreeAgentKey[] = ['deep_wr', 'bell_rb', 'shutdown_dst', 'value_slot', 'gunslinger'];
+export const FREE_AGENT_KEYS: FreeAgentKey[] = ['deep_wr', 'bell_rb', 'shutdown_dst', 'value_slot', 'gunslinger', 'scrambler'];
 
 export function createFreeAgentCard(key: FreeAgentKey): FbCard {
   const d = FREE_AGENTS[key];
@@ -810,8 +898,11 @@ export const FB_CONCEPT_LABEL: Partial<Record<FbConceptKey, string>> = {
   shootout_stack: 'Shootout Stack',
   stack_td: 'Stack TD',
   ground_pound: 'Ground & Pound',
+  qb_keeper: 'QB Keeper',
+  designed_run: 'Designed Run',
   checkdown: 'Checkdown',
   field_goal: 'Field Goal',
   pick_six: 'Pick Six',
   takeaway: 'Takeaway',
+  sack: 'Sack',
 };

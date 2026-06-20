@@ -2,10 +2,12 @@ import type { FbRunState } from './footballRun';
 import { STARTING_FUNDS, type ShopCreditInfo } from './gridironEconomy';
 
 export const GRIDIRON_RUN_STORAGE_KEY = 'gridiron_run_v1';
-// v2 added Front Office Funds + card Player Traits. We still read v1 saves and
-// migrate them (backfill funds) so an in-progress season survives the upgrade.
-const STORAGE_VERSION = 2;
-const READABLE_VERSIONS = new Set([1, 2]);
+// v2 added Front Office Funds + card Player Traits. v3 added the season-long lane
+// counters (keeperGames / takeawayGames) for the mobile & defense compounders. We
+// still read older saves and migrate them (additive backfill) so an in-progress
+// season survives the upgrade.
+const STORAGE_VERSION = 3;
+const READABLE_VERSIONS = new Set([1, 2, 3]);
 
 export type GridironPersistedPhase = 'match' | 'reward';
 
@@ -49,6 +51,8 @@ function isPersistedRun(value: unknown): value is GridironPersistedRun {
 function migrate(persisted: GridironPersistedRun): GridironPersistedRun {
   const run = persisted.run;
   if (typeof run.funds !== 'number') run.funds = STARTING_FUNDS;
+  if (typeof run.keeperGames !== 'number') run.keeperGames = 0;
+  if (typeof run.takeawayGames !== 'number') run.takeawayGames = 0;
   return { ...persisted, version: STORAGE_VERSION, run };
 }
 

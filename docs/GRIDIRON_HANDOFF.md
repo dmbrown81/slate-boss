@@ -2,7 +2,7 @@
 
 > A self-contained packet for an outside designer, engineer, or AI model to review the game, audit the code, and give feedback. You can hand someone *just this file* and they'll understand where the project is and what to critique.
 
-_Last updated: 2026-06-20 · Branch: `codex/nfl-dfs-calibration` · Status: productized alpha with playable 5-game **season**, team-as-deck selection, save/resume, seeded run scaffolding, War Room economy, Player Traits, boss preview, NFL/DFS-derived calibration notes, Coach Debrief, and balance diagnostics._
+_Last updated: 2026-06-20 · Branch: `main` · Status: productized alpha with playable 5-game **season**, team-as-deck selection, save/resume, seeded run scaffolding, War Room economy, Player Traits, mobile/defense lane depth, boss preview, NFL/DFS-derived calibration notes, Coach Debrief, and balance diagnostics._
 
 ---
 
@@ -66,9 +66,11 @@ Every card has a **cap cost** (1–4, by the source player's salary tier; kick/d
 
 ### 4c. Scaling coordinators (the compounding engine)
 Coordinators are persistent buffs that **grow as you play** — the difference between a calculator and an engine. You start with 2 and can hire up to 5 via rewards. Examples:
-- **Air Raid Coordinator** — +0.2 Execution on stack plays for every stack you've *already* completed this match (within-game ramp).
-- **Bell Cow** — +8 Base per run card, and +6 *permanent* Base each Ground & Pound this match (within-game ramp).
-- **Franchise QB** — +0.15 Big Play on every play for each *earlier game* in which you landed a Bomb (**season-long ramp** — the compounding hook).
+- **Air Raid Coordinator** — +0.25 Execution on stack plays for every stack you've *already* completed this match (within-game ramp).
+- **Bell Cow** — +13 Base per run card, and +6 *permanent* Base each Ground & Pound this match (within-game ramp).
+- **Franchise QB** — +0.20 Big Play on every play for each *earlier game* in which you landed a Bomb (**season-long ramp**).
+- **Read-Option Guru / The Improviser / Broken Play Artist** — the Volts mobile-QB lane: within-game QB-run ramp, season-long keeper scaling, and busted-play rescue.
+- **Pressure Chain / Takeaway Machine** — the Ghosts defensive lane: within-game defensive pressure ramp and season-long takeaway scaling.
 - Plus West Coast Guru, Ball-Hawk DC, Salary Wizard in the reward pool.
 
 You can watch their values tick up on the scoreboard.
@@ -87,7 +89,7 @@ Targets escalate **~24% per game (geometric)** plus a Championship bump. Flat Ba
 
 **Weather:** each match rolls a weighted condition (Clear 45 / Dome 25 / Wind 12 / Snow 8 / Primetime 10) from the NFL/DFS calibration pass. Conditions shift the math — e.g. Snow punishes passing and rewards the ground game — but normal games are now much more common than bad-weather chaos.
 
-### 4f. Boss defenses (adaptation pressure)
+### 4g. Boss defenses (adaptation pressure)
 From Game 2 onward, each match shows an opposing defensive scheme on the scoreboard. These are the Boss Blind analogs: they counter a style without deleting it, forcing a supporting plan.
 
 - **No-Fly Zone** — deep stacks lose Big Play; short passing stays efficient.
@@ -103,16 +105,17 @@ Measured with the **permanent** harness — `npm run balance:gridiron` (`scripts
 
 | Reward policy | Champion | Per-game clear (G1→G5) |
 |---|---|---|
-| **Synergy** — commit to one Game Plan + feed it | **52.6%** | 97 · 88 · 81 · 75 · 53 |
-| Naive — grab coordinators, don't commit | 30.8% | 98 · 89 · 79 · 68 · 31 |
-| Random — any reward | 12.0% | 97 · 79 · 52 · 35 · 12 |
-| None — skip all rewards | 0.0% | 98 · 74 · 22 · 1 · 0 |
+| **Synergy** — commit to one Game Plan + feed it | **53.0%** | 98 · 88 · 80 · 74 · 53 |
+| Naive — grab coordinators, don't commit | 30.9% | 97 · 89 · 78 · 66 · 31 |
+| Random — any reward | 10.7% | 97 · 79 · 53 · 35 · 11 |
+| None — skip all rewards | 0.0% | 98 · 72 · 23 · 1 · 0 |
 
-- **Build gap (best − none): 52.6 pts ✅** — building is decisive.
-- **Reward gap (synergy − random): 40.7 pts ✅** — picking well clearly beats random.
-- **Commitment gap (synergy − naive): 21.8 pts** — *committing* to one Game Plan and stacking it beats grabbing pieces without a plan. This is the strategic spine.
-- **Per-team viability:** Ironhawks 52.6%, Blazers 52.3%, Stormers 55.0%, Volts 40.6%, Ghosts 39.1%; spread 15.9 pts 🟡, competitive teams 5/5 ✅, dead-draw losses 5.5% ✅.
-- **Economy:** smart-spend gap 40.7 pts ✅; greedy vs patient gap 4.4 pts ✅, so spend-now vs bank is a real decision.
+- **Build gap (best − none): 53.0 pts ✅** — building is decisive.
+- **Reward gap (synergy − random): 42.3 pts ✅** — picking well clearly beats random.
+- **Commitment gap (synergy − naive): 22.1 pts** — *committing* to one Game Plan and stacking it beats grabbing pieces without a plan. This is the strategic spine.
+- **Per-team viability:** Ironhawks 53.0%, Blazers 53.3%, Stormers 52.7%, Volts 51.5%, Ghosts 55.8%; spread 4.3 pts ✅, competitive teams 5/5 ✅, dead-draw losses 6.5% ✅.
+- **Per-lane commitment:** pass 48.3%, ground 47.7%, defense 58.8%, mobile 51.3%; spread 11.1 pts 🟡, all four lanes viable.
+- **Economy:** smart-spend gap 42.3 pts ✅; greedy vs patient gap 2.7 pts ✅, so spend-now vs bank is a real decision.
 
 History: the build started with smart ≈ random (~1-pt gap — meta-layer was noise). It was fixed in stages: lean-aware keystone rewards + a starter-deck ratio fix (catch-flood → reliable stacks), then the **game-theory pass** that added leveled **Game Plan** commitment and a **geometric** target curve. The latest pass added boss defenses, first-drive onboarding, build identity surfacing, reward impact projections, grouped hands, and staged scoring feedback. Tunables: `DRIVE_TARGET`/`DRIVE_BUDGET`, `GAME_PLAN_STEP`/`GAME_PLAN_COMMIT_XMULT`, `FB_BOSS_SCHEMES`, `cardsForPlayer`/`buildStarterDeck` (`footballRogue.ts`); `gameTargets` geometric scale + reward catalog/build helpers (`footballRun.ts`). **Keep the harness committed and re-run it on every balance change.**
 
@@ -121,8 +124,8 @@ History: the build started with smart ≈ random (~1-pt gap — meta-layer was n
 ## 6. Code map (what to audit)
 
 **Engine / run logic (pure, no React, no `Math.random` in scoring):**
-- `src/lib/footballRogue.ts` — card model, Player Traits, team deck factories (from `seedData.ts` fictional players), three-channel `scoreFootballPlay`, structured ledger metadata, coordinators, weighted environments, boss defenses, free-agent cards, tunables.
-- `src/lib/footballRun.ts` — season run state (`FbRunState`), seeded run helpers, `gameTargets` escalation, reward catalog + `generateRewards`, War Room reward hydration, build identity helpers, reward impact projections, Coach Debrief.
+- `src/lib/footballRogue.ts` — card model, Player Traits, team deck factories (from `seedData.ts` fictional players), three-channel `scoreFootballPlay`, structured ledger metadata, coordinators, mobile/defense lane hooks, weighted environments, boss defenses, free-agent cards, tunables.
+- `src/lib/footballRun.ts` — season run state (`FbRunState`), seeded run helpers, `gameTargets` escalation, reward catalog + `generateRewards`, lane-aware reward shelves, War Room reward hydration, build identity helpers, reward impact projections, Coach Debrief.
 - `src/lib/gridironCalibration.ts` — read-only calibration constants derived from the local `nfl_dfs` research folder; use them to tune fictional archetypes and match conditions, not to ship NFL content.
 - `src/lib/gridironEconomy.ts` — Front Office Funds, win purse, interest, reroll/skip economy, War Room purchase cap.
 - `src/lib/gridironStorage.ts` — versioned Gridiron save/resume state under `gridiron_run_v1`.
@@ -143,14 +146,14 @@ History: the build started with smart ≈ random (~1-pt gap — meta-layer was n
 
 ## 7. Roadmap
 
-**Done:** core match loop, three-channel scoring, Play Budget, scaling coordinators (incl. season-long Franchise QB), the **5-game season shell**, a **permanent balance harness**, the **skill-decisive rebalance**, the **game-theory pass** (leveled Game Plan + geometric targets), the **clarity/boss pass** — guided first drive, grouped hand, current build identity, reward impact projections, boss defensive schemes, and staged scoring feedback (§3–5) — plus **five team-as-deck identities**, seeded run scaffolding, save/resume, next-game boss/weather scout, War Room/Funds economy, Player Traits, weighted environment calibration, Coach Debrief, and a lightweight Gridiron smoke test.
+**Done:** core match loop, three-channel scoring, Play Budget, scaling coordinators (incl. season-long Franchise QB), the **5-game season shell**, a **permanent balance harness**, the **skill-decisive rebalance**, the **game-theory pass** (leveled Game Plan + geometric targets), the **clarity/boss pass** — guided first drive, grouped hand, current build identity, reward impact projections, boss defensive schemes, and staged scoring feedback (§3–5) — plus **five team-as-deck identities**, seeded run scaffolding, save/resume, next-game boss/weather scout, War Room/Funds economy, Player Traits, weighted environment calibration, mobile/defense lane depth, per-lane commitment diagnostics, Coach Debrief, and a lightweight Gridiron smoke test.
 
 > **Presentation idea on the table (not yet built):** push Gridiron as a landscape/tablet-first app for more screen real estate (coordinators + Game Plans + hand side-by-side). Worth prototyping once content (teams/bosses) lands; the current layout is mobile-portrait single-column.
 
 **Next, in order** (productized alpha, still design-flexible):
 1. **Film Tools** — one-use consumables, one slot, buyable in the War Room.
-2. **Coordinator ordering + containment** — resolve coordinators left-to-right, expose up/down controls, and make bigger concepts trigger contained concept effects where readable.
-3. **Calibration-backed archetype tuning** — use `docs/NFL_DFS_GRIDIRON_CALIBRATION.md` to deepen run/defense reward options without copying real players.
+2. **War Room clarity** — label reward cards by decision lane: Engine, Counter, Consistency, Value, Risk.
+3. **Coordinator ordering + containment** — resolve coordinators left-to-right, expose up/down controls, and make bigger concepts trigger contained concept effects where readable.
 4. **Daily challenge + stronger share strings** — the seed path exists; next step is a daily seed entry point and replayable summary.
 5. **More deck manipulation rewards** — copy/convert/cost-reduce/respec in small, readable doses.
 
@@ -160,7 +163,7 @@ Deferred: art/animation, accounts/backend, multiplayer, real-money, large conten
 
 ## 8. Open questions / things to challenge
 
-1. **Pacing:** skilled play wins ~40% of seasons after boss schemes (random ~13%, un-built ~0%). Is this too punishing for kids/testers, or a good roguelike baseline?
+1. **Pacing:** skilled play wins ~53% of seasons after boss schemes (random ~11%, un-built ~0%). Is this too punishing for kids/testers, or a good roguelike baseline?
 2. **Team identity feel:** five team decks are viable in the harness. Do players *feel* those identities strongly enough, especially Volts and Ghosts?
 3. **Play Budget vs. a separate currency:** we folded the cap into the play resource rather than adding a 4th scarce resource. Right call, or does a distinct wallet add depth?
 4. **Three channels on a small screen:** clarifying, or too much math at once for a casual player?
