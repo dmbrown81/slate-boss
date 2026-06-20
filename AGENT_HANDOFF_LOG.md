@@ -28,6 +28,35 @@ Blockers:
 - ...
 ```
 
+## 2026-06-20 - Claude Code - main (Gridiron: teams-as-decks + per-team diagnostic harness)
+
+Goal:
+- Act on the latest multi-model design package (Balatro paper + "Depth & Complexity v3"). Two competing packages in the doc; took v3's discipline — "skill is decisive but may be a single solved line; add skill axes + viable archetypes, not content" — and CUT the other package's regressions (per-quarter 10-Cap reset that would replace the working Play Budget; build-DELETING bosses). The convergent #1 slice (everyone agrees) = teams-as-decks, and v3's non-negotiable §2 (per-archetype win rate) is meaningless until different decks exist — so built BOTH in one slice: the content gives the diagnostic something real to measure.
+
+Changed:
+- `footballRogue.ts`: NEW team-as-decks system. `TeamArchetype` (balanced/air_raid/ground_game/mobile_qb/defensive_pressure), `TeamDeckProfile`, `TEAM_PROFILES` (5 teams built from the real `seedData.ts` rosters — IRN/BLZ/STO/VLT/GHO), `buildTeamDeck()` with archetype skew (clones on-scheme cards; Ghosts borrow a risky DST for the Pick Six line) + a cost-IDENTITY perk (−1 cap on matching cards, min 1). `buildStarterDeck()` now delegates to the balanced profile (back-compat, byte-identical Ironhawks deck). Rebalance: ground_pound Game Plan 48/0.05→64/0.18 + a 3-carry "Gash" ×1.25 (gives the ground line a ceiling); Bell Cow +8→+13/run; Takeaway +0.25→+0.30, Pick Six ×1.6→1.65 (defense viable but not dominant).
+- `footballRun.ts`: `FbRunState` gains `team`; `createRun(team='balanced')` pulls deck + starting coordinators from the profile. `buildIdentity` param narrowed to `Pick<…'deck'|'playbook'>`.
+- `scripts/gridironBalance.ts`: TWO new diagnostics (the v3 gate). ② PER-TEAM VIABILITY — each team piloted by the synergy policy; prints champion%/avgGW + loss-cause, then SPREAD / COMPETITIVE / DEAD-DRAW verdicts. Loss-cause attribution (`dead_draw` = hand never assembled a scoring play, executed===0; vs `underpowered`).
+- NEW `FootballTeamSelect.tsx` + wired as the opening phase of `FootballSeason` (select → match; New Season returns to select). Shows difficulty, strengths/weaknesses, cost perk, best concepts, coordinators, "START HERE" on Ironhawks.
+
+Validation (`npm run balance:gridiron -- 3000`):
+- ① DECISIVENESS (balanced baseline): BUILD GAP 44.5 ✅, REWARD GAP 29.9 ✅ (was 🟡 ~16-25 — rebalance pushed it green). "meta-layer is decisive."
+- ② PER-TEAM: champion IRN 45 / BLZ 38 / STO 35 / VLT 37 / GHO 33. SPREAD 11.7 ✅ (≤15), COMPETITIVE 5/5 ✅, DEAD-DRAW 5.3% ✅. "meta is multi-path, not solved." (First harness run exposed the trap immediately: Blazers 84% / Volts 62% runaway, Stormers 28%/Ghosts 22% — took 5 tuning rounds to compress.)
+- `npm run lint` ✅, `npm run build` ✅.
+
+Decisions:
+- Cost identity is baked at deck-build time (flat −1 on on-scheme cards), not a per-drive runtime perk — simpler, deterministic, no match-state plumbing. The "first card each drive costs −1" variant is a future refinement.
+- Kept Package A's good ideas (team-identity-via-cost-discount folded in here; Franchise Tag / Hall of Fame deferred as later meta flourishes).
+
+Next (the v3 sequence, now unblocked on a balanced multi-team base):
+- Slice A — coordinator ordering (drag/up-down, resolve left-to-right) + play-concept containment + staged reveal in coordinator order. v3 says cheapest big depth win; harness should report ordering-sensitivity ≥~20%.
+- Slice B — boss PREVIEW on the scout card → counter-drafting (add a `counter_aware` harness policy).
+- localStorage run persistence (now that runs carry a team).
+- Mobile QB still leans on stacks more than its own keeper line; a qb_keeper Game Plan step would deepen that identity if Volts ever feels samey.
+
+Blockers:
+- None. Visual check of FootballTeamSelect pending — verify via `npm run dev` (preview MCP still mis-resolves the `slate-boss && cd slate-boss` cwd).
+
 ## 2026-06-19 - Codex - main (Gridiron: onboarding + boss/readability pass)
 
 Goal:

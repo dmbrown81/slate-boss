@@ -2,16 +2,17 @@
 // A run is a season of games; clear them all to win the championship.
 
 import {
-  buildStarterDeck, driveTargets, createFreeAgentCard,
-  FB_COORDINATORS, STARTER_COORDINATORS, MAX_COORDINATORS, FB_CONCEPT_LABEL,
+  buildTeamDeck, driveTargets, createFreeAgentCard, TEAM_PROFILES,
+  FB_COORDINATORS, MAX_COORDINATORS, FB_CONCEPT_LABEL,
   scoreFootballPlay, shuffle,
-  type FbBossSchemeKey, type FbCard, type FbCoordinatorKey, type FbPlaybook, type FbEnvironmentKey, type FbConceptKey, type FreeAgentKey,
+  type FbBossSchemeKey, type FbCard, type FbCoordinatorKey, type FbPlaybook, type FbEnvironmentKey, type FbConceptKey, type FreeAgentKey, type TeamArchetype,
 } from './footballRogue';
 
 export const SEASON_GAMES = 5;
 
 export interface FbRunState {
   gameNumber: number;        // 1..SEASON_GAMES — the game you're about to play
+  team: TeamArchetype;       // which starting class this run was built from
   deck: FbCard[];
   coordinators: FbCoordinatorKey[];
   playbook: FbPlaybook;
@@ -19,11 +20,13 @@ export interface FbRunState {
   status: 'playing' | 'won' | 'lost';
 }
 
-export function createRun(): FbRunState {
+export function createRun(team: TeamArchetype = 'balanced'): FbRunState {
+  const profile = TEAM_PROFILES[team];
   return {
     gameNumber: 1,
-    deck: buildStarterDeck().cards,
-    coordinators: [...STARTER_COORDINATORS],
+    team,
+    deck: buildTeamDeck(team).cards,
+    coordinators: [...profile.startingCoordinators],
     playbook: {},
     bombGames: 0,
     status: 'playing',
@@ -184,7 +187,7 @@ export function topGamePlan(playbook: FbPlaybook): { concept: FbConceptKey; leve
   return { concept: top[0], level: top[1], label: FB_CONCEPT_LABEL[top[0]] ?? top[0] };
 }
 
-export function buildIdentity(run: FbRunState): { title: string; detail: string; concept: FbConceptKey | null; level: number; tag: string } {
+export function buildIdentity(run: Pick<FbRunState, 'deck' | 'playbook'>): { title: string; detail: string; concept: FbConceptKey | null; level: number; tag: string } {
   const top = topGamePlan(run.playbook);
   if (top) {
     const online = top.level >= 2 ? 'Big Play engine online' : 'flat scoring unlocked';

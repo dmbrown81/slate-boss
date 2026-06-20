@@ -8,15 +8,23 @@
 import {
   scoreFootballPlay, shuffle, randomBossScheme, randomEnvironment,
   DRIVE_BUDGET, DRIVES_PER_MATCH, HAND_SIZE, AUDIBLES_PER_DRIVE,
-  type FbBossSchemeKey, type FbCard, type FbConceptKey, type FbEnvironmentKey,
+  TEAM_ARCHETYPES, TEAM_PROFILES,
+  type FbBossSchemeKey, type FbCard, type FbConceptKey, type FbEnvironmentKey, type TeamArchetype,
 } from '../src/lib/footballRogue';
 import {
   createRun, gameTargets, generateRewards, isChampionship, SEASON_GAMES,
   type FbRunState, type Reward,
 } from '../src/lib/footballRun';
 
+// Loss-cause attribution (per the v3 stress-test spec): a lost drive is either a
+// dead_draw (the hand never assembled a scoring play, even after audibles) or
+// underpowered (plays were made but the engine fell short of the target). High
+// dead_draw% means losses feel like bad luck, not bad building — that's unfair,
+// not hard, and we fix it by tuning draw/ratios, not by lowering targets.
+type LossCause = 'dead_draw' | 'underpowered';
+
 // ── Tactical play: greedy value-per-credit, audible to seek a strong play ────
-interface GameResult { won: boolean; drive: number; bomb: boolean; score: number; concepts: Record<string, number>; }
+interface GameResult { won: boolean; drive: number; bomb: boolean; score: number; concepts: Record<string, number>; lossCause?: LossCause; }
 
 function playGame(run: FbRunState, targets: number[], environment: FbEnvironmentKey, bossScheme: FbBossSchemeKey): GameResult {
   let full = shuffle([...run.deck]);
@@ -24,7 +32,7 @@ function playGame(run: FbRunState, targets: number[], environment: FbEnvironment
   const concepts: Record<string, number> = {};
   for (let d = 0; d < DRIVES_PER_MATCH; d++) {
     let hand = full.slice(0, HAND_SIZE); let deck = full.slice(HAND_SIZE); let discard: FbCard[] = [];
-    let score = 0, budget = DRIVE_BUDGET[d], aud = AUDIBLES_PER_DRIVE;
+    let score = 0, budget = DRIVE_BUDGET[d], aud = AUDIBLES_PER_DRIVE, executed = 0;
     const counts: Partial<Record<FbConceptKey, number>> = {}; let guard = 0;
     while (score < targets[d] && guard++ < 60) {
       const combos: number[][] = [];
@@ -40,7 +48,7 @@ function playGame(run: FbRunState, targets: number[], environment: FbEnvironment
       }
       if ((!best || (best.total < 200 && aud > 0)) && aud > 0) { aud--; const pool = shuffle([...deck, ...discard]); hand = pool.slice(0, HAND_SIZE); deck = pool.slice(HAND_SIZE); discard = []; continue; }
       if (!best) break;
-      score += best.total; total += best.total; budget -= best.cost;
+      score += best.total; total += best.total; budget -= best.cost; executed++;
       counts[best.concept] = (counts[best.concept] ?? 0) + 1; concepts[best.concept] = (concepts[best.concept] ?? 0) + 1;
       if (best.concept.includes('stack')) stacks++;
       if (best.concept === 'ground_pound') ground += 6;
@@ -49,7 +57,14 @@ function playGame(run: FbRunState, targets: number[], environment: FbEnvironment
       while (hand.length < HAND_SIZE) { if (deck.length === 0) { if (!discard.length) break; deck = shuffle(discard); discard = []; } hand.push(deck.shift()!); }
       if (budget < Math.min(...hand.map((c) => c.cost), Infinity)) break;
     }
-    if (score < targets[d]) return { won: false, drive: d + 1, bomb, score: total, concepts };
+    if (score < targets[d]) {
+      // dead_draw = the hand never assembled a single scoring play (even after
+      // burning audibles); underpowered = plays were made but the engine fell
+      // short. The greedy pilot always plays its best available concept, so a
+      // dead_draw is genuine draw-screw, not stubbornness.
+      const lossCause: LossCause = executed === 0 ? 'dead_draw' : 'underpowered';
+      return { won: false, drive: d + 1, bomb, score: total, concepts, lossCause };
+    }
     full = shuffle([...deck, ...hand, ...discard]);
   }
   return { won: true, drive: 3, bomb, score: total, concepts };
@@ -112,15 +127,15 @@ function pickReward(rewards: Reward[], policy: RewardPolicy, run: FbRunState, ga
   return [...rewards].sort((a, b) => synergyScore(b, run, gameNumber) - synergyScore(a, run, gameNumber))[0];
 }
 
-interface SeasonOut { champion: boolean; gamesWon: number; perGame: number[]; }
-function playSeason(policy: RewardPolicy): SeasonOut {
-  let run = createRun();
+interface SeasonOut { champion: boolean; gamesWon: number; perGame: number[]; lossCause?: LossCause; }
+function playSeason(policy: RewardPolicy, team: TeamArchetype = 'balanced'): SeasonOut {
+  let run = createRun(team);
   const perGame = [0, 0, 0, 0, 0];
   for (let g = 1; g <= SEASON_GAMES; g++) {
     const environment = randomEnvironment();
     const bossScheme = randomBossScheme(g, isChampionship(g));
     const res = playGame(run, gameTargets(environment, g), environment, bossScheme);
-    if (!res.won) return { champion: false, gamesWon: g - 1, perGame };
+    if (!res.won) return { champion: false, gamesWon: g - 1, perGame, lossCause: res.lossCause };
     perGame[g - 1] = 1;
     run = { ...run, bombGames: run.bombGames + (res.bomb ? 1 : 0) };
     if (policy !== 'none' && !isChampionship(g)) run = pickReward(generateRewards(run), policy, run, g).apply(run);
@@ -130,10 +145,14 @@ function playSeason(policy: RewardPolicy): SeasonOut {
 
 // ── Run ──────────────────────────────────────────────────────────────────────
 const N = Number(process.argv[2] ?? 1500);
+const verdict = (g: number, hi: number, mid: number) => (g >= hi ? '✅' : g >= mid ? '🟡' : '❌');
+
+// ── (1) Decisiveness on the baseline (balanced) team: does building matter? ───
 const policies: RewardPolicy[] = ['synergy', 'naive', 'random', 'none'];
 const champ: Record<RewardPolicy, number> = { synergy: 0, naive: 0, random: 0, none: 0 };
 
-console.log(`\nGridiron balance — ${N} seasons per reward policy\n`);
+console.log(`\nGridiron balance — ${N} seasons per cell\n`);
+console.log('① DECISIVENESS (Ironhawks / balanced baseline)');
 console.log('policy   | champion | avgGamesWon | per-game clear (G1→G5)');
 console.log('---------|----------|-------------|------------------------');
 for (const p of policies) {
@@ -142,11 +161,40 @@ for (const p of policies) {
   champ[p] = (100 * wins) / N;
   console.log(`${p.padEnd(8)} | ${(100 * wins / N).toFixed(1).padStart(6)}%  | ${(gw / N).toFixed(2).padStart(10)}  | ${pg.map((x) => `${Math.round(100 * x / N)}%`.padStart(4)).join(' ')}`);
 }
-const rewardGap = champ.synergy - champ.random;       // does which reward you pick matter?
-const buildGap = Math.max(champ.synergy, champ.naive) - champ.none; // does building at all matter?
-const verdict = (g: number, hi: number, mid: number) => (g >= hi ? '✅' : g >= mid ? '🟡' : '❌');
-console.log('\n──────────────────────────────────────────────');
-console.log(`BUILD GAP   (best − no-rewards):     ${buildGap.toFixed(1)} pts  ${verdict(buildGap, 30, 18)}  — does building matter at all?`);
-console.log(`REWARD GAP  (synergy − random pick): ${rewardGap.toFixed(1)} pts  ${verdict(rewardGap, 25, 12)}  — does which reward you pick matter?`);
-console.log(buildGap >= 30 && rewardGap >= 12 ? '✅ the roguelike meta-layer is decisive' : '❌ meta-layer still too weak — keep tuning');
+const rewardGap = champ.synergy - champ.random;
+const buildGap = Math.max(champ.synergy, champ.naive) - champ.none;
+console.log(`\nBUILD GAP   (best − no-rewards):     ${buildGap.toFixed(1)} pts  ${verdict(buildGap, 30, 18)}`);
+console.log(`REWARD GAP  (synergy − random pick): ${rewardGap.toFixed(1)} pts  ${verdict(rewardGap, 25, 12)}`);
+console.log(buildGap >= 30 && rewardGap >= 12 ? '✅ the roguelike meta-layer is decisive' : '❌ meta-layer too weak');
+
+// ── (2) PER-TEAM VIABILITY: is the meta solved, or are ≥3 lines competitive? ──
+// Each team is piloted by a skilled (synergy) policy committing to its own deck.
+// Acceptance: champion-rate spread ≤ ~15 pts (no auto-win / dead team), and
+// dead_draw losses < ~10% (losses are about building, not bad luck).
+console.log('\n② PER-TEAM VIABILITY (skilled pilot, synergy rewards)');
+console.log('team        | arch     | diff   | champion | avgGW | deadDraw% of losses');
+console.log('------------|----------|--------|----------|-------|--------------------');
+const teamChamp: Record<TeamArchetype, number> = { balanced: 0, air_raid: 0, ground_game: 0, mobile_qb: 0, defensive_pressure: 0 };
+let globalLosses = 0, globalDead = 0;
+for (const team of TEAM_ARCHETYPES) {
+  const prof = TEAM_PROFILES[team];
+  let wins = 0, gw = 0, losses = 0, dead = 0;
+  for (let i = 0; i < N; i++) {
+    const s = playSeason('synergy', team);
+    if (s.champion) wins++; else { losses++; if (s.lossCause === 'dead_draw') dead++; }
+    gw += s.gamesWon;
+  }
+  teamChamp[team] = (100 * wins) / N;
+  globalLosses += losses; globalDead += dead;
+  const deadPct = losses ? (100 * dead) / losses : 0;
+  console.log(`${prof.displayName.padEnd(11)} | ${team.slice(0, 8).padEnd(8)} | ${prof.difficulty.padEnd(6)} | ${(100 * wins / N).toFixed(1).padStart(6)}%  | ${(gw / N).toFixed(2)} | ${deadPct.toFixed(1).padStart(5)}%`);
+}
+const champVals = TEAM_ARCHETYPES.map((t) => teamChamp[t]);
+const spread = Math.max(...champVals) - Math.min(...champVals);
+const competitive = champVals.filter((v) => v >= 25).length;       // teams that can realistically win
+const deadDrawPct = globalLosses ? (100 * globalDead) / globalLosses : 0;
+console.log(`\nSPREAD      (max − min champion):    ${spread.toFixed(1)} pts  ${verdict(40 - spread, 25, 15)}  (want ≤ ~15)`);
+console.log(`COMPETITIVE (teams ≥ 25% champion):  ${competitive} / 5    ${verdict(competitive, 4, 3)}  (want ≥ 3 viable lines)`);
+console.log(`DEAD-DRAW   (% of losses to bad draw): ${deadDrawPct.toFixed(1)}%  ${verdict(20 - deadDrawPct, 12, 5)}  (want < ~10%)`);
+console.log(spread <= 18 && competitive >= 3 && deadDrawPct < 12 ? '✅ the meta is multi-path, not solved' : '⚠️ rebalance: a team is dead/auto-win or losses are draw-screw');
 console.log('──────────────────────────────────────────────\n');

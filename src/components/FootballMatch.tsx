@@ -88,7 +88,7 @@ export default function FootballMatch(props: MatchProps) {
 
   const env = FB_ENVIRONMENTS[environment];
   const boss = FB_BOSS_SCHEMES[bossScheme];
-  const identity = useMemo(() => buildIdentity({ gameNumber, deck: runDeck, coordinators, playbook, bombGames, status: 'playing' }), [gameNumber, runDeck, coordinators, playbook, bombGames]);
+  const identity = useMemo(() => buildIdentity({ deck: runDeck, playbook }), [runDeck, playbook]);
   const target = targets[match.driveIndex];
   const remaining = Math.max(0, target - match.driveScore);
   const pct = Math.min(100, (match.driveScore / target) * 100);

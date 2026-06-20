@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { randomBossScheme, randomEnvironment, type FbBossSchemeKey, type FbEnvironmentKey } from '../lib/footballRogue';
+import { randomBossScheme, randomEnvironment, type FbBossSchemeKey, type FbEnvironmentKey, type TeamArchetype } from '../lib/footballRogue';
 import {
   createRun, gameTargets, generateRewards, isChampionship, SEASON_GAMES,
   type FbRunState, type Reward,
@@ -7,12 +7,13 @@ import {
 import FootballMatch from './FootballMatch';
 import FootballReward from './FootballReward';
 import FootballRunSummary from './FootballRunSummary';
+import FootballTeamSelect from './FootballTeamSelect';
 
-type Phase = 'match' | 'reward' | 'summary';
+type Phase = 'select' | 'match' | 'reward' | 'summary';
 
 export default function FootballSeason({ onHome }: { onHome: () => void }) {
   const [run, setRun] = useState<FbRunState>(() => createRun());
-  const [phase, setPhase] = useState<Phase>('match');
+  const [phase, setPhase] = useState<Phase>('select');
   const [env, setEnv] = useState<FbEnvironmentKey>(() => randomEnvironment());
   const [scheme, setScheme] = useState<FbBossSchemeKey>(() => randomBossScheme(1));
   const [rewards, setRewards] = useState<Reward[]>([]);
@@ -21,6 +22,17 @@ export default function FootballSeason({ onHome }: { onHome: () => void }) {
   const [lostDrive, setLostDrive] = useState(0);
 
   const targets = useMemo(() => gameTargets(env, run.gameNumber), [env, run.gameNumber]);
+
+  function startSeason(team: TeamArchetype) {
+    setRun(createRun(team));
+    setEnv(randomEnvironment());
+    setScheme(randomBossScheme(1));
+    setRewards([]);
+    setGamesWon(0);
+    setLostDrive(0);
+    setMatchInstance((n) => n + 1);
+    setPhase('match');
+  }
 
   function handleWon(summary: { bombLanded: boolean; score: number }) {
     const withBomb: FbRunState = { ...run, bombGames: run.bombGames + (summary.bombLanded ? 1 : 0) };
@@ -53,16 +65,12 @@ export default function FootballSeason({ onHome }: { onHome: () => void }) {
   }
 
   function newSeason() {
-    setRun(createRun());
-    setEnv(randomEnvironment());
-    setScheme(randomBossScheme(1));
-    setRewards([]);
-    setGamesWon(0);
-    setLostDrive(0);
-    setMatchInstance((n) => n + 1);
-    setPhase('match');
+    setPhase('select');
   }
 
+  if (phase === 'select') {
+    return <FootballTeamSelect onStart={startSeason} onHome={onHome} />;
+  }
   if (phase === 'summary') {
     return <FootballRunSummary won={run.status === 'won'} gamesWon={gamesWon} run={run} lostDrive={lostDrive} onNewSeason={newSeason} onHome={onHome} />;
   }

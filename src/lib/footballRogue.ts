@@ -73,7 +73,7 @@ export const FB_COORDINATORS: Record<FbCoordinatorKey, FbCoordinator> = {
   },
   bell_cow: {
     key: 'bell_cow', name: 'Bell Cow', channel: 'base', scaling: 'within_game',
-    description: '+8 Base per run card, and +6 permanent Base each time you call Ground & Pound this match.',
+    description: '+13 Base per run card, and +6 permanent Base each time you call Ground & Pound this match.',
   },
   salary_wizard: {
     key: 'salary_wizard', name: 'Salary Wizard', channel: 'base', scaling: 'flat',
@@ -106,7 +106,7 @@ export const GAME_PLAN_STEP: Partial<Record<FbConceptKey, { base: number; exec: 
   double_stack_bomb: { base: 0, exec: 0.26 },
   stack_td: { base: 0, exec: 0.22 },
   shootout_stack: { base: 0, exec: 0.24 },
-  ground_pound: { base: 48, exec: 0.05 },
+  ground_pound: { base: 64, exec: 0.18 },
   checkdown: { base: 30, exec: 0.12 },
   field_goal: { base: 58, exec: 0 },
   pick_six: { base: 0, exec: 0.3 },
@@ -359,19 +359,154 @@ function kickerCards(team: string): FbCard[] {
 
 export interface FbDeckInfo { teamId: string; teamName: string; opponentId: string; cards: FbCard[]; }
 
-export function buildStarterDeck(): FbDeckInfo {
-  const homeId = 'IRN';
-  const oppId = 'BLZ';
-  const home = PLAYER_TEMPLATES.filter((t) => t.team === homeId);
-  // A few opponent pass-catchers enable the occasional bring-back (Shootout
-  // Stack) — but only one card each, so they don't flood the deck with catches
-  // that can't form your own stacks.
-  const bringBack = PLAYER_TEMPLATES.filter((t) => t.team === oppId && (t.position === 'WR' || t.position === 'TE')).slice(0, 2);
-  const cards: FbCard[] = [];
+// ── Teams as Decks ──────────────────────────────────────────────────────────
+// A team is NOT a skin — it is a starting CLASS: a distinct deck composition, a
+// signature pair of starting coordinators, and a cost-identity perk that makes
+// the team's on-scheme plays cheaper (so an Air Raid can afford a Double-Stack a
+// Ground deck can't). Names are display-only data drawn from the seed roster, so
+// the whole system is license-agnostic. The five archetypes are deliberately
+// committable to DIFFERENT scoring lines — that is the variety the balance
+// harness now measures per-team (see scripts/gridironBalance.ts).
+export type TeamArchetype = 'balanced' | 'air_raid' | 'ground_game' | 'mobile_qb' | 'defensive_pressure';
+
+export interface TeamDeckProfile {
+  id: TeamArchetype;
+  teamId: string;            // seed roster to build the deck from
+  rivalId: string;           // bring-back source (Shootout correlation)
+  displayName: string;
+  shortName: string;
+  difficulty: 'Easy' | 'Medium' | 'Hard';
+  tagline: string;           // "Try this team if…"
+  description: string;
+  strengths: string[];
+  weaknesses: string[];
+  bestConcepts: FbConceptKey[];
+  startingCoordinators: FbCoordinatorKey[];
+  perkLabel: string;         // human text for the cost identity
+  firstRunRecommended?: boolean;
+  bringBackCount: number;
+  // archetype skew: extra cards appended to express identity (clones of the
+  // deck's best on-scheme cards, or a borrowed unit for a missing concept).
+  extra: (deck: FbCard[]) => FbCard[];
+  // cost identity: matching cards get −1 cap cost (min 1).
+  discount: ((c: FbCard) => boolean) | null;
+}
+
+const isPass = (c: FbCard) => c.side === 'pass';
+const isPowerRun = (c: FbCard) => c.action === 'power_run' || c.action === 'breakaway_run';
+const isQbRun = (c: FbCard) => c.action === 'scramble' || c.action === 'qb_sneak';
+const isDefense = (c: FbCard) => c.side === 'defense';
+
+function cloneCard(c: FbCard): FbCard {
+  cardCounter += 1;
+  return { ...c, id: `${c.id}-dup${cardCounter}` };
+}
+// Clone the top-n highest-value cards matching a predicate (archetype skew).
+function cloneTop(deck: FbCard[], pred: (c: FbCard) => boolean, n: number): FbCard[] {
+  return [...deck].filter(pred).sort((a, b) => b.value - a.value).slice(0, n).map(cloneCard);
+}
+// Borrow a defensive unit (for teams whose own roster lacks a Pick Six threat).
+function dstCardsFor(teamId: string): FbCard[] {
+  const t = PLAYER_TEMPLATES.find((p) => p.team === teamId && p.position === 'DST');
+  return t ? cardsForPlayer(t) : [];
+}
+
+export const TEAM_PROFILES: Record<TeamArchetype, TeamDeckProfile> = {
+  balanced: {
+    id: 'balanced', teamId: 'IRN', rivalId: 'BLZ',
+    displayName: 'Ironhawks', shortName: 'IRN', difficulty: 'Easy',
+    tagline: 'Try Ironhawks if you want a flexible deck with no sharp weakness.',
+    description: 'A complete pro roster — can pass, run, and defend. Lower ceiling, but it bends to whatever the run hands you and whatever boss you draw.',
+    strengths: ['Flexible', 'No dead matchups', 'Beginner-friendly'],
+    weaknesses: ['Lower ceiling — needs rewards to spike', 'Master of none'],
+    bestConcepts: ['stack_td', 'ground_pound', 'double_stack_bomb'],
+    startingCoordinators: ['air_raid', 'bell_cow'],
+    perkLabel: 'No cost perk — a balanced, complete deck.',
+    firstRunRecommended: true,
+    bringBackCount: 2,
+    extra: () => [],
+    discount: null,
+  },
+  air_raid: {
+    id: 'air_raid', teamId: 'BLZ', rivalId: 'STO',
+    displayName: 'Blazers', shortName: 'BLZ', difficulty: 'Medium',
+    tagline: 'Try Blazers if you want huge passing combos and do not mind weather risk.',
+    description: 'Air Raid — QB stacks and explosive shootouts. Biggest ceiling in the game, but No-Fly Zone and Snow punish you and the premium catchers are pricey.',
+    strengths: ['Stack TD / Double-Stack Bomb', 'Shootout correlation', 'Dome / Primetime spikes'],
+    weaknesses: ['No-Fly Zone', 'Snow / Wind', 'Thin run game'],
+    bestConcepts: ['double_stack_bomb', 'shootout_stack', 'stack_td'],
+    startingCoordinators: ['air_raid', 'west_coast'],
+    perkLabel: 'Air Raid: checkdown catches cost 1 less (min 1) — keeps the underneath cheap.',
+    bringBackCount: 1,
+    extra: (deck) => cloneTop(deck, isPass, 2),
+    discount: (c) => c.action === 'checkdown_catch',
+  },
+  ground_game: {
+    id: 'ground_game', teamId: 'STO', rivalId: 'RAV',
+    displayName: 'Stormers', shortName: 'STO', difficulty: 'Easy',
+    tagline: 'Try Stormers if you like a steady engine that ignores the weather.',
+    description: 'Ground Game — pound the rock with a cheap, high-floor base. Weather-proof and consistent, but the Big Play ceiling is low until you find multiplicative help.',
+    strengths: ['Ground & Pound', 'High floor', 'Snow-proof'],
+    weaknesses: ['Low Big Play ceiling', 'Stacked Box without play-action'],
+    bestConcepts: ['ground_pound', 'field_goal', 'checkdown'],
+    startingCoordinators: ['bell_cow', 'salary_wizard'],
+    perkLabel: 'Ground Game: every run card costs 1 less (min 1).',
+    bringBackCount: 1,
+    extra: (deck) => cloneTop(deck, isPowerRun, 3),
+    discount: (c) => c.side === 'run',
+  },
+  mobile_qb: {
+    id: 'mobile_qb', teamId: 'VLT', rivalId: 'GHO',
+    displayName: 'Volts', shortName: 'VLT', difficulty: 'Hard',
+    tagline: 'Try Volts if you want a swingy, improvisational deck for expert play.',
+    description: 'Mobile QB Chaos — scrambles, keepers, and busted-play rescue. Big upside off the read, but volatile draws and Turnover Drill can leave you stranded.',
+    strengths: ['QB Keeper / Scramble', 'Improvises off bad hands', 'High variance upside'],
+    weaknesses: ['Volatile draws', 'Awkward hands', 'Punished by takeaway bosses'],
+    bestConcepts: ['qb_keeper', 'stack_td', 'designed_run'],
+    startingCoordinators: ['air_raid', 'bell_cow'],
+    perkLabel: 'Dual-Threat: QB run cards (scramble / sneak) cost 1 less (min 1).',
+    bringBackCount: 2,
+    extra: (deck) => cloneTop(deck, isQbRun, 2),
+    discount: (c) => isQbRun(c),
+  },
+  defensive_pressure: {
+    id: 'defensive_pressure', teamId: 'GHO', rivalId: 'VLT',
+    displayName: 'Ghosts', shortName: 'GHO', difficulty: 'Medium',
+    tagline: 'Try Ghosts if you want to win on takeaways instead of offense.',
+    description: 'Defensive Pressure — sacks, takeaways, and Pick Six spikes off cheap defensive cards. A non-offensive archetype; the offense can stall, and Turnover Drill hurts.',
+    strengths: ['Takeaway / Pick Six', 'Cheap defensive engine', 'Field-position scoring'],
+    weaknesses: ['Offense can stall', 'Turnover Drill', 'Needs a stabilizer plan'],
+    bestConcepts: ['pick_six', 'takeaway', 'sack'],
+    startingCoordinators: ['ball_hawk', 'salary_wizard'],
+    perkLabel: 'Lockdown: every defensive card costs 1 less (min 1).',
+    bringBackCount: 1,
+    // Ghosts' own DST can't take it to the house — borrow a risky unit so the
+    // Pick Six line exists, then deepen the defensive bench.
+    extra: (deck) => [...dstCardsFor('VLT'), ...cloneTop(deck, isDefense, 2)],
+    discount: (c) => isDefense(c),
+  },
+};
+
+export const TEAM_ARCHETYPES: TeamArchetype[] = ['balanced', 'air_raid', 'ground_game', 'mobile_qb', 'defensive_pressure'];
+
+export function buildTeamDeck(archetype: TeamArchetype): FbDeckInfo {
+  const p = TEAM_PROFILES[archetype];
+  const home = PLAYER_TEMPLATES.filter((t) => t.team === p.teamId);
+  // A few rival pass-catchers enable the occasional bring-back (Shootout Stack) —
+  // one card each, so they don't flood the deck with catches that can't stack.
+  const bringBack = PLAYER_TEMPLATES.filter((t) => t.team === p.rivalId && (t.position === 'WR' || t.position === 'TE')).slice(0, p.bringBackCount);
+  let cards: FbCard[] = [];
   home.forEach((t) => cards.push(...cardsForPlayer(t)));
   bringBack.forEach((t) => cards.push(...cardsForPlayer(t).slice(0, 1)));
-  cards.push(...kickerCards(homeId));
-  return { teamId: homeId, teamName: 'Ironhawks', opponentId: oppId, cards };
+  cards.push(...kickerCards(p.teamId));
+  cards.push(...p.extra(cards));
+  if (p.discount) cards = cards.map((c) => (p.discount!(c) ? { ...c, cost: Math.max(1, c.cost - 1) } : c));
+  return { teamId: p.teamId, teamName: p.displayName, opponentId: p.rivalId, cards };
+}
+
+// Back-compat: the original single starter deck is the balanced (Ironhawks) team.
+export function buildStarterDeck(): FbDeckInfo {
+  return buildTeamDeck('balanced');
 }
 
 // ── Play scoring (three channels) ───────────────────────────────────────────
@@ -411,10 +546,10 @@ export function scoreFootballPlay(cards: FbCard[], ctx: FbScoreContext): FbPlayR
   if (defense.length > 0) {
     if (defense.some((c) => c.action === 'return_td')) {
       concept = 'pick_six'; playName = 'Pick Six'; flavor = 'Defense takes it to the house.';
-      bigPlay *= 1.6; ledger.push({ id: 'bp', kind: 'big_play', label: 'Pick Six', detail: 'Return touchdown — Big Play ×1.6.' });
+      bigPlay *= 1.65; ledger.push({ id: 'bp', kind: 'big_play', label: 'Pick Six', detail: 'Return touchdown — Big Play ×1.65.' });
     } else if (defense.some((c) => c.action === 'interception')) {
       concept = 'takeaway'; playName = 'Takeaway'; flavor = 'A turnover flips the field.';
-      execution += 0.25; ledger.push({ id: 'ex', kind: 'execution', label: 'Takeaway', detail: 'Interception — Execution +0.25.' });
+      execution += 0.3; ledger.push({ id: 'ex', kind: 'execution', label: 'Takeaway', detail: 'Interception — Execution +0.30.' });
     } else {
       concept = 'sack'; playName = 'Sack'; flavor = 'Get to the quarterback.';
     }
@@ -440,6 +575,8 @@ export function scoreFootballPlay(cards: FbCard[], ctx: FbScoreContext): FbPlayR
   } else if (runs.length >= 2) {
     concept = 'ground_pound'; playName = 'Ground & Pound'; flavor = 'Pound the rock — high floor.';
     execution += 0.4; ledger.push({ id: 'ex', kind: 'execution', label: 'Ground & Pound', detail: 'Execution +0.4.' });
+    // The ground game's one path to a Big Play: stack three carries and one breaks.
+    if (runs.length >= 3) { bigPlay *= 1.25; ledger.push({ id: 'gash', kind: 'big_play', label: 'Gash', detail: '3+ carries — one breaks for Big Play ×1.25.' }); }
   } else if (runs.length === 1) {
     concept = 'designed_run'; playName = 'Designed Run'; flavor = 'One carry, one read.';
   } else if (qbRuns.length > 0 && passCards.length === 0 && catches.length === 0) {
@@ -451,7 +588,7 @@ export function scoreFootballPlay(cards: FbCard[], ctx: FbScoreContext): FbPlayR
 
   // ── Coordinators ──
   if (co.has('bell_cow')) {
-    if (runs.length > 0) { const add = runs.length * 8; base += add; ledger.push({ id: 'bc-run', kind: 'coordinator', label: 'Bell Cow', detail: `+${add} Base from run cards.` }); }
+    if (runs.length > 0) { const add = runs.length * 13; base += add; ledger.push({ id: 'bc-run', kind: 'coordinator', label: 'Bell Cow', detail: `+${add} Base from run cards.` }); }
     if (ctx.groundBonusThisMatch > 0) { base += ctx.groundBonusThisMatch; ledger.push({ id: 'bc-acc', kind: 'coordinator', label: 'Bell Cow (built up)', detail: `+${ctx.groundBonusThisMatch} accumulated ground Base.` }); }
   }
   if (co.has('salary_wizard')) {
