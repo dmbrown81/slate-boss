@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { randomBossScheme, randomEnvironment, type FbBossSchemeKey, type FbEnvironmentKey, type TeamArchetype } from '../lib/footballRogue';
 import {
-  createRun, gameTargets, generateRewards, isChampionship, runRng, SEASON_GAMES,
+  createRun, gameTargets, generateRewards, isChampionship, rewardFromId, runRng, SEASON_GAMES,
   type FbRunState, type Reward,
 } from '../lib/footballRun';
-import { rerollCost, shopCredit, SKIP_REWARD, type ShopCreditInfo } from '../lib/gridironEconomy';
+import { MAX_WAR_ROOM_PURCHASES, rerollCost, shopCredit, SKIP_REWARD, type ShopCreditInfo } from '../lib/gridironEconomy';
 import { clearGridironRun, loadGridironRun, saveGridironRun } from '../lib/gridironStorage';
 import FootballMatch from './FootballMatch';
 import FootballReward from './FootballReward';
@@ -24,17 +24,28 @@ function rewardsFor(run: FbRunState, rerolls = 0): Reward[] {
   return generateRewards(run, runRng(run, `rewards:${rerolls}`));
 }
 
+function hydrateRewards(run: FbRunState, rewardIds: string[] | undefined, rerolls: number): Reward[] {
+  if (!rewardIds) return rewardsFor(run, rerolls);
+  return rewardIds
+    .map((id) => rewardFromId(id, run))
+    .filter((reward): reward is Reward => Boolean(reward));
+}
+
 export default function FootballSeason({ onHome }: { onHome: () => void }) {
   const [initial] = useState(() => {
     const saved = loadGridironRun();
     const run = saved?.run ?? createRun();
     const setup = gameSetup(run);
+    const rerolls = saved?.warRoom?.rerolls ?? 0;
     return {
       phase: (saved?.phase ?? 'select') as Phase,
       run,
       env: setup.env,
       scheme: setup.scheme,
-      rewards: saved?.phase === 'reward' ? rewardsFor(run, 0) : [],
+      rewards: saved?.phase === 'reward' ? hydrateRewards(run, saved.warRoom?.rewardIds, rerolls) : [],
+      rerolls,
+      purchases: saved?.warRoom?.purchases ?? 0,
+      creditInfo: saved?.warRoom?.creditInfo ?? null,
     };
   });
   const [run, setRun] = useState<FbRunState>(initial.run);
@@ -42,9 +53,9 @@ export default function FootballSeason({ onHome }: { onHome: () => void }) {
   const [env, setEnv] = useState<FbEnvironmentKey>(initial.env);
   const [scheme, setScheme] = useState<FbBossSchemeKey>(initial.scheme);
   const [rewards, setRewards] = useState<Reward[]>(initial.rewards);
-  const [rerolls, setRerolls] = useState(0);
-  const [purchases, setPurchases] = useState(0);
-  const [creditInfo, setCreditInfo] = useState<ShopCreditInfo | null>(null);
+  const [rerolls, setRerolls] = useState(initial.rerolls);
+  const [purchases, setPurchases] = useState(initial.purchases);
+  const [creditInfo, setCreditInfo] = useState<ShopCreditInfo | null>(initial.creditInfo);
   const [matchInstance, setMatchInstance] = useState(0);
   const [gamesWon, setGamesWon] = useState(0);
   const [lostDrive, setLostDrive] = useState(0);
@@ -53,9 +64,17 @@ export default function FootballSeason({ onHome }: { onHome: () => void }) {
   const rewardScout = useMemo(() => gameSetup({ ...run, gameNumber: run.gameNumber + 1 }), [run]);
 
   useEffect(() => {
-    if (phase === 'match' || phase === 'reward') saveGridironRun(phase, run);
+    if (phase === 'match') saveGridironRun(phase, run);
+    if (phase === 'reward') {
+      saveGridironRun(phase, run, {
+        rewardIds: rewards.map((reward) => reward.id),
+        rerolls,
+        purchases,
+        creditInfo,
+      });
+    }
     if (phase === 'summary') clearGridironRun();
-  }, [phase, run]);
+  }, [phase, run, rewards, rerolls, purchases, creditInfo]);
 
   function startSeason(team: TeamArchetype) {
     const nextRun = createRun(team);
@@ -92,8 +111,9 @@ export default function FootballSeason({ onHome }: { onHome: () => void }) {
     }
   }
 
-  // War Room: buy as many affordable rewards as you like; each leaves the shelf.
+  // War Room: buy one reward, optionally a second; each leaves the shelf.
   function handleBuy(reward: Reward) {
+    if (purchases >= MAX_WAR_ROOM_PURCHASES) return;
     if (run.funds < reward.cost) return;
     const applied = reward.apply({ ...run, funds: run.funds - reward.cost });
     setRun(applied);

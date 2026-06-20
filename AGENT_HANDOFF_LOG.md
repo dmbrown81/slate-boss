@@ -28,6 +28,39 @@ Blockers:
 - ...
 ```
 
+## 2026-06-20 - Codex - gridiron/complete-vehicle-economy-warroom-traits
+
+Goal:
+- Verify Claude's complete-vehicle branch against `game design 4.md`, fix any release-blocking test issues, and prepare it for GitHub testing.
+
+Changed:
+- War Room persistence now saves and restores shelf reward ids, reroll count, purchase count, and credit info. This prevents refresh exploits where bought items could reappear or skip bonuses could be granted after purchases.
+- Added `rewardFromId()` in `footballRun.ts` so persisted War Room shelves hydrate back into real clickable rewards after reload.
+- Added `MAX_WAR_ROOM_PURCHASES = 2` to match the design intent: buy one reward, optionally a second. UI now communicates the purchase limit; harness uses the same cap.
+- `Salary Wizard` now uses effective `cardCost()` so Discounted cards count consistently as value cards.
+- Tuned `gameTargets()` geometric escalation from 20% to 24% per game after the new economy/traits layer pushed smart champion rate too high.
+
+Validation:
+- `npm run lint` ✅
+- `npm run build` ✅
+- `npm run smoke:gridiron` ✅
+- `npm run balance:gridiron -- 3000` ✅
+  - Synergy 47.4%, naive 24.1%, random 8.3%, none 0.0%; build gap 47.4 pts ✅, reward gap 39.1 pts ✅.
+  - Per-team champion: Ironhawks 47.4 / Blazers 45.2 / Stormers 40.0 / Volts 37.7 / Ghosts 35.8.
+  - Spread 11.6 pts ✅, competitive 5/5 ✅, dead-draw 5.7% ✅.
+  - Smart-spend gap 39.1 pts ✅; greedy vs patient gap 3.3 pts ✅.
+
+Decisions:
+- Kept Front Office Funds + War Room + Player Traits as the scope of this slice. Film Tools, coordinator ordering, concept containment, vouchers/packs, and daily challenge remain next slices.
+- Random policy is slightly below the long-term 10-20% target at 8.3%; acceptable for this alpha branch because smart play, team viability, and economy gates are all green, but watch it during playtests.
+
+Next:
+- Visual/manual test of the War Room loop.
+- Film Tools + coordinator ordering are the next highest-value vehicle systems.
+
+Blockers:
+- None.
+
 ## 2026-06-20 - Claude Code - main (Gridiron: the Vehicle — Funds economy + War Room + Player Traits)
 
 Goal:

@@ -15,7 +15,7 @@ import {
   createRun, gameTargets, generateRewards, isChampionship, SEASON_GAMES,
   type FbRunState, type Reward,
 } from '../src/lib/footballRun';
-import { shopCredit } from '../src/lib/gridironEconomy';
+import { MAX_WAR_ROOM_PURCHASES, shopCredit } from '../src/lib/gridironEconomy';
 import { mulberry32, stringSeed, type RNG } from '../src/lib/rng';
 
 // Loss-cause attribution (per the v3 stress-test spec): a lost drive is either a
@@ -135,7 +135,7 @@ function runShop(run: FbRunState, policy: RewardPolicy, gameNumber: number, rng:
   if (policy === 'none') return { run, spent: 0 };
   let r = run; let spent = 0;
   let shelf = generateRewards(r, rng);
-  for (let i = 0; i < 16; i++) {
+  for (let i = 0; i < MAX_WAR_ROOM_PURCHASES; i++) {
     const affordable = shelf.filter((rw) => rw.cost <= r.funds);
     if (affordable.length === 0) break;
     let pick: Reward | undefined;

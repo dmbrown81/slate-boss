@@ -1,5 +1,5 @@
 import type { FbRunState } from './footballRun';
-import { STARTING_FUNDS } from './gridironEconomy';
+import { STARTING_FUNDS, type ShopCreditInfo } from './gridironEconomy';
 
 export const GRIDIRON_RUN_STORAGE_KEY = 'gridiron_run_v1';
 // v2 added Front Office Funds + card Player Traits. We still read v1 saves and
@@ -9,11 +9,19 @@ const READABLE_VERSIONS = new Set([1, 2]);
 
 export type GridironPersistedPhase = 'match' | 'reward';
 
+export interface GridironWarRoomSave {
+  rewardIds: string[];
+  rerolls: number;
+  purchases: number;
+  creditInfo: ShopCreditInfo | null;
+}
+
 export interface GridironPersistedRun {
   version: number;
   savedAt: string;
   phase: GridironPersistedPhase;
   run: FbRunState;
+  warRoom?: GridironWarRoomSave;
 }
 
 function canUseStorage(): boolean {
@@ -56,7 +64,7 @@ export function loadGridironRun(): GridironPersistedRun | null {
   }
 }
 
-export function saveGridironRun(phase: GridironPersistedPhase, run: FbRunState): void {
+export function saveGridironRun(phase: GridironPersistedPhase, run: FbRunState, warRoom?: GridironWarRoomSave): void {
   try {
     if (!canUseStorage() || run.status !== 'playing') return;
     const payload: GridironPersistedRun = {
@@ -64,6 +72,7 @@ export function saveGridironRun(phase: GridironPersistedPhase, run: FbRunState):
       savedAt: new Date().toISOString(),
       phase,
       run,
+      ...(phase === 'reward' && warRoom ? { warRoom } : {}),
     };
     localStorage.setItem(GRIDIRON_RUN_STORAGE_KEY, JSON.stringify(payload));
   } catch {

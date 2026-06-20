@@ -36,7 +36,7 @@ Gridiron is moving into productized alpha. The foundation now includes:
 - five team-as-deck starting identities
 - seeded season state for weather, bosses, rewards, and match draws
 - a **Front Office Funds economy** (win purse + banked interest) — the between-game transmission
-- the **War Room** shop: priced rewards, buy-what-you-can-afford, reroll, and skip-for-funds
+- the **War Room** shop: priced rewards, buy up to two, reroll, and skip-for-funds
 - **Player Traits** (card modifiers: Reliable, Explosive, Discounted, Clutch, Protected, Hot Route), bought via Training rewards and wired into the scoring ledger
 - versioned localStorage save/resume under `gridiron_run_v1` (save format v2, migrates v1)
 - boss preview during War Room reward selection

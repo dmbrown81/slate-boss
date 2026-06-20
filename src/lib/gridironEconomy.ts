@@ -21,6 +21,7 @@ export const INTEREST_CAP = 3;   // …capped so hoarding never snowballs out of
 export const SKIP_REWARD = 2;    // bank this many Funds for taking nothing.
 export const REROLL_BASE = 2;    // first reroll in a shop…
 export const REROLL_STEP = 1;    // …+1 each additional reroll.
+export const MAX_WAR_ROOM_PURCHASES = 2; // buy one reward, optionally a second.
 
 // What the War Room shows the player when they walk in after a win.
 export interface ShopCreditInfo { purse: number; interest: number; total: number; gameCleared: number }

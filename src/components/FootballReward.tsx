@@ -4,7 +4,7 @@ import {
   type FbBossSchemeKey, type FbEnvironmentKey,
 } from '../lib/footballRogue';
 import { buildIdentity, deckValueSummary, rewardFitLabel, rewardImpact, SEASON_GAMES, type FbRunState, type Reward } from '../lib/footballRun';
-import type { ShopCreditInfo } from '../lib/gridironEconomy';
+import { MAX_WAR_ROOM_PURCHASES, type ShopCreditInfo } from '../lib/gridironEconomy';
 
 interface Props {
   run: FbRunState;
@@ -30,6 +30,7 @@ export default function FootballReward({ run, rewards, creditInfo, rerollCost, p
   const nextBoss = FB_BOSS_SCHEMES[nextBossScheme];
   const nextEnv = FB_ENVIRONMENTS[nextEnvironment];
   const canReroll = run.funds >= rerollCost && rewards.length > 0;
+  const purchaseLimitReached = purchases >= MAX_WAR_ROOM_PURCHASES;
   const trained = run.deck.filter((c) => c.modifier);
 
   return (
@@ -45,7 +46,7 @@ export default function FootballReward({ run, rewards, creditInfo, rerollCost, p
         </div>
       </div>
       <div style={{ fontSize: 12, color: FB.textDim, marginTop: 6 }}>
-        Spend before {nextGame >= SEASON_GAMES ? 'the Championship' : `Game ${nextGame}`} — the target rises. Buy what you can afford, reroll, or bank for later.
+        Spend before {nextGame >= SEASON_GAMES ? 'the Championship' : `Game ${nextGame}`} — the target rises. Buy up to {MAX_WAR_ROOM_PURCHASES}, reroll, or bank for later.
         {creditInfo && (
           <span style={{ color: FB.green }}>{' '}+${creditInfo.purse} purse{creditInfo.interest > 0 ? ` + $${creditInfo.interest} interest` : ''}.</span>
         )}
@@ -84,6 +85,11 @@ export default function FootballReward({ run, rewards, creditInfo, rerollCost, p
           ↻ Reroll · ${rerollCost}
         </button>
       </div>
+      {purchaseLimitReached && (
+        <div style={{ fontSize: 11, color: FB.gold, margin: '-2px 2px 8px' }}>
+          War Room limit reached. Head to the next game or keep your remaining Funds.
+        </div>
+      )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {rewards.length === 0 && (
@@ -92,7 +98,7 @@ export default function FootballReward({ run, rewards, creditInfo, rerollCost, p
           </div>
         )}
         {rewards.map((rw) => {
-          const affordable = run.funds >= rw.cost;
+          const affordable = run.funds >= rw.cost && !purchaseLimitReached;
           return (
             <button
               key={rw.id}

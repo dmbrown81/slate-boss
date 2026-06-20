@@ -5,6 +5,7 @@ import {
   buildTeamDeck, driveTargets, createFreeAgentCard, TEAM_PROFILES,
   FB_COORDINATORS, MAX_COORDINATORS, FB_CONCEPT_LABEL, FB_CARD_MODIFIERS,
   scoreFootballPlay, shuffle,
+  FREE_AGENT_KEYS,
   type FbBossSchemeKey, type FbCard, type FbCardModifier, type FbCoordinatorKey, type FbPlaybook, type FbEnvironmentKey, type FbConceptKey, type FreeAgentKey, type TeamArchetype,
 } from './footballRogue';
 import { STARTING_FUNDS } from './gridironEconomy';
@@ -55,10 +56,10 @@ export function isChampionship(gameNumber: number): boolean {
 export function gameTargets(env: FbEnvironmentKey, gameNumber: number): number[] {
   const base = driveTargets(env);
   const champ = isChampionship(gameNumber) ? 1.32 : 1;
-  // GEOMETRIC escalation (Balatro-style): targets compound ~20%/game, so flat
+  // GEOMETRIC escalation (Balatro-style): targets compound ~24%/game, so flat
   // Base/Execution plateaus and a committed multiplicative engine is REQUIRED to
   // keep pace late. This is the early-flat → late-multiplicative power curve.
-  const scale = Math.pow(1.2, gameNumber - 1) * champ;
+  const scale = Math.pow(1.24, gameNumber - 1) * champ;
   return base.map((t) => Math.round(t * scale));
 }
 
@@ -89,6 +90,19 @@ const FA_TITLE: Record<FreeAgentKey, { emoji: string; title: string; detail: str
   value_slot: { emoji: '💸', title: 'Sign a Value Slot', detail: 'Add a $1 Quick Catch (40) — cheap, flexible.' },
   gunslinger: { emoji: '🚀', title: 'Sign a Gunslinger', detail: 'Add a $3 QB Deep Ball (70) to your deck.' },
 };
+
+function includesKey<T extends string>(keys: readonly T[], value: string): value is T {
+  return (keys as readonly string[]).includes(value);
+}
+
+const HYDRATABLE_PLAYBOOK_CONCEPTS: readonly FbConceptKey[] = [
+  'double_stack_bomb',
+  'stack_td',
+  'checkdown',
+  'ground_pound',
+  'field_goal',
+  'pick_six',
+];
 
 function cardReward(key: FreeAgentKey): Reward {
   const t = FA_TITLE[key];
@@ -176,6 +190,37 @@ function trainingReward(modifier: FbCardModifier): Reward {
       return { ...run, deck: run.deck.map((c) => (c.id === target.id ? { ...c, modifier } : c)) };
     },
   };
+}
+
+export function rewardFromId(id: string, run: FbRunState): Reward | null {
+  if (id === TRIM.id) return TRIM;
+  if (id === STRENGTH.id) return STRENGTH;
+
+  if (id.startsWith('card-')) {
+    const key = id.slice(5);
+    return includesKey(FREE_AGENT_KEYS, key) ? cardReward(key) : null;
+  }
+
+  if (id.startsWith('coord-')) {
+    const key = id.slice(6);
+    const coordKeys = Object.keys(FB_COORDINATORS) as FbCoordinatorKey[];
+    return includesKey(coordKeys, key) ? coordinatorReward(key) : null;
+  }
+
+  if (id.startsWith('pb-')) {
+    const concept = id.slice(3);
+    return includesKey(HYDRATABLE_PLAYBOOK_CONCEPTS, concept)
+      ? playbookReward(concept, (run.playbook[concept] ?? 0) + 1)
+      : null;
+  }
+
+  if (id.startsWith('train-')) {
+    const modifier = id.slice(6);
+    const modifierKeys = Object.keys(FB_CARD_MODIFIERS) as FbCardModifier[];
+    return includesKey(modifierKeys, modifier) ? trainingReward(modifier) : null;
+  }
+
+  return null;
 }
 
 type Lean = 'pass' | 'run' | 'def';
