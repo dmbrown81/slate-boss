@@ -3,32 +3,46 @@
 
 import {
   buildTeamDeck, driveTargets, createFreeAgentCard, TEAM_PROFILES,
-  FB_COORDINATORS, MAX_COORDINATORS, FB_CONCEPT_LABEL,
+  FB_COORDINATORS, MAX_COORDINATORS, FB_CONCEPT_LABEL, FB_CARD_MODIFIERS,
   scoreFootballPlay, shuffle,
-  type FbBossSchemeKey, type FbCard, type FbCoordinatorKey, type FbPlaybook, type FbEnvironmentKey, type FbConceptKey, type FreeAgentKey, type TeamArchetype,
+  type FbBossSchemeKey, type FbCard, type FbCardModifier, type FbCoordinatorKey, type FbPlaybook, type FbEnvironmentKey, type FbConceptKey, type FreeAgentKey, type TeamArchetype,
 } from './footballRogue';
+import { STARTING_FUNDS } from './gridironEconomy';
+import { mulberry32, stringSeed, type RNG } from './rng';
 
 export const SEASON_GAMES = 5;
 
 export interface FbRunState {
   gameNumber: number;        // 1..SEASON_GAMES — the game you're about to play
+  seed: number;              // deterministic season seed for weather / bosses / rewards
   team: TeamArchetype;       // which starting class this run was built from
   deck: FbCard[];
   coordinators: FbCoordinatorKey[];
   playbook: FbPlaybook;
   bombGames: number;         // games in which you landed a Bomb (Franchise QB)
+  funds: number;             // Front Office Funds — the between-game economy
   status: 'playing' | 'won' | 'lost';
 }
 
-export function createRun(team: TeamArchetype = 'balanced'): FbRunState {
+export function createGridironSeed(label = 'season'): number {
+  return stringSeed(`gridiron:${label}:${Date.now()}:${Math.random()}`);
+}
+
+export function runRng(run: Pick<FbRunState, 'seed' | 'team' | 'gameNumber'>, scope: string): RNG {
+  return mulberry32(stringSeed(`gridiron:${run.seed}:${run.team}:g${run.gameNumber}:${scope}`));
+}
+
+export function createRun(team: TeamArchetype = 'balanced', seed = createGridironSeed(team)): FbRunState {
   const profile = TEAM_PROFILES[team];
   return {
     gameNumber: 1,
+    seed,
     team,
     deck: buildTeamDeck(team).cards,
     coordinators: [...profile.startingCoordinators],
     playbook: {},
     bombGames: 0,
+    funds: STARTING_FUNDS,
     status: 'playing',
   };
 }
@@ -49,7 +63,7 @@ export function gameTargets(env: FbEnvironmentKey, gameNumber: number): number[]
 }
 
 // ── Rewards ─────────────────────────────────────────────────────────────────
-export type RewardKind = 'card' | 'coordinator' | 'playbook' | 'trim' | 'upgrade';
+export type RewardKind = 'card' | 'coordinator' | 'playbook' | 'trim' | 'upgrade' | 'training';
 
 export interface Reward {
   id: string;
@@ -57,8 +71,16 @@ export interface Reward {
   emoji: string;
   title: string;
   detail: string;
+  cost: number;            // Front Office Funds to buy in the War Room
   apply: (run: FbRunState) => FbRunState;
 }
+
+// War Room price list (tune via the balance harness). Coordinators come in two
+// tiers; the season-scaling Franchise QB is the premium keystone.
+export const REWARD_COST: Record<RewardKind, number> = {
+  card: 3, coordinator: 5, playbook: 5, trim: 4, upgrade: 3, training: 3,
+};
+const RARE_COORDINATORS = new Set<FbCoordinatorKey>(['franchise_qb']);
 
 const FA_TITLE: Record<FreeAgentKey, { emoji: string; title: string; detail: string }> = {
   deep_wr: { emoji: '🎯', title: 'Sign a Deep Threat', detail: 'Add a $3 WR Deep Catch (88) to your deck.' },
@@ -71,7 +93,7 @@ const FA_TITLE: Record<FreeAgentKey, { emoji: string; title: string; detail: str
 function cardReward(key: FreeAgentKey): Reward {
   const t = FA_TITLE[key];
   return {
-    id: `card-${key}`, kind: 'card', emoji: t.emoji, title: t.title, detail: t.detail,
+    id: `card-${key}`, kind: 'card', emoji: t.emoji, title: t.title, detail: t.detail, cost: REWARD_COST.card,
     apply: (run) => ({ ...run, deck: [...run.deck, createFreeAgentCard(key)] }),
   };
 }
@@ -80,6 +102,7 @@ function coordinatorReward(key: FbCoordinatorKey): Reward {
   const c = FB_COORDINATORS[key];
   return {
     id: `coord-${key}`, kind: 'coordinator', emoji: '🧠', title: `Hire: ${c.name}`, detail: c.description,
+    cost: RARE_COORDINATORS.has(key) ? 7 : REWARD_COST.coordinator,
     apply: (run) => ({ ...run, coordinators: [...run.coordinators, key] }),
   };
 }
@@ -94,12 +117,13 @@ function playbookReward(concept: FbConceptKey, nextLevel: number): Reward {
     id: `pb-${concept}`, kind: 'playbook', emoji: '📘',
     title: `Game Plan: ${name} → Lv ${nextLevel}`,
     detail: `Permanently level up ${name}: more scoring every time you call it${commit}. Stack it to ride one strategy all season.`,
+    cost: REWARD_COST.playbook,
     apply: (run) => ({ ...run, playbook: { ...run.playbook, [concept]: (run.playbook[concept] ?? 0) + 1 } }),
   };
 }
 
 const TRIM: Reward = {
-  id: 'trim', kind: 'trim', emoji: '✂️', title: 'Trim the Playbook', detail: 'Cut your 3 lowest-value cards so you draw your best ones more often.',
+  id: 'trim', kind: 'trim', emoji: '✂️', title: 'Trim the Playbook', detail: 'Cut your 3 lowest-value cards so you draw your best ones more often.', cost: REWARD_COST.trim,
   apply: (run) => {
     const sorted = [...run.deck].sort((a, b) => a.value - b.value);
     const cutIds = new Set(sorted.slice(0, 3).map((c) => c.id));
@@ -108,12 +132,51 @@ const TRIM: Reward = {
 };
 
 const STRENGTH: Reward = {
-  id: 'upgrade', kind: 'upgrade', emoji: '💪', title: 'Strength & Conditioning', detail: '+14 Base to your 4 cheapest cards.',
+  id: 'upgrade', kind: 'upgrade', emoji: '💪', title: 'Strength & Conditioning', detail: '+14 Base to your 4 cheapest cards.', cost: REWARD_COST.upgrade,
   apply: (run) => {
     const cheapIds = new Set([...run.deck].sort((a, b) => a.cost - b.cost || a.value - b.value).slice(0, 4).map((c) => c.id));
     return { ...run, deck: run.deck.map((c) => (cheapIds.has(c.id) ? { ...c, value: c.value + 14 } : c)) };
   },
 };
+
+// ── Training rewards (apply a Player Trait to one card) ──────────────────────
+// The buyer just commits to a trait; we pick the BEST-FIT untagged card
+// deterministically (no card-picker UI needed yet), so the reward is honest and
+// readable. Targeting heuristics live in `trainingTarget`.
+const TRAINING_META: Record<FbCardModifier, { emoji: string; title: string }> = {
+  explosive:  { emoji: '💥', title: 'Deep Threat Package' },
+  reliable:   { emoji: '🧱', title: 'Training Camp' },
+  discounted: { emoji: '📝', title: 'Contract Rework' },
+  clutch:     { emoji: '⏱️', title: 'Clutch Reps' },
+  protected:  { emoji: '🛡️', title: 'Boss Prep' },
+  hot_route:  { emoji: '🔀', title: 'Route Tree Upgrade' },
+};
+
+function trainingTarget(deck: FbCard[], modifier: FbCardModifier): FbCard | undefined {
+  const open = deck.filter((c) => !c.modifier);
+  if (open.length === 0) return undefined;
+  const byValue = (pred: (c: FbCard) => boolean) => [...open].filter(pred).sort((a, b) => b.value - a.value)[0];
+  if (modifier === 'explosive') return byValue((c) => c.side === 'catch' || c.side === 'pass') ?? byValue(() => true);
+  if (modifier === 'discounted') return [...open].sort((a, b) => b.cost - a.cost || b.value - a.value)[0];
+  if (modifier === 'hot_route') return byValue((c) => c.side === 'catch') ?? byValue(() => true);
+  if (modifier === 'protected') return byValue((c) => c.side === 'pass' || c.side === 'run') ?? byValue(() => true);
+  // reliable / clutch: the card you most want to keep alive late — your best.
+  return byValue(() => true);
+}
+
+function trainingReward(modifier: FbCardModifier): Reward {
+  const meta = TRAINING_META[modifier];
+  const mod = FB_CARD_MODIFIERS[modifier];
+  return {
+    id: `train-${modifier}`, kind: 'training', emoji: meta.emoji,
+    title: meta.title, detail: `Give a fitting card the ${mod.label} trait: ${mod.description}`, cost: REWARD_COST.training,
+    apply: (run) => {
+      const target = trainingTarget(run.deck, modifier);
+      if (!target) return run;
+      return { ...run, deck: run.deck.map((c) => (c.id === target.id ? { ...c, modifier } : c)) };
+    },
+  };
+}
 
 type Lean = 'pass' | 'run' | 'def';
 function deckLean(deck: FbCard[]): Lean {
@@ -137,6 +200,11 @@ const LEAN_CARD: Record<Lean, FreeAgentKey[]> = {
   run: ['bell_rb'],
   def: ['shutdown_dst'],
 };
+const LEAN_TRAINING: Record<Lean, FbCardModifier> = {
+  // Each lean gets a trait that scales ITS identity: pass → ceiling, run →
+  // tempo (an extra carry per drive), def → a Big-Play scaler for splash plays.
+  pass: 'explosive', run: 'discounted', def: 'explosive',
+};
 
 function firstAvailableCoord(lean: Lean, owned: FbCoordinatorKey[]): FbCoordinatorKey | null {
   const ordered = [...LEAN_COORD[lean], ...(Object.keys(FB_COORDINATORS) as FbCoordinatorKey[])];
@@ -148,7 +216,7 @@ function firstAvailableCoord(lean: Lean, owned: FbCoordinatorKey[]): FbCoordinat
 //   2) the COMMITMENT lever — level your core Game Plan (stack it to snowball),
 //   3) a flex stabilizer.
 // The skill is committing: stack one Game Plan + the coordinators that feed it.
-export function generateRewards(run: FbRunState): Reward[] {
+export function generateRewards(run: FbRunState, rng: RNG = Math.random): Reward[] {
   const lean = deckLean(run.deck);
   const primary = LEAN_PB[lean][0];
   const secondary = LEAN_PB[lean][1] ?? primary;
@@ -157,19 +225,19 @@ export function generateRewards(run: FbRunState): Reward[] {
 
   // 1) Keystone
   const coord = run.coordinators.length < MAX_COORDINATORS ? firstAvailableCoord(lean, run.coordinators) : null;
-  if (coord && Math.random() < 0.6) picks.push(coordinatorReward(coord));
+  if (coord && rng() < 0.6) picks.push(coordinatorReward(coord));
   else picks.push(playbookReward(primary, lvl(primary) + 1));
 
   // 2) Commitment lever — level a Game Plan you can ride
   const slot2 = picks[0].id === `pb-${primary}` ? secondary : primary;
   picks.push(playbookReward(slot2, lvl(slot2) + 1));
 
-  // 3) Flex stabilizer
-  const flex: Reward[] = [STRENGTH];
+  // 3) Flex stabilizer — value, consistency, a free agent, or a Player Trait.
+  const flex: Reward[] = [STRENGTH, trainingReward(LEAN_TRAINING[lean])];
   if (run.deck.length > 26) flex.push(TRIM); else flex.push(cardReward(LEAN_CARD[lean][0]));
-  picks.push(shuffle(flex)[0]);
+  picks.push(shuffle(flex, rng)[0]);
 
-  return shuffle(picks);
+  return shuffle(picks, rng);
 }
 
 export function deckValueSummary(deck: FbCard[]): { size: number; avgValue: number; avgCost: number } {
@@ -294,6 +362,7 @@ export function rewardFitLabel(run: FbRunState, reward: Reward): string {
   }
   if (reward.kind === 'trim') return 'Consistency';
   if (reward.kind === 'upgrade') return 'Flat value';
+  if (reward.kind === 'training') return 'Develops a player';
   return 'Adds cards';
 }
 
@@ -315,6 +384,13 @@ export function rewardImpact(run: FbRunState, reward: Reward, bossScheme: FbBoss
     if (beforeScore !== null && afterScore !== null && beforeScore !== afterScore) {
       return `Current plan sample: ${beforeScore} → ${afterScore}`;
     }
+  }
+
+  if (reward.kind === 'training') {
+    const modifier = reward.id.slice(6) as FbCardModifier;
+    const target = trainingTarget(run.deck, modifier);
+    const mod = FB_CARD_MODIFIERS[modifier];
+    return target ? `${target.label} (${target.playerName}) becomes ${mod.label}.` : 'No untrained card to develop.';
   }
 
   const beforeDeck = deckValueSummary(run.deck);

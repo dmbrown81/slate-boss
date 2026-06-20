@@ -2,7 +2,7 @@
 
 > A self-contained packet for an outside designer, engineer, or AI model to review the game, audit the code, and give feedback. You can hand someone *just this file* and they'll understand where the project is and what to critique.
 
-_Last updated: 2026-06-19 · Branch: `main` · Status: playable 5-game **season** with a reward loop, scaling coordinators, and a polished UI._
+_Last updated: 2026-06-20 · Branch: `main` · Status: productized alpha foundation: playable 5-game **season**, team-as-deck selection, save/resume, seeded run scaffolding, boss preview, and balance diagnostics._
 
 ---
 
@@ -99,14 +99,15 @@ Measured with the **permanent** harness — `npm run balance:gridiron` (`scripts
 
 | Reward policy | Champion | Per-game clear (G1→G5) |
 |---|---|---|
-| **Synergy** — commit to one Game Plan + feed it | **~40%** | 94 · 81 · 70 · 63 · 40 |
-| Naive — grab coordinators, don't commit | ~16% | 95 · 80 · 65 · 53 · 16 |
-| Random — any reward | ~13% | 95 · 76 · 51 · 34 · 13 |
-| None — skip all rewards | ~0% | 95 · 66 · 24 · 2 · 0 |
+| **Synergy** — commit to one Game Plan + feed it | **~44%** | 97 · 85 · 75 · 68 · 44 |
+| Naive — grab coordinators, don't commit | ~20% | 97 · 85 · 73 · 62 · 20 |
+| Random — any reward | ~14% | 96 · 79 · 55 · 37 · 14 |
+| None — skip all rewards | ~0% | 97 · 72 · 26 · 3 · 0 |
 
-- **Build gap (best − none): ~40 pts ✅** — building is decisive.
-- **Reward gap (synergy − random): ~28 pts ✅** — picking well clearly beats random.
+- **Build gap (best − none): ~44 pts ✅** — building is decisive.
+- **Reward gap (synergy − random): ~30 pts ✅** — picking well clearly beats random.
 - **Commitment gap (synergy − naive): ~24 pts** — *committing* to one Game Plan and stacking it beats grabbing pieces without a plan. This is the strategic spine.
+- **Per-team viability:** Ironhawks ~44%, Blazers ~39%, Stormers ~36%, Volts ~36%, Ghosts ~31%; spread ~13 pts ✅, competitive teams 5/5 ✅, dead-draw losses ~6% ✅.
 
 History: the build started with smart ≈ random (~1-pt gap — meta-layer was noise). It was fixed in stages: lean-aware keystone rewards + a starter-deck ratio fix (catch-flood → reliable stacks), then the **game-theory pass** that added leveled **Game Plan** commitment and a **geometric** target curve. The latest pass added boss defenses, first-drive onboarding, build identity surfacing, reward impact projections, grouped hands, and staged scoring feedback. Tunables: `DRIVE_TARGET`/`DRIVE_BUDGET`, `GAME_PLAN_STEP`/`GAME_PLAN_COMMIT_XMULT`, `FB_BOSS_SCHEMES`, `cardsForPlayer`/`buildStarterDeck` (`footballRogue.ts`); `gameTargets` geometric scale + reward catalog/build helpers (`footballRun.ts`). **Keep the harness committed and re-run it on every balance change.**
 
@@ -115,8 +116,9 @@ History: the build started with smart ≈ random (~1-pt gap — meta-layer was n
 ## 6. Code map (what to audit)
 
 **Engine / run logic (pure, no React, no `Math.random` in scoring):**
-- `src/lib/footballRogue.ts` — card model, deck factory (from `seedData.ts` fictional players), three-channel `scoreFootballPlay`, coordinators, environments, boss defenses, free-agent cards, tunables.
-- `src/lib/footballRun.ts` — season run state (`FbRunState`), `gameTargets` escalation, reward catalog + `generateRewards`, build identity helpers, reward impact projections.
+- `src/lib/footballRogue.ts` — card model, team deck factories (from `seedData.ts` fictional players), three-channel `scoreFootballPlay`, structured ledger metadata, coordinators, environments, boss defenses, free-agent cards, tunables.
+- `src/lib/footballRun.ts` — season run state (`FbRunState`), seeded run helpers, `gameTargets` escalation, reward catalog + `generateRewards`, build identity helpers, reward impact projections.
+- `src/lib/gridironStorage.ts` — versioned Gridiron save/resume state under `gridiron_run_v1`.
 
 **UI (React, inline styles + shared tokens):**
 - `src/components/footballStyles.ts` — design tokens (the single source of visual truth).
@@ -134,15 +136,16 @@ History: the build started with smart ≈ random (~1-pt gap — meta-layer was n
 
 ## 7. Roadmap
 
-**Done:** core match loop, three-channel scoring, Play Budget, scaling coordinators (incl. season-long Franchise QB), the **5-game season shell**, the **3-choice reward loop**, a **permanent balance harness**, the **skill-decisive rebalance**, the **game-theory pass** (leveled Game Plan + geometric targets), and the **clarity/boss pass** — guided first drive, grouped hand, current build identity, reward impact projections, boss defensive schemes, and staged scoring feedback (§3–5).
+**Done:** core match loop, three-channel scoring, Play Budget, scaling coordinators (incl. season-long Franchise QB), the **5-game season shell**, the **3-choice reward loop**, a **permanent balance harness**, the **skill-decisive rebalance**, the **game-theory pass** (leveled Game Plan + geometric targets), the **clarity/boss pass** — guided first drive, grouped hand, current build identity, reward impact projections, boss defensive schemes, and staged scoring feedback (§3–5) — plus **five team-as-deck identities**, seeded run scaffolding, save/resume, next-game boss/weather scout during rewards, and a lightweight Gridiron smoke test.
 
 > **Presentation idea on the table (not yet built):** push Gridiron as a landscape/tablet-first app for more screen real estate (coordinators + Game Plans + hand side-by-side). Worth prototyping once content (teams/bosses) lands; the current layout is mobile-portrait single-column.
 
-**Next, in order** (now unblocked — the meta-layer is decisive and legible enough to add content):
-1. **Teams as decks** — 5 fictional team identities, each a distinct starter deck + signature coordinator + cost discounts. Names stay display-only data (license-agnostic). Makes runs feel different and sharpens the reward gap (§8).
-2. **Persistence** — save the run to `localStorage` (reuse Classic's versioned storage pattern) so a plane session survives a closed tab.
-3. **Seeded daily challenge + share strings** — needs seeded RNG through Gridiron.
-4. Reorderable coordinator slots; a between-game cap-budget economy.
+**Next, in order** (productized alpha, still design-flexible):
+1. **Coordinator ordering + containment** — resolve coordinators left-to-right, expose up/down controls, and make bigger concepts trigger contained concept effects where readable.
+2. **Richer counter-drafting** — add a `counter_aware` balance policy and ensure at least one reward option can help against the upcoming boss.
+3. **Daily challenge + stronger share strings** — the seed path exists; next step is a daily seed entry point and replayable summary.
+4. **Deck manipulation rewards** — trim/copy/convert/cost-reduce cards in small, readable doses.
+5. **Deeper persistence** — current save resumes at the active game/reward point; later versions can restore an exact mid-drive match state if needed.
 
 Deferred: art/animation, accounts/backend, multiplayer, real-money, large content catalogs.
 
@@ -151,12 +154,12 @@ Deferred: art/animation, accounts/backend, multiplayer, real-money, large conten
 ## 8. Open questions / things to challenge
 
 1. **Pacing:** skilled play wins ~40% of seasons after boss schemes (random ~13%, un-built ~0%). Is this too punishing for kids/testers, or a good roguelike baseline?
-2. **Deck variety:** one starter deck (Ironhawks, pass-leaning) means every run leans the same way. Teams-as-decks is the fix and the next slice.
+2. **Team identity feel:** five team decks are viable in the harness. Do players *feel* those identities strongly enough, especially Volts and Ghosts?
 3. **Play Budget vs. a separate currency:** we folded the cap into the play resource rather than adding a 4th scarce resource. Right call, or does a distinct wallet add depth?
 4. **Three channels on a small screen:** clarifying, or too much math at once for a casual player?
 5. **Cognitive load:** is "season → 5 games → 3 drives each" clear, or one nesting level too many?
 6. **Onboarding:** first-drive coach exists now. Does it teach enough without slowing repeat runs?
-7. **Deck identity:** one starter deck means runs feel samey until teams-as-decks lands. Does the loop hold up in the meantime?
+7. **Save granularity:** current persistence resumes the current season at the game/reward level. Is that enough for alpha, or do testers expect exact mid-drive restore?
 
 ---
 

@@ -1,30 +1,54 @@
-import { FB, card, sectionLabel } from './footballStyles';
-import { FB_COORDINATORS, FB_CONCEPT_LABEL } from '../lib/footballRogue';
+import { FB, card, sectionLabel, btnPrimary, btnGhost } from './footballStyles';
+import {
+  FB_BOSS_SCHEMES, FB_COORDINATORS, FB_CONCEPT_LABEL, FB_ENVIRONMENTS, FB_CARD_MODIFIERS,
+  type FbBossSchemeKey, type FbEnvironmentKey,
+} from '../lib/footballRogue';
 import { buildIdentity, deckValueSummary, rewardFitLabel, rewardImpact, SEASON_GAMES, type FbRunState, type Reward } from '../lib/footballRun';
+import type { ShopCreditInfo } from '../lib/gridironEconomy';
 
 interface Props {
   run: FbRunState;
   rewards: Reward[];
-  onPick: (reward: Reward) => void;
+  creditInfo: ShopCreditInfo | null;
+  rerollCost: number;
+  purchases: number;
+  nextBossScheme: FbBossSchemeKey;
+  nextEnvironment: FbEnvironmentKey;
+  onBuy: (reward: Reward) => void;
+  onReroll: () => void;
+  onProceed: () => void;
 }
 
 const KIND_COLOR: Record<Reward['kind'], string> = {
-  card: FB.green, coordinator: '#b7a7ff', playbook: FB.blue, trim: FB.red, upgrade: FB.gold,
+  card: FB.green, coordinator: '#b7a7ff', playbook: FB.blue, trim: FB.red, upgrade: FB.gold, training: '#5fe0a0',
 };
 
-export default function FootballReward({ run, rewards, onPick }: Props) {
+export default function FootballReward({ run, rewards, creditInfo, rerollCost, purchases, nextBossScheme, nextEnvironment, onBuy, onReroll, onProceed }: Props) {
   const deck = deckValueSummary(run.deck);
   const nextGame = run.gameNumber + 1;
   const identity = buildIdentity(run);
+  const nextBoss = FB_BOSS_SCHEMES[nextBossScheme];
+  const nextEnv = FB_ENVIRONMENTS[nextEnvironment];
+  const canReroll = run.funds >= rerollCost && rewards.length > 0;
+  const trained = run.deck.filter((c) => c.modifier);
 
   return (
     <div style={{ minHeight: '100svh', padding: '20px 16px 28px', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ textAlign: 'center', marginBottom: 4 }}>
-        <div style={{ fontSize: 11, color: FB.green, letterSpacing: 2, fontWeight: 800 }}>GAME CLEARED</div>
-        <div style={{ fontSize: 24, fontWeight: 900, color: FB.text, marginTop: 4 }}>Front Office</div>
-        <div style={{ fontSize: 12.5, color: FB.textDim, marginTop: 4 }}>
-          Pick one to strengthen your team before {nextGame >= SEASON_GAMES ? 'the Championship' : `Game ${nextGame}`} — the target rises.
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <div style={{ fontSize: 11, color: FB.green, letterSpacing: 2, fontWeight: 800 }}>GAME CLEARED</div>
+          <div style={{ fontSize: 24, fontWeight: 900, color: FB.text, marginTop: 2 }}>War Room</div>
         </div>
+        <div style={{ textAlign: 'right' }}>
+          <div className="fb-num" style={{ fontSize: 26, fontWeight: 900, color: FB.gold, lineHeight: 1 }}>${run.funds}</div>
+          <div style={{ fontSize: 9.5, color: FB.textFaint, fontWeight: 800, letterSpacing: 1 }}>FUNDS</div>
+        </div>
+      </div>
+      <div style={{ fontSize: 12, color: FB.textDim, marginTop: 6 }}>
+        Spend before {nextGame >= SEASON_GAMES ? 'the Championship' : `Game ${nextGame}`} — the target rises. Buy what you can afford, reroll, or bank for later.
+        {creditInfo && (
+          <span style={{ color: FB.green }}>{' '}+${creditInfo.purse} purse{creditInfo.interest > 0 ? ` + $${creditInfo.interest} interest` : ''}.</span>
+        )}
       </div>
 
       <div style={{ ...card(12), padding: '12px 14px', marginTop: 14, borderColor: identity.level >= 2 ? '#5a4112' : FB.border }}>
@@ -38,26 +62,62 @@ export default function FootballReward({ run, rewards, onPick }: Props) {
         </div>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 18 }}>
-        {rewards.map((rw) => (
-          <button
-            key={rw.id}
-            onClick={() => onPick(rw)}
-            style={{ ...card(14), padding: '14px 14px', cursor: 'pointer', textAlign: 'left', display: 'flex', gap: 13, alignItems: 'center', borderLeft: `3px solid ${KIND_COLOR[rw.kind]}` }}
-          >
-            <span style={{ fontSize: 26 }}>{rw.emoji}</span>
-            <div style={{ flex: 1 }}>
-              <div style={{ display: 'flex', gap: 7, alignItems: 'center', flexWrap: 'wrap' }}>
-                <div style={{ fontSize: 15, fontWeight: 800, color: FB.text }}>{rw.title}</div>
-                <span style={{ fontSize: 9.5, fontWeight: 900, color: KIND_COLOR[rw.kind], background: FB.inset, border: `1px solid ${FB.borderSoft}`, borderRadius: 999, padding: '2px 7px' }}>{rewardFitLabel(run, rw)}</span>
-              </div>
-              <div style={{ fontSize: 12, color: FB.textDim, lineHeight: 1.4, marginTop: 2 }}>{rw.detail}</div>
-              <div style={{ fontSize: 11, color: FB.gold, lineHeight: 1.35, marginTop: 5 }}>{rewardImpact(run, rw)}</div>
-            </div>
-            <span style={{ color: KIND_COLOR[rw.kind], fontSize: 18, fontWeight: 900 }}>＋</span>
-          </button>
-        ))}
+      <div style={{ ...card(12), padding: '12px 14px', marginTop: 10, background: '#10131a', borderColor: nextBossScheme === 'balanced' ? FB.border : '#4a2530' }}>
+        <div style={{ ...sectionLabel, marginBottom: 6, color: FB.gold }}>Next scout</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <div>
+            <div style={{ fontSize: 12, color: FB.textFaint, fontWeight: 800 }}>DEFENSE</div>
+            <div style={{ fontSize: 15, color: nextBossScheme === 'balanced' ? FB.text : FB.red, fontWeight: 900, marginTop: 2 }}>{nextBoss.label}</div>
+            <div style={{ fontSize: 11, color: FB.textDim, lineHeight: 1.35, marginTop: 3 }}>{nextBoss.hint}</div>
+          </div>
+          <div>
+            <div style={{ fontSize: 12, color: FB.textFaint, fontWeight: 800 }}>WEATHER</div>
+            <div style={{ fontSize: 15, color: FB.text, fontWeight: 900, marginTop: 2 }}>{nextEnv.label}</div>
+            <div style={{ fontSize: 11, color: FB.textDim, lineHeight: 1.35, marginTop: 3 }}>{nextEnv.description}</div>
+          </div>
+        </div>
       </div>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '18px 2px 8px' }}>
+        <div style={sectionLabel}>On the board</div>
+        <button onClick={onReroll} disabled={!canReroll} style={{ ...btnGhost, opacity: canReroll ? 1 : 0.4, color: canReroll ? FB.gold : FB.textFaint }}>
+          ↻ Reroll · ${rerollCost}
+        </button>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {rewards.length === 0 && (
+          <div style={{ ...card(12), padding: '16px 14px', textAlign: 'center', color: FB.textDim, fontSize: 12.5 }}>
+            Shelf cleared. Reroll for more, or head to the next game.
+          </div>
+        )}
+        {rewards.map((rw) => {
+          const affordable = run.funds >= rw.cost;
+          return (
+            <button
+              key={rw.id}
+              onClick={() => affordable && onBuy(rw)}
+              disabled={!affordable}
+              style={{ ...card(14), padding: '14px 14px', cursor: affordable ? 'pointer' : 'not-allowed', textAlign: 'left', display: 'flex', gap: 13, alignItems: 'center', borderLeft: `3px solid ${KIND_COLOR[rw.kind]}`, opacity: affordable ? 1 : 0.55 }}
+            >
+              <span style={{ fontSize: 26 }}>{rw.emoji}</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', gap: 7, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: FB.text }}>{rw.title}</div>
+                  <span style={{ fontSize: 9.5, fontWeight: 900, color: KIND_COLOR[rw.kind], background: FB.inset, border: `1px solid ${FB.borderSoft}`, borderRadius: 999, padding: '2px 7px' }}>{rewardFitLabel(run, rw)}</span>
+                </div>
+                <div style={{ fontSize: 12, color: FB.textDim, lineHeight: 1.4, marginTop: 2 }}>{rw.detail}</div>
+                <div style={{ fontSize: 11, color: FB.gold, lineHeight: 1.35, marginTop: 5 }}>{rewardImpact(run, rw, nextBossScheme)}</div>
+              </div>
+              <span className="fb-num" style={{ flexShrink: 0, fontSize: 15, fontWeight: 900, color: affordable ? FB.gold : FB.red, background: affordable ? FB.goldSoft : '#2a141a', border: `1px solid ${affordable ? '#5a4112' : '#6b3344'}`, borderRadius: 8, padding: '5px 9px' }}>${rw.cost}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      <button onClick={onProceed} style={{ ...btnPrimary, width: '100%', marginTop: 18 }}>
+        {purchases === 0 ? `Skip — bank +$2 Funds →` : `Next Game →`}
+      </button>
 
       <div style={{ flex: 1 }} />
 
@@ -79,6 +139,18 @@ export default function FootballReward({ run, rewards, onPick }: Props) {
             </span>
           ))}
         </div>
+        {trained.length > 0 && (
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+            {trained.map((c) => {
+              const m = FB_CARD_MODIFIERS[c.modifier!];
+              return (
+                <span key={c.id} style={{ fontSize: 10, fontWeight: 800, color: m.color, background: FB.inset, border: `1px solid ${m.color}44`, borderRadius: 7, padding: '4px 8px' }}>
+                  {c.label} · {m.label}
+                </span>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

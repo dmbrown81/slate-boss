@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { FB, btnPrimary, card } from './footballStyles';
 import FootballHelpModal from './FootballHelpModal';
+import { clearGridironRun, loadGridironRun } from '../lib/gridironStorage';
+import { TEAM_PROFILES } from '../lib/footballRogue';
+import { SEASON_GAMES } from '../lib/footballRun';
 
 interface Props {
   onPlay: () => void;
@@ -9,6 +12,14 @@ interface Props {
 
 export default function FootballHome({ onPlay, onClassic }: Props) {
   const [showHelp, setShowHelp] = useState(false);
+  const [activeRun, setActiveRun] = useState(() => loadGridironRun());
+  const activeTeam = activeRun ? TEAM_PROFILES[activeRun.run.team] : null;
+
+  function startFresh() {
+    clearGridironRun();
+    setActiveRun(null);
+    onPlay();
+  }
 
   return (
     <div style={{ minHeight: '100svh', display: 'flex', flexDirection: 'column', padding: '0 16px 24px' }}>
@@ -59,9 +70,30 @@ export default function FootballHome({ onPlay, onClassic }: Props) {
 
       {/* Actions */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 20 }}>
+        {activeRun && activeTeam && (
+          <div style={{ ...card(12), padding: '12px 14px', borderColor: '#5a4112', background: 'linear-gradient(160deg,#17170d,#0e151d)' }}>
+            <div style={{ fontSize: 10, color: FB.gold, letterSpacing: 1.3, fontWeight: 900 }}>ACTIVE SEASON</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline', marginTop: 4 }}>
+              <div style={{ fontSize: 15, color: FB.text, fontWeight: 900 }}>{activeTeam.displayName}</div>
+              <div className="fb-num" style={{ fontSize: 12, color: FB.textDim, fontWeight: 800 }}>Game {activeRun.run.gameNumber}/{SEASON_GAMES}</div>
+            </div>
+            <div style={{ fontSize: 11, color: FB.textFaint, marginTop: 4 }}>
+              {activeRun.phase === 'reward' ? 'Front Office reward waiting.' : 'Current game ready to continue.'}
+            </div>
+          </div>
+        )}
+
         <button onClick={onPlay} style={{ ...btnPrimary, width: '100%', fontSize: 17, padding: '16px 0' }}>
-          🏈 Kickoff
+          {activeRun ? `🏈 Resume Season (Game ${activeRun.run.gameNumber}/${SEASON_GAMES})` : '🏈 Kickoff'}
         </button>
+        {activeRun && (
+          <button
+            onClick={startFresh}
+            style={{ width: '100%', padding: '13px 0', background: '#21131a', border: `1px solid #4a2530`, color: FB.red, borderRadius: 12, fontSize: 14, fontWeight: 800, cursor: 'pointer' }}
+          >
+            Abandon & New Season
+          </button>
+        )}
         <button
           onClick={() => setShowHelp(true)}
           style={{ width: '100%', padding: '13px 0', background: '#141b24', border: `1px solid ${FB.border}`, color: FB.text, borderRadius: 12, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}

@@ -15,6 +15,7 @@
 // drives with escalating targets. Variance lives in the draw, never in a roll.
 
 import { PLAYER_TEMPLATES, type PlayerTemplate } from './seedData';
+import type { RNG } from './rng';
 
 // ── Tunables (balance lives here) ──────────────────────────────────────────
 export const HAND_SIZE = 8;
@@ -34,6 +35,12 @@ export type FbActionType =
   | 'field_goal' | 'extra_point'
   | 'sack' | 'interception' | 'return_td';
 
+// Player Traits (card modifiers) — the "drivetrain": one trait per card makes a
+// card YOURS and creates combinatorial depth. Bought via Training rewards in the
+// War Room. Each trait is a small, readable hook in the scoring pipeline (below)
+// and renders as a badge on the card face — no new screen.
+export type FbCardModifier = 'reliable' | 'explosive' | 'discounted' | 'clutch' | 'protected' | 'hot_route';
+
 export interface FbCard {
   id: string;
   playerId: string;
@@ -45,6 +52,24 @@ export interface FbCard {
   side: FbSide;
   value: number;   // base yards
   cost: number;    // cap credits to play
+  modifier?: FbCardModifier; // at most one Player Trait
+}
+
+export interface FbModifierMeta { key: FbCardModifier; label: string; tag: string; color: string; description: string; }
+
+export const FB_CARD_MODIFIERS: Record<FbCardModifier, FbModifierMeta> = {
+  reliable:   { key: 'reliable',   label: 'Reliable',   tag: 'REL',  color: '#9aa6b5', description: 'Waives the Busted Play penalty on any play that includes this card.' },
+  explosive:  { key: 'explosive',  label: 'Explosive',  tag: 'EXP',  color: '#f0b429', description: '+0.10 Big Play for each Explosive card on any clean concept.' },
+  discounted: { key: 'discounted', label: 'Discounted', tag: 'DISC', color: '#34c771', description: 'Costs 1 less Play Budget (min 1).' },
+  clutch:     { key: 'clutch',     label: 'Clutch',     tag: 'CLU',  color: '#e26d83', description: '+20 Base on Drive 3 and in the Championship.' },
+  protected:  { key: 'protected',  label: 'Protected',  tag: 'PRO',  color: '#3b82f6', description: 'Halves the opposing defense scheme penalty on plays that include it.' },
+  hot_route:  { key: 'hot_route',  label: 'Hot Route',  tag: 'HOT',  color: '#5fe0a0', description: 'This catch stacks with ANY quarterback — it counts as the passer’s team.' },
+};
+
+// Effective Play-Budget cost after traits (Discounted). One source of truth so
+// the match, the preview, and the balance harness all agree.
+export function cardCost(c: FbCard): number {
+  return c.modifier === 'discounted' ? Math.max(1, c.cost - 1) : c.cost;
 }
 
 export type FbConceptKey =
@@ -185,11 +210,11 @@ export const FB_BOSS_SCHEMES: Record<FbBossSchemeKey, FbBossScheme> = {
 
 export const FB_BOSS_SCHEME_KEYS: FbBossSchemeKey[] = ['no_fly_zone', 'stacked_box', 'turnover_drill', 'adaptive_dc'];
 
-export function randomBossScheme(gameNumber: number, championship = false): FbBossSchemeKey {
+export function randomBossScheme(gameNumber: number, championship = false, rng: RNG = Math.random): FbBossSchemeKey {
   if (gameNumber <= 1) return 'balanced';
-  if (championship) return FB_BOSS_SCHEME_KEYS[Math.floor(Math.random() * FB_BOSS_SCHEME_KEYS.length)];
+  if (championship) return FB_BOSS_SCHEME_KEYS[Math.floor(rng() * FB_BOSS_SCHEME_KEYS.length)];
   const pool = FB_BOSS_SCHEME_KEYS.filter((k) => k !== 'adaptive_dc');
-  return pool[Math.floor(Math.random() * pool.length)];
+  return pool[Math.floor(rng() * pool.length)];
 }
 
 // ── Scoring context + result ────────────────────────────────────────────────
@@ -202,13 +227,22 @@ export interface FbScoreContext {
   conceptCountsThisDrive: Partial<Record<FbConceptKey, number>>; // anti-spam
   playbook?: FbPlaybook;                          // run-level concept upgrades
   bombGames?: number;                            // earlier games with a Bomb (Franchise QB)
+  driveIndex?: number;                           // 0-based drive; 2 = final drive (Clutch trait)
+  championship?: boolean;                        // championship game (Clutch trait)
 }
 
 export type FbLedgerKind = 'base' | 'execution' | 'big_play' | 'coordinator' | 'environment' | 'boss' | 'spam' | 'final';
+export type FbScoreStage = 'cards' | 'concept' | 'coordinator' | 'playbook' | 'environment' | 'boss' | 'adjustment' | 'final';
+export type FbScoreChannel = 'base' | 'execution' | 'big_play' | 'cost' | 'budget' | 'draw';
+export type FbScoreOperation = 'add' | 'multiply' | 'discount' | 'penalty' | 'set';
 
 export interface FbLedgerEntry {
   id: string;
   kind: FbLedgerKind;
+  stage: FbScoreStage;
+  channel: FbScoreChannel;
+  operation: FbScoreOperation;
+  value: number;
   label: string;
   detail: string;
 }
@@ -520,7 +554,10 @@ export function scoreFootballPlay(cards: FbCard[], ctx: FbScoreContext): FbPlayR
   const co = new Set(ctx.coordinators);
   const env = ctx.environment;
   const scheme = ctx.bossScheme ?? 'balanced';
-  const cost = cards.reduce((s, c) => s + c.cost, 0);
+  const cost = cards.reduce((s, c) => s + cardCost(c), 0);
+  // Protected trait: halve any opposing-scheme penalty on this play.
+  const protectedInPlay = cards.some((c) => c.modifier === 'protected');
+  const soften = (f: number) => (protectedInPlay ? round2(f + (1 - f) * 0.5) : f);
 
   const passCards = cards.filter((c) => c.side === 'pass');
   const catches = cards.filter((c) => c.side === 'catch');
@@ -532,7 +569,16 @@ export function scoreFootballPlay(cards: FbCard[], ctx: FbScoreContext): FbPlayR
   let base = cards.reduce((s, c) => s + c.value, 0);
   let execution = 0;
   let bigPlay = 1;
-  const ledger: FbLedgerEntry[] = [{ id: 'base', kind: 'base', label: 'Base Yards', detail: `${cards.length} card${cards.length === 1 ? '' : 's'} on the play.` }];
+  const ledger: FbLedgerEntry[] = [{
+    id: 'base',
+    kind: 'base',
+    stage: 'cards',
+    channel: 'base',
+    operation: 'set',
+    value: base,
+    label: 'Base Yards',
+    detail: `${cards.length} card${cards.length === 1 ? '' : 's'} on the play.`,
+  }];
 
   let concept: FbConceptKey = 'busted_play';
   let playName = 'Busted Play';
@@ -540,16 +586,17 @@ export function scoreFootballPlay(cards: FbCard[], ctx: FbScoreContext): FbPlayR
   let isStack = false;
 
   const qbTeam = passCards[0]?.team;
-  const sameTeamCatches = qbTeam ? catches.filter((c) => c.team === qbTeam) : [];
-  const oppCatches = qbTeam ? catches.filter((c) => c.team !== qbTeam) : [];
+  // Hot Route catches count as the passer's team for stack detection.
+  const sameTeamCatches = qbTeam ? catches.filter((c) => c.team === qbTeam || c.modifier === 'hot_route') : [];
+  const oppCatches = qbTeam ? catches.filter((c) => c.team !== qbTeam && c.modifier !== 'hot_route') : [];
 
   if (defense.length > 0) {
     if (defense.some((c) => c.action === 'return_td')) {
       concept = 'pick_six'; playName = 'Pick Six'; flavor = 'Defense takes it to the house.';
-      bigPlay *= 1.65; ledger.push({ id: 'bp', kind: 'big_play', label: 'Pick Six', detail: 'Return touchdown — Big Play ×1.65.' });
+      bigPlay *= 1.65; ledger.push({ id: 'bp', kind: 'big_play', stage: 'concept', channel: 'big_play', operation: 'multiply', value: 1.65, label: 'Pick Six', detail: 'Return touchdown — Big Play ×1.65.' });
     } else if (defense.some((c) => c.action === 'interception')) {
       concept = 'takeaway'; playName = 'Takeaway'; flavor = 'A turnover flips the field.';
-      execution += 0.3; ledger.push({ id: 'ex', kind: 'execution', label: 'Takeaway', detail: 'Interception — Execution +0.30.' });
+      execution += 0.3; ledger.push({ id: 'ex', kind: 'execution', stage: 'concept', channel: 'execution', operation: 'add', value: 0.3, label: 'Takeaway', detail: 'Interception — Execution +0.30.' });
     } else {
       concept = 'sack'; playName = 'Sack'; flavor = 'Get to the quarterback.';
     }
@@ -559,24 +606,24 @@ export function scoreFootballPlay(cards: FbCard[], ctx: FbScoreContext): FbPlayR
     if (sameTeamCatches.length >= 2) {
       concept = 'double_stack_bomb'; playName = 'Double-Stack Bomb'; flavor = `${passCards[0].playerName} hits ${sameTeamCatches.length} targets.`;
       execution += 0.4; bigPlay *= 1.5;
-      ledger.push({ id: 'ex', kind: 'execution', label: 'Double Stack', detail: 'Execution +0.4.' });
-      ledger.push({ id: 'bp', kind: 'big_play', label: 'Double Stack', detail: 'Big Play ×1.5.' });
+      ledger.push({ id: 'ex', kind: 'execution', stage: 'concept', channel: 'execution', operation: 'add', value: 0.4, label: 'Double Stack', detail: 'Execution +0.4.' });
+      ledger.push({ id: 'bp', kind: 'big_play', stage: 'concept', channel: 'big_play', operation: 'multiply', value: 1.5, label: 'Double Stack', detail: 'Big Play ×1.5.' });
     } else {
       concept = 'stack_td'; playName = 'Stack TD'; flavor = `${passCards[0].playerName} → ${sameTeamCatches[0].playerName}.`;
-      execution += 0.6; ledger.push({ id: 'ex', kind: 'execution', label: 'QB Stack', detail: 'Execution +0.6.' });
+      execution += 0.6; ledger.push({ id: 'ex', kind: 'execution', stage: 'concept', channel: 'execution', operation: 'add', value: 0.6, label: 'QB Stack', detail: 'Execution +0.6.' });
     }
-    if (deepInvolved && !(env === 'wind')) { bigPlay *= 1.2; ledger.push({ id: 'shot', kind: 'big_play', label: 'Shot Play', detail: 'Deep shot — Big Play ×1.2.' }); }
+    if (deepInvolved && !(env === 'wind')) { bigPlay *= 1.2; ledger.push({ id: 'shot', kind: 'big_play', stage: 'concept', channel: 'big_play', operation: 'multiply', value: 1.2, label: 'Shot Play', detail: 'Deep shot — Big Play ×1.2.' }); }
     if (oppCatches.length > 0) {
       concept = 'shootout_stack'; playName = 'Shootout Stack'; flavor = 'Bring-back correlation — both sides scoring.';
-      bigPlay *= 1.4; ledger.push({ id: 'bb', kind: 'big_play', label: 'Bring-Back', detail: 'Shootout — Big Play ×1.4.' });
+      bigPlay *= 1.4; ledger.push({ id: 'bb', kind: 'big_play', stage: 'concept', channel: 'big_play', operation: 'multiply', value: 1.4, label: 'Bring-Back', detail: 'Shootout — Big Play ×1.4.' });
     }
   } else if (passCards.length > 0 && cards.every((c) => c.side === 'pass' || c.action === 'checkdown_catch')) {
     concept = 'checkdown'; playName = 'Checkdown'; flavor = 'Safe, short, keeps the chains moving.';
   } else if (runs.length >= 2) {
     concept = 'ground_pound'; playName = 'Ground & Pound'; flavor = 'Pound the rock — high floor.';
-    execution += 0.4; ledger.push({ id: 'ex', kind: 'execution', label: 'Ground & Pound', detail: 'Execution +0.4.' });
+    execution += 0.4; ledger.push({ id: 'ex', kind: 'execution', stage: 'concept', channel: 'execution', operation: 'add', value: 0.4, label: 'Ground & Pound', detail: 'Execution +0.4.' });
     // The ground game's one path to a Big Play: stack three carries and one breaks.
-    if (runs.length >= 3) { bigPlay *= 1.25; ledger.push({ id: 'gash', kind: 'big_play', label: 'Gash', detail: '3+ carries — one breaks for Big Play ×1.25.' }); }
+    if (runs.length >= 3) { bigPlay *= 1.25; ledger.push({ id: 'gash', kind: 'big_play', stage: 'concept', channel: 'big_play', operation: 'multiply', value: 1.25, label: 'Gash', detail: '3+ carries — one breaks for Big Play ×1.25.' }); }
   } else if (runs.length === 1) {
     concept = 'designed_run'; playName = 'Designed Run'; flavor = 'One carry, one read.';
   } else if (qbRuns.length > 0 && passCards.length === 0 && catches.length === 0) {
@@ -588,31 +635,31 @@ export function scoreFootballPlay(cards: FbCard[], ctx: FbScoreContext): FbPlayR
 
   // ── Coordinators ──
   if (co.has('bell_cow')) {
-    if (runs.length > 0) { const add = runs.length * 13; base += add; ledger.push({ id: 'bc-run', kind: 'coordinator', label: 'Bell Cow', detail: `+${add} Base from run cards.` }); }
-    if (ctx.groundBonusThisMatch > 0) { base += ctx.groundBonusThisMatch; ledger.push({ id: 'bc-acc', kind: 'coordinator', label: 'Bell Cow (built up)', detail: `+${ctx.groundBonusThisMatch} accumulated ground Base.` }); }
+    if (runs.length > 0) { const add = runs.length * 13; base += add; ledger.push({ id: 'bc-run', kind: 'coordinator', stage: 'coordinator', channel: 'base', operation: 'add', value: add, label: 'Bell Cow', detail: `+${add} Base from run cards.` }); }
+    if (ctx.groundBonusThisMatch > 0) { base += ctx.groundBonusThisMatch; ledger.push({ id: 'bc-acc', kind: 'coordinator', stage: 'coordinator', channel: 'base', operation: 'add', value: ctx.groundBonusThisMatch, label: 'Bell Cow (built up)', detail: `+${ctx.groundBonusThisMatch} accumulated ground Base.` }); }
   }
   if (co.has('salary_wizard')) {
     const cheap = cards.filter((c) => c.cost === 1).length;
-    if (cheap > 0) { const add = cheap * 12; base += add; ledger.push({ id: 'sw', kind: 'coordinator', label: 'Salary Wizard', detail: `+${add} Base from ${cheap} value card${cheap === 1 ? '' : 's'}.` }); }
+    if (cheap > 0) { const add = cheap * 12; base += add; ledger.push({ id: 'sw', kind: 'coordinator', stage: 'coordinator', channel: 'base', operation: 'add', value: add, label: 'Salary Wizard', detail: `+${add} Base from ${cheap} value card${cheap === 1 ? '' : 's'}.` }); }
   }
   if (co.has('air_raid') && isStack && ctx.stacksThisMatch > 0) {
     const add = round2(0.25 * ctx.stacksThisMatch);
     execution += add;
-    ledger.push({ id: 'ar', kind: 'coordinator', label: 'Air Raid Coordinator', detail: `+${add} Execution (scales with ${ctx.stacksThisMatch} prior stack${ctx.stacksThisMatch === 1 ? '' : 's'}).` });
+    ledger.push({ id: 'ar', kind: 'coordinator', stage: 'coordinator', channel: 'execution', operation: 'add', value: add, label: 'Air Raid Coordinator', detail: `+${add} Execution (scales with ${ctx.stacksThisMatch} prior stack${ctx.stacksThisMatch === 1 ? '' : 's'}).` });
   }
   if (co.has('west_coast') && (concept === 'checkdown' || (passCards.length > 0 && !isStack))) {
     execution += 0.3;
-    ledger.push({ id: 'wc', kind: 'coordinator', label: 'West Coast Guru', detail: '+0.3 Execution on short passing.' });
+    ledger.push({ id: 'wc', kind: 'coordinator', stage: 'coordinator', channel: 'execution', operation: 'add', value: 0.3, label: 'West Coast Guru', detail: '+0.3 Execution on short passing.' });
   }
   if (co.has('ball_hawk') && defense.length > 0) {
     bigPlay *= 1.3;
-    ledger.push({ id: 'bh', kind: 'coordinator', label: 'Ball-Hawk DC', detail: 'Defensive play — Big Play ×1.3.' });
+    ledger.push({ id: 'bh', kind: 'coordinator', stage: 'coordinator', channel: 'big_play', operation: 'multiply', value: 1.3, label: 'Ball-Hawk DC', detail: 'Defensive play — Big Play ×1.3.' });
   }
   const bombGames = ctx.bombGames ?? 0;
   if (co.has('franchise_qb') && bombGames > 0) {
     const mult = 1 + 0.2 * bombGames;
     bigPlay *= mult;
-    ledger.push({ id: 'fqb', kind: 'coordinator', label: 'Franchise QB', detail: `Big Play ×${round2(mult)} (${bombGames} prior Bomb game${bombGames === 1 ? '' : 's'}).` });
+    ledger.push({ id: 'fqb', kind: 'coordinator', stage: 'coordinator', channel: 'big_play', operation: 'multiply', value: mult, label: 'Franchise QB', detail: `Big Play ×${round2(mult)} (${bombGames} prior Bomb game${bombGames === 1 ? '' : 's'}).` });
   }
 
   // ── Game Plan (leveled concept commitment) ──
@@ -627,46 +674,64 @@ export function scoreFootballPlay(cards: FbCard[], ctx: FbScoreContext): FbPlayR
       bigPlay *= xm;
       detail += ` — commit ×${xm} Big Play`;
     }
-    ledger.push({ id: 'pb', kind: 'coordinator', label: `Game Plan Lv${lvl}`, detail });
+    ledger.push({ id: 'pb', kind: 'coordinator', stage: 'playbook', channel: lvl >= 2 ? 'big_play' : step.base ? 'base' : 'execution', operation: lvl >= 2 ? 'multiply' : 'add', value: lvl, label: `Game Plan Lv${lvl}`, detail });
   }
 
-  // ── Busted play penalty ──
-  if (concept === 'busted_play') { bigPlay *= 0.5; ledger.push({ id: 'busted', kind: 'big_play', label: 'No Concept', detail: 'Mismatched cards — Big Play ×0.5.' }); }
+  // ── Player Traits (card modifiers) ──
+  // Clutch: late-game Base spike (final drive or championship).
+  if (ctx.driveIndex === 2 || ctx.championship === true) {
+    const clutch = cards.filter((c) => c.modifier === 'clutch').length;
+    if (clutch > 0) { const add = clutch * 20; base += add; ledger.push({ id: 'clutch', kind: 'base', stage: 'cards', channel: 'base', operation: 'add', value: add, label: 'Clutch', detail: `+${add} Base — late-game heroics.` }); }
+  }
+  // Explosive: extra Big Play on a clean concept, one stack per Explosive card.
+  if (concept !== 'busted_play') {
+    const explosive = cards.filter((c) => c.modifier === 'explosive').length;
+    if (explosive > 0) { const m = round2(1 + 0.1 * explosive); bigPlay *= m; ledger.push({ id: 'explosive', kind: 'big_play', stage: 'cards', channel: 'big_play', operation: 'multiply', value: m, label: 'Explosive', detail: `Big Play ×${m} (${explosive} Explosive card${explosive === 1 ? '' : 's'}).` }); }
+  }
+
+  // ── Busted play penalty (waived by a Reliable card) ──
+  if (concept === 'busted_play') {
+    if (cards.some((c) => c.modifier === 'reliable')) {
+      ledger.push({ id: 'reliable', kind: 'coordinator', stage: 'adjustment', channel: 'big_play', operation: 'set', value: 1, label: 'Reliable', detail: 'A reliable player salvaged the play — no busted penalty.' });
+    } else {
+      bigPlay *= 0.5; ledger.push({ id: 'busted', kind: 'big_play', stage: 'adjustment', channel: 'big_play', operation: 'penalty', value: 0.5, label: 'No Concept', detail: 'Mismatched cards — Big Play ×0.5.' });
+    }
+  }
 
   // ── Environment ──
-  if (env === 'dome' && isStack) { base *= 1.15; ledger.push({ id: 'env', kind: 'environment', label: FB_ENVIRONMENTS.dome.label, detail: 'Passing +15% Base.' }); }
+  if (env === 'dome' && isStack) { base *= 1.15; ledger.push({ id: 'env', kind: 'environment', stage: 'environment', channel: 'base', operation: 'multiply', value: 1.15, label: FB_ENVIRONMENTS.dome.label, detail: 'Passing +15% Base.' }); }
   if (env === 'snow') {
-    if (isStack) { base *= 0.8; ledger.push({ id: 'env', kind: 'environment', label: FB_ENVIRONMENTS.snow.label, detail: 'Passing −20% Base.' }); }
-    else if (runs.length > 0) { base *= 1.2; ledger.push({ id: 'env', kind: 'environment', label: FB_ENVIRONMENTS.snow.label, detail: 'Ground +20% Base.' }); }
+    if (isStack) { base *= 0.8; ledger.push({ id: 'env', kind: 'environment', stage: 'environment', channel: 'base', operation: 'penalty', value: 0.8, label: FB_ENVIRONMENTS.snow.label, detail: 'Passing -20% Base.' }); }
+    else if (runs.length > 0) { base *= 1.2; ledger.push({ id: 'env', kind: 'environment', stage: 'environment', channel: 'base', operation: 'multiply', value: 1.2, label: FB_ENVIRONMENTS.snow.label, detail: 'Ground +20% Base.' }); }
   }
-  if (env === 'primetime') { bigPlay *= 1.2; ledger.push({ id: 'env', kind: 'environment', label: FB_ENVIRONMENTS.primetime.label, detail: 'Big Play ×1.2.' }); }
+  if (env === 'primetime') { bigPlay *= 1.2; ledger.push({ id: 'env', kind: 'environment', stage: 'environment', channel: 'big_play', operation: 'multiply', value: 1.2, label: FB_ENVIRONMENTS.primetime.label, detail: 'Big Play ×1.2.' }); }
 
   // ── Opposing defensive scheme (Boss Blind analog) ──
   if (scheme === 'no_fly_zone') {
     if (concept === 'double_stack_bomb' || concept === 'shootout_stack') {
-      bigPlay *= 0.78;
-      ledger.push({ id: 'boss', kind: 'boss', label: FB_BOSS_SCHEMES.no_fly_zone.label, detail: 'Deep stack counter — Big Play ×0.78.' });
+      const f = soften(0.78); bigPlay *= f;
+      ledger.push({ id: 'boss', kind: 'boss', stage: 'boss', channel: 'big_play', operation: 'penalty', value: f, label: FB_BOSS_SCHEMES.no_fly_zone.label, detail: `Deep stack counter — Big Play ×${f}${protectedInPlay ? ' (Protected).' : '.'}` });
     } else if (concept === 'stack_td' || concept === 'checkdown') {
       execution += 0.15;
-      ledger.push({ id: 'boss', kind: 'boss', label: FB_BOSS_SCHEMES.no_fly_zone.label, detail: 'Short passing window — Execution +0.15.' });
+      ledger.push({ id: 'boss', kind: 'boss', stage: 'boss', channel: 'execution', operation: 'add', value: 0.15, label: FB_BOSS_SCHEMES.no_fly_zone.label, detail: 'Short passing window — Execution +0.15.' });
     }
   }
   if (scheme === 'stacked_box') {
     if (concept === 'ground_pound' || concept === 'designed_run' || concept === 'qb_keeper') {
-      base *= 0.82;
-      ledger.push({ id: 'boss', kind: 'boss', label: FB_BOSS_SCHEMES.stacked_box.label, detail: 'Run fit is loaded — Base ×0.82.' });
+      const f = soften(0.82); base *= f;
+      ledger.push({ id: 'boss', kind: 'boss', stage: 'boss', channel: 'base', operation: 'penalty', value: f, label: FB_BOSS_SCHEMES.stacked_box.label, detail: `Run fit is loaded — Base ×${f}${protectedInPlay ? ' (Protected).' : '.'}` });
     } else if (isStack) {
       execution += 0.12;
-      ledger.push({ id: 'boss', kind: 'boss', label: FB_BOSS_SCHEMES.stacked_box.label, detail: 'Play-action window — Execution +0.12.' });
+      ledger.push({ id: 'boss', kind: 'boss', stage: 'boss', channel: 'execution', operation: 'add', value: 0.12, label: FB_BOSS_SCHEMES.stacked_box.label, detail: 'Play-action window — Execution +0.12.' });
     }
   }
   if (scheme === 'turnover_drill') {
     if (defense.length > 0) {
-      bigPlay *= 0.75;
-      ledger.push({ id: 'boss', kind: 'boss', label: FB_BOSS_SCHEMES.turnover_drill.label, detail: 'Ball security emphasis — defensive Big Play ×0.75.' });
+      const f = soften(0.75); bigPlay *= f;
+      ledger.push({ id: 'boss', kind: 'boss', stage: 'boss', channel: 'big_play', operation: 'penalty', value: f, label: FB_BOSS_SCHEMES.turnover_drill.label, detail: `Ball security emphasis — defensive Big Play ×${f}${protectedInPlay ? ' (Protected).' : '.'}` });
     } else if (concept !== 'busted_play' && kicks.length === 0) {
       execution += 0.1;
-      ledger.push({ id: 'boss', kind: 'boss', label: FB_BOSS_SCHEMES.turnover_drill.label, detail: 'Clean offense — Execution +0.10.' });
+      ledger.push({ id: 'boss', kind: 'boss', stage: 'boss', channel: 'execution', operation: 'add', value: 0.1, label: FB_BOSS_SCHEMES.turnover_drill.label, detail: 'Clean offense — Execution +0.10.' });
     }
   }
 
@@ -675,30 +740,30 @@ export function scoreFootballPlay(cards: FbCard[], ctx: FbScoreContext): FbPlayR
   if (repeats > 0 && concept !== 'busted_play') {
     const factor = Math.pow(scheme === 'adaptive_dc' ? 0.72 : 0.85, repeats);
     bigPlay *= factor;
-    ledger.push({ id: 'spam', kind: 'spam', label: scheme === 'adaptive_dc' ? FB_BOSS_SCHEMES.adaptive_dc.label : 'Defense Adjusted', detail: `Repeated ${playName} ×${round2(factor)} (call something else).` });
+    ledger.push({ id: 'spam', kind: 'spam', stage: 'adjustment', channel: 'big_play', operation: 'penalty', value: factor, label: scheme === 'adaptive_dc' ? FB_BOSS_SCHEMES.adaptive_dc.label : 'Defense Adjusted', detail: `Repeated ${playName} ×${round2(factor)} (call something else).` });
   }
 
   base = r(base);
   execution = round2(execution);
   bigPlay = round2(bigPlay);
   const total = Math.max(0, Math.floor(base * (1 + execution) * bigPlay));
-  ledger.push({ id: 'final', kind: 'final', label: 'Play Total', detail: `${base} × (1 + ${execution}) × ${bigPlay}.` });
+  ledger.push({ id: 'final', kind: 'final', stage: 'final', channel: 'base', operation: 'set', value: total, label: 'Play Total', detail: `${base} × (1 + ${execution}) × ${bigPlay}.` });
 
   return { valid: concept !== 'busted_play', concept, playName, flavor, base, execution, bigPlay, total, cost, ledger };
 }
 
 // ── Deck helpers ────────────────────────────────────────────────────────────
-export function shuffle<T>(arr: T[]): T[] {
+export function shuffle<T>(arr: T[], rng: RNG = Math.random): T[] {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(rng() * (i + 1));
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
 }
 
-export function randomEnvironment(): FbEnvironmentKey {
-  return FB_ENVIRONMENT_KEYS[Math.floor(Math.random() * FB_ENVIRONMENT_KEYS.length)];
+export function randomEnvironment(rng: RNG = Math.random): FbEnvironmentKey {
+  return FB_ENVIRONMENT_KEYS[Math.floor(rng() * FB_ENVIRONMENT_KEYS.length)];
 }
 
 export function driveTargets(env: FbEnvironmentKey): number[] {

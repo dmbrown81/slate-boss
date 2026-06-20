@@ -1,73 +1,62 @@
-# React + TypeScript + Vite
+# Gridiron / Slate Boss
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Gridiron is a single-player football card roguelike inside the Slate Boss repo.
+The current headline mode is Gridiron: build a team deck, call football concepts,
+clear three drives per game, and survive a five-game season.
 
-Currently, two official plugins are available:
+Classic Slate Boss, the original fictional DFS lineup simulator, is still kept in
+the app as a legacy mode.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Run Locally
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run dev -- --host 127.0.0.1
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Open `http://127.0.0.1:5173/slate-boss/`.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## Quality Gates
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run lint
+npm run build
+npm run smoke:gridiron
+npm run balance:gridiron -- 3000
 ```
+
+The Gridiron balance harness is the source of truth for tuning. It checks whether
+smart build choices beat random choices, whether all five team decks are viable,
+and whether losses are caused by weak builds instead of dead draws.
+
+## Product State
+
+Gridiron is moving into productized alpha. The foundation now includes:
+
+- five team-as-deck starting identities
+- seeded season state for weather, bosses, rewards, and match draws
+- a **Front Office Funds economy** (win purse + banked interest) — the between-game transmission
+- the **War Room** shop: priced rewards, buy-what-you-can-afford, reroll, and skip-for-funds
+- **Player Traits** (card modifiers: Reliable, Explosive, Discounted, Clutch, Protected, Hot Route), bought via Training rewards and wired into the scoring ledger
+- versioned localStorage save/resume under `gridiron_run_v1` (save format v2, migrates v1)
+- boss preview during War Room reward selection
+- staged scoring ledger with stage/channel/operation metadata
+- a lightweight screen render smoke test
+
+Near-term work should stay focused on app hardening and strategic depth, in order:
+Film Tools (one-use consumables) + coordinator ordering; then expanding the
+coordinator catalog so run/defense leans have as much to buy as passing (compresses
+team spread); then concept containment, a run-summary coach debrief, and seeded
+daily challenges. Avoid backend, accounts, multiplayer, real-money features,
+licensed IP, or a mobile wrapper until the alpha loop is steadier.
+
+## Useful Files
+
+- `src/lib/footballRogue.ts` - Gridiron card model, Player Traits, deck factories, scoring, bosses, and tunables.
+- `src/lib/footballRun.ts` - season state, seeded run helpers, priced rewards, training, and build identity.
+- `src/lib/gridironEconomy.ts` - Front Office Funds: purse, interest, reroll/skip economy.
+- `src/lib/gridironStorage.ts` - Gridiron save/resume persistence (v2 with v1 migration).
+- `src/components/FootballSeason.tsx` - season orchestration.
+- `scripts/gridironBalance.ts` - Monte Carlo balance harness.
+- `scripts/gridironSmoke.tsx` - lightweight render smoke test.
+- `AGENT_HANDOFF_LOG.md` - shared project log for Codex / Claude Code handoffs.

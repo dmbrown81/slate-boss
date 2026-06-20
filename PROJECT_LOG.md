@@ -1,5 +1,28 @@
 # Slate Boss Project Log
 
+## 2026-06-20
+
+### Gridiron "complete vehicle" — Front Office economy + War Room + Player Traits
+
+- Acted on the unanimous multi-model design package: gave the scoring engine a transmission.
+- Added Front Office Funds (`gridironEconomy.ts`): starting funds, win purse, banked interest, reroll/skip economy.
+- Replaced the single-pick reward screen with the War Room shop: priced rewards, buy-as-you-can-afford, reroll, skip-for-funds, with the existing boss/weather scout.
+- Added Player Traits (card modifiers): Reliable, Explosive, Discounted, Clutch, Protected, Hot Route — wired into the three-channel scoring pipeline with ledger lines and on-card badges, bought via Training rewards.
+- Bumped Gridiron save format to v2 with a v1 migration so in-progress seasons survive.
+- Expanded the balance harness to be economy-aware (every policy now spends Funds) and added a Front Office Economy section (smart-spend gap + spend-vs-bank check).
+- Harness after the change: BUILD GAP 61.0, REWARD GAP 40.7, smart-spend 40.7, spend-vs-bank 1.5 — all green; all five teams viable. Team spread widened to 19.6 (next tuning target: run/defense reward depth).
+- Validation: `npm run lint`, `npm run build`, `npm run smoke:gridiron`, `npm run balance:gridiron -- 3000` all pass.
+
+### Gridiron productized-alpha foundation
+
+- Moved Gridiron toward app readiness without freezing the game design.
+- Added versioned Gridiron save/resume persistence under `gridiron_run_v1`.
+- Added seeded season helpers for deterministic weather, boss, reward, and match draw paths.
+- Added next-game boss/weather scouting to the Front Office reward screen.
+- Structured score ledger entries with stage/channel/operation metadata for future scoring-pipeline animation and debugging.
+- Added a lightweight Gridiron render smoke script: `npm run smoke:gridiron`.
+- Updated app metadata, README, and reviewer handoff docs so Gridiron is the repo's first-class product surface.
+
 ## 2026-06-17
 
 ### DFS card-rogue branch kickoff

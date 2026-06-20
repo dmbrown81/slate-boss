@@ -6,7 +6,7 @@
 // balance-affecting change.
 
 import {
-  scoreFootballPlay, shuffle, randomBossScheme, randomEnvironment,
+  scoreFootballPlay, shuffle, cardCost, randomBossScheme, randomEnvironment,
   DRIVE_BUDGET, DRIVES_PER_MATCH, HAND_SIZE, AUDIBLES_PER_DRIVE,
   TEAM_ARCHETYPES, TEAM_PROFILES,
   type FbBossSchemeKey, type FbCard, type FbConceptKey, type FbEnvironmentKey, type TeamArchetype,
@@ -15,6 +15,8 @@ import {
   createRun, gameTargets, generateRewards, isChampionship, SEASON_GAMES,
   type FbRunState, type Reward,
 } from '../src/lib/footballRun';
+import { shopCredit } from '../src/lib/gridironEconomy';
+import { mulberry32, stringSeed, type RNG } from '../src/lib/rng';
 
 // Loss-cause attribution (per the v3 stress-test spec): a lost drive is either a
 // dead_draw (the hand never assembled a scoring play, even after audibles) or
@@ -26,8 +28,8 @@ type LossCause = 'dead_draw' | 'underpowered';
 // ── Tactical play: greedy value-per-credit, audible to seek a strong play ────
 interface GameResult { won: boolean; drive: number; bomb: boolean; score: number; concepts: Record<string, number>; lossCause?: LossCause; }
 
-function playGame(run: FbRunState, targets: number[], environment: FbEnvironmentKey, bossScheme: FbBossSchemeKey): GameResult {
-  let full = shuffle([...run.deck]);
+function playGame(run: FbRunState, targets: number[], environment: FbEnvironmentKey, bossScheme: FbBossSchemeKey, championship: boolean, rng: RNG): GameResult {
+  let full = shuffle([...run.deck], rng);
   let stacks = 0, ground = 0, bomb = false, total = 0;
   const concepts: Record<string, number> = {};
   for (let d = 0; d < DRIVES_PER_MATCH; d++) {
@@ -40,13 +42,13 @@ function playGame(run: FbRunState, targets: number[], environment: FbEnvironment
       rec(0, []);
       let best: { ids: number[]; metric: number; total: number; cost: number; concept: FbConceptKey } | null = null;
       for (const cmb of combos) {
-        const cards = cmb.map((i) => hand[i]); const cost = cards.reduce((s, c) => s + c.cost, 0); if (cost > budget) continue;
-        const res = scoreFootballPlay(cards, { coordinators: run.coordinators, environment, bossScheme, playbook: run.playbook, bombGames: run.bombGames, stacksThisMatch: stacks, groundBonusThisMatch: ground, conceptCountsThisDrive: counts });
+        const cards = cmb.map((i) => hand[i]); const cost = cards.reduce((s, c) => s + cardCost(c), 0); if (cost > budget) continue;
+        const res = scoreFootballPlay(cards, { coordinators: run.coordinators, environment, bossScheme, playbook: run.playbook, bombGames: run.bombGames, stacksThisMatch: stacks, groundBonusThisMatch: ground, conceptCountsThisDrive: counts, driveIndex: d, championship });
         if (!res.valid) continue;
         const metric = res.total / cost;
         if (!best || metric > best.metric) best = { ids: cmb, metric, total: res.total, cost: res.cost, concept: res.concept };
       }
-      if ((!best || (best.total < 200 && aud > 0)) && aud > 0) { aud--; const pool = shuffle([...deck, ...discard]); hand = pool.slice(0, HAND_SIZE); deck = pool.slice(HAND_SIZE); discard = []; continue; }
+      if ((!best || (best.total < 200 && aud > 0)) && aud > 0) { aud--; const pool = shuffle([...deck, ...discard], rng); hand = pool.slice(0, HAND_SIZE); deck = pool.slice(HAND_SIZE); discard = []; continue; }
       if (!best) break;
       score += best.total; total += best.total; budget -= best.cost; executed++;
       counts[best.concept] = (counts[best.concept] ?? 0) + 1; concepts[best.concept] = (concepts[best.concept] ?? 0) + 1;
@@ -54,8 +56,8 @@ function playGame(run: FbRunState, targets: number[], environment: FbEnvironment
       if (best.concept === 'ground_pound') ground += 6;
       if (best.concept === 'double_stack_bomb') bomb = true;
       const ids = new Set(best.ids); const played = best.ids.map((i) => hand[i]); discard = [...discard, ...played]; hand = hand.filter((_, i) => !ids.has(i));
-      while (hand.length < HAND_SIZE) { if (deck.length === 0) { if (!discard.length) break; deck = shuffle(discard); discard = []; } hand.push(deck.shift()!); }
-      if (budget < Math.min(...hand.map((c) => c.cost), Infinity)) break;
+      while (hand.length < HAND_SIZE) { if (deck.length === 0) { if (!discard.length) break; deck = shuffle(discard, rng); discard = []; } hand.push(deck.shift()!); }
+      if (budget < Math.min(...hand.map((c) => cardCost(c)), Infinity)) break;
     }
     if (score < targets[d]) {
       // dead_draw = the hand never assembled a single scoring play (even after
@@ -65,14 +67,16 @@ function playGame(run: FbRunState, targets: number[], environment: FbEnvironment
       const lossCause: LossCause = executed === 0 ? 'dead_draw' : 'underpowered';
       return { won: false, drive: d + 1, bomb, score: total, concepts, lossCause };
     }
-    full = shuffle([...deck, ...hand, ...discard]);
+    full = shuffle([...deck, ...hand, ...discard], rng);
   }
   return { won: true, drive: 3, bomb, score: total, concepts };
 }
 
 // ── Reward policies ──────────────────────────────────────────────────────────
-// 'none' = take no rewards (measures the un-built starter-deck floor).
-type RewardPolicy = 'synergy' | 'naive' | 'random' | 'none';
+// Every policy is now ECONOMY-AWARE: each shop credits the win purse + interest,
+// then the pilot buys what its policy/funds allow. 'none' = hoard, buy nothing
+// (the un-built floor). eco_greedy/eco_patient probe spend-now-vs-bank.
+type RewardPolicy = 'synergy' | 'naive' | 'random' | 'none' | 'eco_greedy' | 'eco_patient';
 
 function deckLean(deck: FbCard[]) {
   let pass = 0, run = 0, def = 0;
@@ -106,6 +110,13 @@ function synergyScore(rw: Reward, run: FbRunState, gameNumber: number): number {
     const committedLevel = run.playbook[con] ?? 0; // concentration: ride what you've already leveled
     return 28 + (onLean ? 26 : 4) + committedLevel * 22 + early * 3;
   }
+  if (id.startsWith('train-')) {
+    const m = id.slice(6);
+    const passT = m === 'explosive' || m === 'hot_route';
+    const runT = m === 'discounted' || m === 'clutch';
+    const defT = m === 'explosive' || m === 'protected';
+    return 22 + ((passT && passLean) || (runT && runLean) || (defT && defLean) ? 14 : 0);
+  }
   if (id.startsWith('card-')) {
     const k = id.slice(5);
     const passCard = k === 'deep_wr' || k === 'gunslinger' || k === 'value_slot';
@@ -118,46 +129,82 @@ function synergyScore(rw: Reward, run: FbRunState, gameNumber: number): number {
   return 10;
 }
 
-function pickReward(rewards: Reward[], policy: RewardPolicy, run: FbRunState, gameNumber: number): Reward {
-  if (policy === 'random') return rewards[Math.floor(Math.random() * rewards.length)];
-  if (policy === 'naive') {
-    const order = ['coordinator', 'playbook', 'card', 'upgrade', 'trim'];
-    return [...rewards].sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind))[0];
+// One shop visit: spend Funds per policy. Returns the run + Funds spent. The
+// shelf shrinks as items sell; the synergy family banks rather than buy junk.
+function runShop(run: FbRunState, policy: RewardPolicy, gameNumber: number, rng: RNG): { run: FbRunState; spent: number } {
+  if (policy === 'none') return { run, spent: 0 };
+  let r = run; let spent = 0;
+  let shelf = generateRewards(r, rng);
+  for (let i = 0; i < 16; i++) {
+    const affordable = shelf.filter((rw) => rw.cost <= r.funds);
+    if (affordable.length === 0) break;
+    let pick: Reward | undefined;
+    if (policy === 'random') {
+      if (rng() < 0.3) break;                    // sometimes stop early / bank
+      pick = affordable[Math.floor(rng() * affordable.length)];
+    } else if (policy === 'naive') {
+      const order = ['coordinator', 'playbook', 'card', 'upgrade', 'training', 'trim'];
+      pick = [...affordable].sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind))[0];
+    } else {
+      // synergy / eco_greedy / eco_patient: all buy the BEST-fit affordable item;
+      // they differ only in WHETHER TO BANK across shops (the spend-vs-save call).
+      pick = [...affordable].sort((a, b) => synergyScore(b, r, gameNumber) - synergyScore(a, r, gameNumber))[0];
+      const best = synergyScore(pick, r, gameNumber);
+      if (policy === 'eco_patient') {
+        const keystone = pick.kind === 'coordinator' || pick.kind === 'playbook';
+        if (!keystone && r.funds < 9) break;     // hold cheap turns to afford keystones
+        if (best < 30 && r.funds < 12) break;
+      } else if (policy === 'eco_greedy') {
+        if (best < 10) break;                    // spend now on anything decent, never bank
+      } else if (best < 16) break;               // synergy: never buy total junk
+    }
+    if (!pick) break;
+    r = pick.apply({ ...r, funds: r.funds - pick.cost });
+    spent += pick.cost;
+    shelf = shelf.filter((x) => x.id !== pick!.id);
   }
-  return [...rewards].sort((a, b) => synergyScore(b, run, gameNumber) - synergyScore(a, run, gameNumber))[0];
+  return { run: r, spent };
 }
 
-interface SeasonOut { champion: boolean; gamesWon: number; perGame: number[]; lossCause?: LossCause; }
-function playSeason(policy: RewardPolicy, team: TeamArchetype = 'balanced'): SeasonOut {
-  let run = createRun(team);
+interface SeasonOut { champion: boolean; gamesWon: number; perGame: number[]; spent: number; lossCause?: LossCause; }
+function playSeason(policy: RewardPolicy, team: TeamArchetype = 'balanced', seasonIndex = 0): SeasonOut {
+  const rng = mulberry32(stringSeed(`gridiron-balance:${BALANCE_SEED}:${team}:${policy}:${seasonIndex}`));
+  let run = createRun(team, Math.floor(rng() * 0x7fffffff));
   const perGame = [0, 0, 0, 0, 0];
+  let spent = 0;
   for (let g = 1; g <= SEASON_GAMES; g++) {
-    const environment = randomEnvironment();
-    const bossScheme = randomBossScheme(g, isChampionship(g));
-    const res = playGame(run, gameTargets(environment, g), environment, bossScheme);
-    if (!res.won) return { champion: false, gamesWon: g - 1, perGame, lossCause: res.lossCause };
+    const environment = randomEnvironment(rng);
+    const bossScheme = randomBossScheme(g, isChampionship(g), rng);
+    const res = playGame(run, gameTargets(environment, g), environment, bossScheme, isChampionship(g), rng);
+    if (!res.won) return { champion: false, gamesWon: g - 1, perGame, spent, lossCause: res.lossCause };
     perGame[g - 1] = 1;
     run = { ...run, bombGames: run.bombGames + (res.bomb ? 1 : 0) };
-    if (policy !== 'none' && !isChampionship(g)) run = pickReward(generateRewards(run), policy, run, g).apply(run);
+    if (!isChampionship(g)) {
+      const credit = shopCredit(run.funds, g);
+      run = { ...run, funds: run.funds + credit.total };
+      const shopped = runShop(run, policy, g, rng);
+      run = shopped.run; spent += shopped.spent;
+    }
   }
-  return { champion: true, gamesWon: SEASON_GAMES, perGame };
+  return { champion: true, gamesWon: SEASON_GAMES, perGame, spent };
 }
 
 // ── Run ──────────────────────────────────────────────────────────────────────
 const N = Number(process.argv[2] ?? 1500);
+const BALANCE_SEED = process.env.GRIDIRON_BALANCE_SEED ?? 'gridiron-balance-v1';
 const verdict = (g: number, hi: number, mid: number) => (g >= hi ? '✅' : g >= mid ? '🟡' : '❌');
 
 // ── (1) Decisiveness on the baseline (balanced) team: does building matter? ───
 const policies: RewardPolicy[] = ['synergy', 'naive', 'random', 'none'];
 const champ: Record<RewardPolicy, number> = { synergy: 0, naive: 0, random: 0, none: 0 };
 
-console.log(`\nGridiron balance — ${N} seasons per cell\n`);
+console.log(`\nGridiron balance — ${N} seasons per cell (seed: ${BALANCE_SEED})\n`);
 console.log('① DECISIVENESS (Ironhawks / balanced baseline)');
 console.log('policy   | champion | avgGamesWon | per-game clear (G1→G5)');
 console.log('---------|----------|-------------|------------------------');
 for (const p of policies) {
   let wins = 0, gw = 0; const pg = [0, 0, 0, 0, 0];
-  for (let i = 0; i < N; i++) { const s = playSeason(p); if (s.champion) wins++; gw += s.gamesWon; s.perGame.forEach((w, i2) => pg[i2] += w); }
+  for (let i = 0; i < N; i++) { const s = playSeason(p, 'balanced', i); if (s.champion) wins++; gw += s.gamesWon; s.perGame.forEach((w, i2) => pg[i2] += w); }
   champ[p] = (100 * wins) / N;
   console.log(`${p.padEnd(8)} | ${(100 * wins / N).toFixed(1).padStart(6)}%  | ${(gw / N).toFixed(2).padStart(10)}  | ${pg.map((x) => `${Math.round(100 * x / N)}%`.padStart(4)).join(' ')}`);
 }
@@ -180,7 +227,7 @@ for (const team of TEAM_ARCHETYPES) {
   const prof = TEAM_PROFILES[team];
   let wins = 0, gw = 0, losses = 0, dead = 0;
   for (let i = 0; i < N; i++) {
-    const s = playSeason('synergy', team);
+    const s = playSeason('synergy', team, i);
     if (s.champion) wins++; else { losses++; if (s.lossCause === 'dead_draw') dead++; }
     gw += s.gamesWon;
   }
@@ -197,4 +244,25 @@ console.log(`\nSPREAD      (max − min champion):    ${spread.toFixed(1)} pts  
 console.log(`COMPETITIVE (teams ≥ 25% champion):  ${competitive} / 5    ${verdict(competitive, 4, 3)}  (want ≥ 3 viable lines)`);
 console.log(`DEAD-DRAW   (% of losses to bad draw): ${deadDrawPct.toFixed(1)}%  ${verdict(20 - deadDrawPct, 12, 5)}  (want < ~10%)`);
 console.log(spread <= 18 && competitive >= 3 && deadDrawPct < 12 ? '✅ the meta is multi-path, not solved' : '⚠️ rebalance: a team is dead/auto-win or losses are draw-screw');
+
+// ── (3) ECONOMY: does the Front Office layer reward smart spending? ───────────
+// smart spend (synergy) should beat random spend; spend-it-all (greedy) and
+// bank-for-keystones (patient) should BOTH be viable — neither dominating proves
+// the spend-now-vs-bank decision is real, not solved.
+console.log('\n③ FRONT OFFICE ECONOMY (Ironhawks / balanced baseline)');
+console.log('policy     | champion | avg $ spent / season');
+console.log('-----------|----------|---------------------');
+const ecoPolicies: RewardPolicy[] = ['synergy', 'random', 'eco_greedy', 'eco_patient', 'none'];
+const ecoChamp: Partial<Record<RewardPolicy, number>> = {};
+for (const p of ecoPolicies) {
+  let wins = 0, totSpent = 0;
+  for (let i = 0; i < N; i++) { const s = playSeason(p, 'balanced', i); if (s.champion) wins++; totSpent += s.spent; }
+  ecoChamp[p] = (100 * wins) / N;
+  console.log(`${p.padEnd(10)} | ${(100 * wins / N).toFixed(1).padStart(6)}%  | ${(totSpent / N).toFixed(1).padStart(6)}`);
+}
+const smartSpendGap = (ecoChamp.synergy ?? 0) - (ecoChamp.random ?? 0);
+const bankVsSpend = Math.abs((ecoChamp.eco_greedy ?? 0) - (ecoChamp.eco_patient ?? 0));
+console.log(`\nSMART-SPEND  (synergy − random spend): ${smartSpendGap.toFixed(1)} pts  ${verdict(smartSpendGap, 12, 6)}  (want spending well to matter)`);
+console.log(`SPEND vs BANK (|greedy − patient|):    ${bankVsSpend.toFixed(1)} pts  ${verdict(20 - bankVsSpend, 8, 4)}  (want neither dominant: small gap)`);
+console.log(smartSpendGap >= 6 && bankVsSpend <= 16 ? '✅ the economy is a real decision, not a formality' : '⚠️ tune purse/interest/prices');
 console.log('──────────────────────────────────────────────\n');
