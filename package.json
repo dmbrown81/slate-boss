@@ -6,23 +6,33 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:native": "tsc -b && vite build --base=./",
     "lint": "eslint .",
     "preview": "vite preview",
-    "balance": "tsx scripts/balance.ts",
+    "icons": "node scripts/generateAppIcons.mjs",
+    "cap:add:ios": "cap add ios",
+    "cap:add:android": "cap add android",
+    "cap:sync": "npm run build:native && cap sync",
+    "cap:open:ios": "cap open ios",
+    "cap:open:android": "cap open android",
     "balance:gridiron": "tsx scripts/gridironBalance.ts",
     "smoke:gridiron": "tsx --tsconfig tsconfig.app.json scripts/gridironSmoke.tsx"
   },
   "dependencies": {
+    "@capacitor/android": "^8.4.1",
+    "@capacitor/core": "^8.4.1",
+    "@capacitor/ios": "^8.4.1",
     "@rollup/wasm-node": "^4.61.1",
     "react": "^19.2.6",
     "react-dom": "^19.2.6"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.4.1",
     "@eslint/js": "^10.0.1",
     "@types/node": "^24.12.3",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^4.7.0",
+    "@vitejs/plugin-react": "^6.0.2",
     "eslint": "^10.3.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
@@ -30,6 +40,6 @@
     "tsx": "^4.22.4",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.59.2",
-    "vite": "^5.4.21"
+    "vite": "^8.0.16"
   }
 }
