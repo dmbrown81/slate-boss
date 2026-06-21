@@ -148,9 +148,11 @@ export default function FootballReward({ run, rewards, creditInfo, rerollCost, p
         )}
       </div>
 
-      <button onClick={onProceed} style={{ ...btnPrimary, width: '100%', marginTop: 18 }}>
-        Next Game →
-      </button>
+      {purchases > 0 && (
+        <button onClick={onProceed} style={{ ...btnPrimary, width: '100%', marginTop: 18 }}>
+          Next Game →
+        </button>
+      )}
 
       <div style={{ flex: 1 }} />
 
@@ -198,20 +200,23 @@ function rewardDecisionLane(run: FbRunState, reward: Reward, bossScheme: FbBossS
   return 'Value';
 }
 
+// UI-only heuristic that flags rewards which answer the next boss, so the War
+// Room can surface a "Counter" lane. The engine owns scoring; this is just a
+// presentation hint, so it fails safe — an unknown id simply falls through to
+// another lane rather than crashing. Keep the matchup ids in this one table so
+// they are auditable in a single place if reward ids ever drift.
+const BOSS_COUNTER_IDS: Partial<Record<FbBossSchemeKey, readonly string[]>> = {
+  no_fly_zone: ['pb-stack_td', 'pb-checkdown', 'pb-ground_pound', 'coord-west_coast', 'coord-bell_cow', 'coord-salary_wizard', 'card-bell_rb', 'card-value_slot'],
+  stacked_box: ['pb-stack_td', 'pb-double_stack_bomb', 'pb-checkdown', 'coord-air_raid', 'coord-franchise_qb', 'coord-west_coast', 'card-gunslinger', 'card-deep_wr', 'card-value_slot'],
+  turnover_drill: ['pb-stack_td', 'pb-ground_pound', 'pb-checkdown', 'coord-air_raid', 'coord-bell_cow', 'coord-west_coast', 'coord-salary_wizard', 'card-gunslinger', 'card-bell_rb', 'card-value_slot'],
+};
+
 function rewardCountersBoss(reward: Reward, bossScheme: FbBossSchemeKey): boolean {
-  if (bossScheme === 'no_fly_zone') {
-    return ['pb-stack_td', 'pb-checkdown', 'pb-ground_pound', 'coord-west_coast', 'coord-bell_cow', 'coord-salary_wizard', 'card-bell_rb', 'card-value_slot'].includes(reward.id);
-  }
-  if (bossScheme === 'stacked_box') {
-    return ['pb-stack_td', 'pb-double_stack_bomb', 'pb-checkdown', 'coord-air_raid', 'coord-franchise_qb', 'coord-west_coast', 'card-gunslinger', 'card-deep_wr', 'card-value_slot'].includes(reward.id);
-  }
-  if (bossScheme === 'turnover_drill') {
-    return ['pb-stack_td', 'pb-ground_pound', 'pb-checkdown', 'coord-air_raid', 'coord-bell_cow', 'coord-west_coast', 'coord-salary_wizard', 'card-gunslinger', 'card-bell_rb', 'card-value_slot'].includes(reward.id);
-  }
+  // Adaptive defenses punish a one-note deck, so any breadth (new card/trim/plan) helps.
   if (bossScheme === 'adaptive_dc') {
     return reward.kind === 'card' || reward.kind === 'trim' || reward.kind === 'playbook';
   }
-  return false;
+  return BOSS_COUNTER_IDS[bossScheme]?.includes(reward.id) ?? false;
 }
 
 function Mini({ label, value }: { label: string; value: string }) {

@@ -103,10 +103,10 @@ export default function FootballSeason({ onHome, initialSeed }: { onHome: () => 
       keeperGames: run.keeperGames + (summary.keeperLanded ? 1 : 0),
       takeawayGames: run.takeawayGames + (summary.takeawayGame ? 1 : 0),
     };
+    setRunScore((prev) => prev + summary.score);
     if (isChampionship(run.gameNumber)) {
       setRun({ ...withBomb, status: 'won' });
       setGamesWon(SEASON_GAMES);
-      setRunScore(summary.score);
       setPhase('summary');
     } else {
       // Credit the War Room: win purse + interest on the balance you banked.
@@ -156,7 +156,7 @@ export default function FootballSeason({ onHome, initialSeed }: { onHome: () => 
   function handleLost(info: { drive: number; score: number }) {
     setGamesWon(run.gameNumber - 1);
     setLostDrive(info.drive);
-    setRunScore(info.score);
+    setRunScore((prev) => prev + info.score);
     setRun({ ...run, status: 'lost' });
     setPhase('summary');
   }
