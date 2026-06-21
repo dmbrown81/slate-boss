@@ -1,3 +1,4 @@
+import { useState, type CSSProperties, type ReactNode } from 'react';
 import { FB, btnPrimary, sectionLabel, SIDE } from './footballStyles';
 import {
   FB_BOSS_SCHEMES, FB_COORDINATORS, FB_ENVIRONMENTS, FB_CARD_MODIFIERS, STARTER_COORDINATORS,
@@ -24,6 +25,8 @@ const CONCEPTS: { name: string; how: string; tier: 'big' | 'mid' | 'safe' }[] = 
 const TIER_COLOR = { big: FB.gold, mid: FB.green, safe: FB.textDim } as const;
 
 export default function FootballHelpModal({ onClose }: Props) {
+  const [showFullRules, setShowFullRules] = useState(false);
+
   return (
     <div
       onClick={onClose}
@@ -39,6 +42,23 @@ export default function FootballHelpModal({ onClose }: Props) {
           <button onClick={onClose} style={{ background: '#141b24', border: `1px solid ${FB.border}`, color: FB.textDim, borderRadius: 8, width: 30, height: 30, fontSize: 16, cursor: 'pointer' }}>✕</button>
         </div>
 
+        <Block title="Quick start">
+          <ul style={ul}>
+            <li><Dot c={FB.gold} /><b>Clear the target</b> before your Play Budget runs out.</li>
+            <li><Dot c={FB.green} />Tap up to <b>{MAX_PLAY_CARDS}</b> cards. QB Pass + same-team Catch makes Stack TD.</li>
+            <li><Dot c={FB.blue} />After wins, spend Funds in the War Room to feed one core Game Plan.</li>
+          </ul>
+        </Block>
+
+        <button
+          onClick={() => setShowFullRules((open) => !open)}
+          style={{ width: '100%', padding: '10px 12px', margin: '-4px 0 16px', background: FB.panelSoft, border: `1px solid ${FB.border}`, borderRadius: 10, color: FB.gold, fontSize: 12, fontWeight: 900, cursor: 'pointer' }}
+        >
+          {showFullRules ? 'Hide full reference' : 'Show full reference'}
+        </button>
+
+        {showFullRules && (
+          <>
         <Block title="The goal">
           A match is <b>{DRIVES_PER_MATCH} drives</b>. Each drive has a points target that <b>rises</b> drive to
           drive. Clear every drive's target to win. If you run out of <b>Play Budget</b> before reaching a
@@ -164,6 +184,8 @@ export default function FootballHelpModal({ onClose }: Props) {
             ))}
           </div>
         </Block>
+          </>
+        )}
 
         <button onClick={onClose} style={{ ...btnPrimary, width: '100%', marginTop: 18 }}>Got it</button>
       </div>
@@ -171,7 +193,7 @@ export default function FootballHelpModal({ onClose }: Props) {
   );
 }
 
-function Block({ title, children }: { title: string; children: React.ReactNode }) {
+function Block({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div style={{ marginBottom: 18 }}>
       <div style={{ ...sectionLabel, marginBottom: 8, color: FB.gold }}>{title}</div>
@@ -188,7 +210,7 @@ function Formula() {
   );
 }
 
-const ul: React.CSSProperties = { listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 };
+const ul: CSSProperties = { listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 };
 function Dot({ c }: { c: string }) {
   return <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: c, marginRight: 8 }} />;
 }

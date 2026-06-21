@@ -1,25 +1,44 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { FB, btnPrimary, btnGhost, card } from './footballStyles';
 import { FB_CONCEPT_LABEL, FB_COORDINATORS, TEAM_PROFILES } from '../lib/footballRogue';
 import { buildCoachDebrief, buildIdentity, deckValueSummary, SEASON_GAMES, type FbRunState } from '../lib/footballRun';
+import { bestGridironHistoryRun, loadGridironHistory, saveGridironHistoryEntry } from '../lib/gridironStorage';
 
 interface Props {
   won: boolean;
   gamesWon: number;
   run: FbRunState;
   lostDrive: number;
+  score: number;
   onNewSeason: () => void;
   onHome: () => void;
 }
 
-export default function FootballRunSummary({ won, gamesWon, run, lostDrive, onNewSeason, onHome }: Props) {
+export default function FootballRunSummary({ won, gamesWon, run, lostDrive, score, onNewSeason, onHome }: Props) {
   const [copied, setCopied] = useState(false);
   const deck = deckValueSummary(run.deck);
-  const topPlan = Math.max(0, ...Object.values(run.playbook));
   const identity = buildIdentity(run);
   const debrief = buildCoachDebrief(run, won, gamesWon, lostDrive);
   const team = TEAM_PROFILES[run.team];
-  const shareText = `GRIDIRON · ${team.displayName} · ${won ? 'Champions' : `Lost G${gamesWon + 1}`} · ${identity.title} · Seed ${run.seed}`;
+  const previousBest = bestGridironHistoryRun(loadGridironHistory());
+  const bestLabel = previousBest
+    ? `${TEAM_PROFILES[previousBest.team].displayName} · ${previousBest.won ? 'Champions' : `${previousBest.gamesWon}/${SEASON_GAMES}`} · ${previousBest.score}`
+    : 'First recorded run';
+  const shareText = `GRIDIRON · ${team.displayName} · ${won ? 'Champions' : `Lost G${gamesWon + 1}`} · ${identity.title} · Score ${score} · Seed ${run.seed}`;
+
+  useEffect(() => {
+    saveGridironHistoryEntry({
+      id: `${run.seed}:${run.team}:${won ? 'won' : 'lost'}:${gamesWon}:${score}`,
+      completedAt: new Date().toISOString(),
+      seed: run.seed,
+      team: run.team,
+      won,
+      gamesWon,
+      score,
+      identityTitle: identity.title,
+      debrief: debrief.takeaway,
+    });
+  }, [debrief.takeaway, gamesWon, identity.title, run.seed, run.team, score, won]);
 
   function copyShare() {
     if (typeof navigator === 'undefined' || !navigator.clipboard) return;
@@ -49,9 +68,9 @@ export default function FootballRunSummary({ won, gamesWon, run, lostDrive, onNe
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <Stat label="Games won" value={`${gamesWon}/${SEASON_GAMES}`} accent={won ? FB.gold : FB.text} />
+          <Stat label="Score" value={`${score}`} accent={FB.gold} />
           <Stat label="Final deck" value={`${deck.size}`} />
           <Stat label="Coordinators" value={`${run.coordinators.length}`} />
-          <Stat label="Top Plan" value={topPlan ? `Lv${topPlan}` : '—'} />
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 12 }}>
           {run.coordinators.map((k) => (
@@ -74,6 +93,15 @@ export default function FootballRunSummary({ won, gamesWon, run, lostDrive, onNe
               </span>
             ))}
           </div>
+        </div>
+        <div style={{ marginTop: 12, background: '#101720', border: `1px solid ${previousBest && score >= previousBest.score ? '#5a4112' : FB.borderSoft}`, borderRadius: 10, padding: '10px 11px' }}>
+          <div style={{ fontSize: 10, color: FB.textFaint, letterSpacing: 1.1, fontWeight: 900 }}>LOCAL BEST</div>
+          <div style={{ fontSize: 12, color: FB.text, lineHeight: 1.35, marginTop: 4, fontWeight: 800 }}>{bestLabel}</div>
+          {previousBest && (
+            <div style={{ fontSize: 11, color: score > previousBest.score ? FB.green : FB.textDim, marginTop: 4 }}>
+              {score > previousBest.score ? `New high score by ${score - previousBest.score}.` : `Needed ${previousBest.score - score + 1} more to beat it.`}
+            </div>
+          )}
         </div>
         <button
           onClick={copyShare}

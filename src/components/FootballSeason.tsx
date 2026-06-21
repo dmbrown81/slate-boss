@@ -31,7 +31,7 @@ function hydrateRewards(run: FbRunState, rewardIds: string[] | undefined, reroll
     .filter((reward): reward is Reward => Boolean(reward));
 }
 
-export default function FootballSeason({ onHome }: { onHome: () => void }) {
+export default function FootballSeason({ onHome, initialSeed }: { onHome: () => void; initialSeed?: number }) {
   const [initial] = useState(() => {
     const saved = loadGridironRun();
     const run = saved?.run ?? createRun();
@@ -59,6 +59,8 @@ export default function FootballSeason({ onHome }: { onHome: () => void }) {
   const [matchInstance, setMatchInstance] = useState(0);
   const [gamesWon, setGamesWon] = useState(0);
   const [lostDrive, setLostDrive] = useState(0);
+  const [runScore, setRunScore] = useState(0);
+  const [pendingSeed, setPendingSeed] = useState<number | undefined>(() => initialSeed);
 
   const targets = useMemo(() => gameTargets(env, run.gameNumber), [env, run.gameNumber]);
   const rewardScout = useMemo(() => gameSetup({ ...run, gameNumber: run.gameNumber + 1 }), [run]);
@@ -77,7 +79,7 @@ export default function FootballSeason({ onHome }: { onHome: () => void }) {
   }, [phase, run, rewards, rerolls, purchases, creditInfo]);
 
   function startSeason(team: TeamArchetype) {
-    const nextRun = createRun(team);
+    const nextRun = createRun(team, pendingSeed);
     const setup = gameSetup(nextRun);
     setRun(nextRun);
     setEnv(setup.env);
@@ -88,6 +90,8 @@ export default function FootballSeason({ onHome }: { onHome: () => void }) {
     setCreditInfo(null);
     setGamesWon(0);
     setLostDrive(0);
+    setRunScore(0);
+    setPendingSeed(undefined);
     setMatchInstance((n) => n + 1);
     setPhase('match');
   }
@@ -102,6 +106,7 @@ export default function FootballSeason({ onHome }: { onHome: () => void }) {
     if (isChampionship(run.gameNumber)) {
       setRun({ ...withBomb, status: 'won' });
       setGamesWon(SEASON_GAMES);
+      setRunScore(summary.score);
       setPhase('summary');
     } else {
       // Credit the War Room: win purse + interest on the balance you banked.
@@ -148,15 +153,17 @@ export default function FootballSeason({ onHome }: { onHome: () => void }) {
     setPhase('match');
   }
 
-  function handleLost(info: { drive: number }) {
+  function handleLost(info: { drive: number; score: number }) {
     setGamesWon(run.gameNumber - 1);
     setLostDrive(info.drive);
+    setRunScore(info.score);
     setRun({ ...run, status: 'lost' });
     setPhase('summary');
   }
 
   function newSeason() {
     clearGridironRun();
+    setPendingSeed(undefined);
     setPhase('select');
   }
 
@@ -164,7 +171,7 @@ export default function FootballSeason({ onHome }: { onHome: () => void }) {
     return <FootballTeamSelect onStart={startSeason} onHome={onHome} />;
   }
   if (phase === 'summary') {
-    return <FootballRunSummary won={run.status === 'won'} gamesWon={gamesWon} run={run} lostDrive={lostDrive} onNewSeason={newSeason} onHome={onHome} />;
+    return <FootballRunSummary won={run.status === 'won'} gamesWon={gamesWon} run={run} lostDrive={lostDrive} score={runScore} onNewSeason={newSeason} onHome={onHome} />;
   }
   if (phase === 'reward') {
     return (

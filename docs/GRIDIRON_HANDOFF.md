@@ -8,7 +8,7 @@ _Last updated: 2026-06-20 · Branch: `main` · Status: productized alpha with pl
 
 ## 1. What this is
 
-**Gridiron** is a single-player, football-native **card roguelike** — Balatro-style engine-building, but the scoring language is football instead of poker. It lives inside the **Slate Boss** repository, which also contains the original **Classic Slate Boss** (a fictional DFS lineup simulator). Gridiron is now the app product; Classic is preserved only as archived legacy code and is no longer exposed in normal navigation.
+**Gridiron** is a single-player, football-native **card roguelike** — Balatro-style engine-building, but the scoring language is football instead of poker. It lives inside the **Slate Boss** repository and is now the active app product. The original Classic Slate Boss DFS simulator has been removed from the active source tree and remains recoverable from the archive branch/tag.
 
 - **No real IP.** Fictional teams and players only. No NFL marks, no real names, no real money, no prizes. The architecture is intentionally "license-agnostic" (names are display-only data) so a licensed dataset could drop in later without a rewrite — but that is a far-future dream, not a near-term plan.
 - **Design ethos:** clean, text-and-math-forward, mobile-first. The fun is *outsmarting a transparent system*, not graphics. No animation budget beyond small touches.
@@ -27,7 +27,7 @@ npm run build                        # tsc + vite, must pass
 npm run balance:gridiron             # Monte-Carlo balance harness (skill-gap report)
 ```
 
-The app boots into the Gridiron title screen → **Kickoff** to play. **How to Play** opens the in-game help. Legacy DFS screens remain in the repository for reference, but the visible product path stays in Gridiron.
+The app boots into the Gridiron title screen → **Kickoff** to play. **How to Play** opens the in-game help. The visible and compiled product path is Gridiron-only.
 
 ---
 
@@ -138,9 +138,12 @@ History: the build started with smart ≈ random (~1-pt gap — meta-layer was n
 - `src/components/FootballReward.tsx` — the War Room shop: Funds, priced rewards, reroll, skip/bank, next scout.
 - `src/components/FootballRunSummary.tsx` — end-of-season summary.
 - `src/components/FootballHelpModal.tsx` — in-game How to Play (reads engine data so it can't drift).
-- `src/App.tsx` — routing; boots to `football_home`. `src/index.css` — global theme + keyframes.
+- `src/App.tsx` — minimal routing between the Gridiron title screen and season flow.
+- `src/index.css` — global theme + keyframes.
 
-**Untouched / legacy (do not need review for Gridiron):** `simulation.ts`, `LineupBuilder.tsx`, `rogueScoring.ts` and the rest of Classic Slate Boss.
+Classic Slate Boss source has been removed from the active app tree. Historical
+DFS and AI review material lives in `docs/archive/`; the playable classic code is
+recoverable from the `archive/classic-dfs-sim` branch and `classic-dfs-sim-2026-06-17` tag.
 
 ---
 

@@ -4,7 +4,7 @@ import {
   type FbBossSchemeKey, type FbEnvironmentKey,
 } from '../lib/footballRogue';
 import { buildIdentity, deckValueSummary, rewardFitLabel, rewardImpact, SEASON_GAMES, type FbRunState, type Reward } from '../lib/footballRun';
-import { MAX_WAR_ROOM_PURCHASES, type ShopCreditInfo } from '../lib/gridironEconomy';
+import { MAX_WAR_ROOM_PURCHASES, SKIP_REWARD, type ShopCreditInfo } from '../lib/gridironEconomy';
 
 interface Props {
   run: FbRunState;
@@ -21,6 +21,16 @@ interface Props {
 
 const KIND_COLOR: Record<Reward['kind'], string> = {
   card: FB.green, coordinator: '#b7a7ff', playbook: FB.blue, trim: FB.red, upgrade: FB.gold, training: '#5fe0a0',
+};
+
+type DecisionLane = 'Engine' | 'Counter' | 'Consistency' | 'Value' | 'Risk';
+
+const LANE_STYLE: Record<DecisionLane, { color: string; bg: string; copy: string }> = {
+  Engine: { color: FB.blue, bg: '#0b1b32', copy: 'Builds your scaling plan' },
+  Counter: { color: FB.red, bg: '#2a1118', copy: 'Answers the next defense' },
+  Consistency: { color: FB.green, bg: FB.greenSoft, copy: 'Improves draw quality' },
+  Value: { color: FB.gold, bg: FB.goldSoft, copy: 'Raises your floor now' },
+  Risk: { color: '#b7a7ff', bg: '#140f24', copy: 'Adds a side lane' },
 };
 
 export default function FootballReward({ run, rewards, creditInfo, rerollCost, purchases, nextBossScheme, nextEnvironment, onBuy, onReroll, onProceed }: Props) {
@@ -99,30 +109,47 @@ export default function FootballReward({ run, rewards, creditInfo, rerollCost, p
         )}
         {rewards.map((rw) => {
           const affordable = run.funds >= rw.cost && !purchaseLimitReached;
+          const lane = rewardDecisionLane(run, rw, nextBossScheme);
+          const laneStyle = LANE_STYLE[lane];
           return (
             <button
               key={rw.id}
               onClick={() => affordable && onBuy(rw)}
               disabled={!affordable}
-              style={{ ...card(14), padding: '14px 14px', cursor: affordable ? 'pointer' : 'not-allowed', textAlign: 'left', display: 'flex', gap: 13, alignItems: 'center', borderLeft: `3px solid ${KIND_COLOR[rw.kind]}`, opacity: affordable ? 1 : 0.55 }}
+              style={{ ...card(14), padding: '14px 14px', cursor: affordable ? 'pointer' : 'not-allowed', textAlign: 'left', display: 'flex', gap: 13, alignItems: 'center', borderLeft: `4px solid ${laneStyle.color}`, opacity: affordable ? 1 : 0.55 }}
             >
               <span style={{ fontSize: 26 }}>{rw.emoji}</span>
               <div style={{ flex: 1 }}>
                 <div style={{ display: 'flex', gap: 7, alignItems: 'center', flexWrap: 'wrap' }}>
                   <div style={{ fontSize: 15, fontWeight: 800, color: FB.text }}>{rw.title}</div>
+                  <span style={{ fontSize: 9.5, fontWeight: 900, color: laneStyle.color, background: laneStyle.bg, border: `1px solid ${laneStyle.color}66`, borderRadius: 999, padding: '2px 7px' }}>{lane}</span>
                   <span style={{ fontSize: 9.5, fontWeight: 900, color: KIND_COLOR[rw.kind], background: FB.inset, border: `1px solid ${FB.borderSoft}`, borderRadius: 999, padding: '2px 7px' }}>{rewardFitLabel(run, rw)}</span>
                 </div>
+                <div style={{ fontSize: 10.5, color: laneStyle.color, lineHeight: 1.35, marginTop: 3, fontWeight: 800 }}>{laneStyle.copy}</div>
                 <div style={{ fontSize: 12, color: FB.textDim, lineHeight: 1.4, marginTop: 2 }}>{rw.detail}</div>
-                <div style={{ fontSize: 11, color: FB.gold, lineHeight: 1.35, marginTop: 5 }}>{rewardImpact(run, rw, nextBossScheme)}</div>
+                <div style={{ fontSize: 12.5, color: FB.gold, lineHeight: 1.35, marginTop: 7, fontWeight: 800 }}>{rewardImpact(run, rw, nextBossScheme)}</div>
               </div>
               <span className="fb-num" style={{ flexShrink: 0, fontSize: 15, fontWeight: 900, color: affordable ? FB.gold : FB.red, background: affordable ? FB.goldSoft : '#2a141a', border: `1px solid ${affordable ? '#5a4112' : '#6b3344'}`, borderRadius: 8, padding: '5px 9px' }}>${rw.cost}</span>
             </button>
           );
         })}
+        {purchases === 0 && (
+          <button
+            onClick={onProceed}
+            style={{ ...card(14), padding: '13px 14px', cursor: 'pointer', textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderColor: '#5a4112', background: 'linear-gradient(160deg,#17170d,#0e151d)' }}
+          >
+            <div>
+              <div style={{ fontSize: 10, color: FB.gold, letterSpacing: 1.1, fontWeight: 900 }}>BANK VISIT</div>
+              <div style={{ fontSize: 13, color: FB.text, fontWeight: 800, marginTop: 2 }}>Skip buys and save for later</div>
+              <div style={{ fontSize: 11.5, color: FB.textDim, marginTop: 2 }}>Adds ${SKIP_REWARD} Funds, then advances to the next game.</div>
+            </div>
+            <span className="fb-num" style={{ fontSize: 17, fontWeight: 900, color: FB.gold }}>+${SKIP_REWARD}</span>
+          </button>
+        )}
       </div>
 
       <button onClick={onProceed} style={{ ...btnPrimary, width: '100%', marginTop: 18 }}>
-        {purchases === 0 ? `Skip — bank +$2 Funds →` : `Next Game →`}
+        Next Game →
       </button>
 
       <div style={{ flex: 1 }} />
@@ -160,6 +187,31 @@ export default function FootballReward({ run, rewards, creditInfo, rerollCost, p
       </div>
     </div>
   );
+}
+
+function rewardDecisionLane(run: FbRunState, reward: Reward, bossScheme: FbBossSchemeKey): DecisionLane {
+  const fit = rewardFitLabel(run, reward);
+  if (bossScheme !== 'balanced' && rewardCountersBoss(reward, bossScheme)) return 'Counter';
+  if (fit === 'Starts side plan') return 'Risk';
+  if (fit === 'Feeds current plan' || reward.kind === 'coordinator' || reward.kind === 'playbook') return 'Engine';
+  if (reward.kind === 'trim' || reward.kind === 'training') return 'Consistency';
+  return 'Value';
+}
+
+function rewardCountersBoss(reward: Reward, bossScheme: FbBossSchemeKey): boolean {
+  if (bossScheme === 'no_fly_zone') {
+    return ['pb-stack_td', 'pb-checkdown', 'pb-ground_pound', 'coord-west_coast', 'coord-bell_cow', 'coord-salary_wizard', 'card-bell_rb', 'card-value_slot'].includes(reward.id);
+  }
+  if (bossScheme === 'stacked_box') {
+    return ['pb-stack_td', 'pb-double_stack_bomb', 'pb-checkdown', 'coord-air_raid', 'coord-franchise_qb', 'coord-west_coast', 'card-gunslinger', 'card-deep_wr', 'card-value_slot'].includes(reward.id);
+  }
+  if (bossScheme === 'turnover_drill') {
+    return ['pb-stack_td', 'pb-ground_pound', 'pb-checkdown', 'coord-air_raid', 'coord-bell_cow', 'coord-west_coast', 'coord-salary_wizard', 'card-gunslinger', 'card-bell_rb', 'card-value_slot'].includes(reward.id);
+  }
+  if (bossScheme === 'adaptive_dc') {
+    return reward.kind === 'card' || reward.kind === 'trim' || reward.kind === 'playbook';
+  }
+  return false;
 }
 
 function Mini({ label, value }: { label: string; value: string }) {

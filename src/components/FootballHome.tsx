@@ -1,23 +1,34 @@
 import { useState } from 'react';
 import { FB, btnPrimary, card } from './footballStyles';
 import FootballHelpModal from './FootballHelpModal';
-import { clearGridironRun, loadGridironRun } from '../lib/gridironStorage';
+import { bestGridironHistoryRun, clearGridironRun, loadGridironHistory, loadGridironRun } from '../lib/gridironStorage';
 import { TEAM_PROFILES } from '../lib/footballRogue';
 import { SEASON_GAMES } from '../lib/footballRun';
+import { stringSeed } from '../lib/rng';
 
 interface Props {
-  onPlay: () => void;
+  onPlay: (seed?: number) => void;
 }
 
 export default function FootballHome({ onPlay }: Props) {
   const [showHelp, setShowHelp] = useState(false);
   const [activeRun, setActiveRun] = useState(() => loadGridironRun());
+  const [history] = useState(() => loadGridironHistory());
   const activeTeam = activeRun ? TEAM_PROFILES[activeRun.run.team] : null;
+  const bestRun = bestGridironHistoryRun(history);
+  const bestTeam = bestRun ? TEAM_PROFILES[bestRun.team] : null;
+  const daily = dailyChallengeSeed();
 
   function startFresh() {
     clearGridironRun();
     setActiveRun(null);
     onPlay();
+  }
+
+  function startDaily() {
+    clearGridironRun();
+    setActiveRun(null);
+    onPlay(daily.seed);
   }
 
   return (
@@ -65,6 +76,21 @@ export default function FootballHome({ onPlay }: Props) {
         <Feature icon="📈" label="Engine builder" sub="Coordinators that scale" />
       </div>
 
+      {bestRun && bestTeam && (
+        <div style={{ ...card(12), padding: '12px 14px', marginTop: 12, background: 'linear-gradient(160deg,#111a24,#0c1118)' }}>
+          <div style={{ fontSize: 10, color: FB.gold, letterSpacing: 1.2, fontWeight: 900 }}>BEST LOCAL RUN</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline', marginTop: 4 }}>
+            <div style={{ fontSize: 14, color: FB.text, fontWeight: 900 }}>{bestTeam.displayName}</div>
+            <div className="fb-num" style={{ fontSize: 12, color: bestRun.won ? FB.gold : FB.textDim, fontWeight: 900 }}>
+              {bestRun.won ? 'Champions' : `${bestRun.gamesWon}/${SEASON_GAMES}`}
+            </div>
+          </div>
+          <div style={{ fontSize: 11, color: FB.textDim, marginTop: 4 }}>
+            {bestRun.identityTitle} · Score {bestRun.score}
+          </div>
+        </div>
+      )}
+
       <div style={{ flex: 1 }} />
 
       {/* Actions */}
@@ -82,8 +108,14 @@ export default function FootballHome({ onPlay }: Props) {
           </div>
         )}
 
-        <button onClick={onPlay} style={{ ...btnPrimary, width: '100%', fontSize: 17, padding: '16px 0' }}>
+        <button onClick={() => onPlay()} style={{ ...btnPrimary, width: '100%', fontSize: 17, padding: '16px 0' }}>
           {activeRun ? `🏈 Resume Season (Game ${activeRun.run.gameNumber}/${SEASON_GAMES})` : '🏈 Kickoff'}
+        </button>
+        <button
+          onClick={startDaily}
+          style={{ width: '100%', padding: '13px 0', background: '#101926', border: `1px solid ${FB.blue}`, color: '#9cc6ff', borderRadius: 12, fontSize: 14, fontWeight: 800, cursor: 'pointer' }}
+        >
+          Daily Scrimmage · {daily.label}
         </button>
         {activeRun && (
           <button
@@ -108,6 +140,11 @@ export default function FootballHome({ onPlay }: Props) {
       {showHelp && <FootballHelpModal onClose={() => setShowHelp(false)} />}
     </div>
   );
+}
+
+function dailyChallengeSeed() {
+  const label = new Date().toISOString().slice(0, 10);
+  return { label, seed: stringSeed(`gridiron-daily:${label}`) };
 }
 
 function Feature({ icon, label, sub }: { icon: string; label: string; sub: string }) {

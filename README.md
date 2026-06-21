@@ -4,9 +4,9 @@ Gridiron is a single-player football card roguelike inside the Slate Boss repo.
 The current headline mode is Gridiron: build a team deck, call football concepts,
 clear three drives per game, and survive a five-game season.
 
-Classic Slate Boss, the original fictional DFS lineup simulator, is still kept in
-the repository as archived legacy code, but it is no longer exposed in the app
-navigation.
+Classic Slate Boss, the original fictional DFS lineup simulator, has been removed
+from the active app tree. It remains recoverable from the `archive/classic-dfs-sim`
+branch and `classic-dfs-sim-2026-06-17` tag.
 
 ## Run Locally
 
@@ -22,6 +22,7 @@ Open `http://127.0.0.1:5173/slate-boss/`.
 ```bash
 npm run lint
 npm run build
+npm run build:native
 npm run smoke:gridiron
 npm run balance:gridiron -- 3000
 ```
@@ -29,6 +30,20 @@ npm run balance:gridiron -- 3000
 The Gridiron balance harness is the source of truth for tuning. It checks whether
 smart build choices beat random choices, whether all five team decks are viable,
 and whether losses are caused by weak builds instead of dead draws.
+
+## App Packaging
+
+Gridiron is now wired for installable web, iOS, and Android packaging:
+
+```bash
+npm run icons
+npm run cap:sync
+```
+
+The normal `npm run build` keeps the hosted `/slate-boss/` base path. The native
+sync path uses `npm run build:native` so Capacitor gets relative asset URLs for
+the iOS and Android webviews. See `docs/APP_LAUNCH_CHECKLIST.md` for store
+account, testing, and listing guardrails.
 
 ## Product State
 
@@ -50,8 +65,9 @@ Gridiron is moving into productized alpha. The foundation now includes:
 Near-term work should stay focused on app hardening and strategic depth, in order:
 Film Tools (one-use consumables) + War Room decision clarity; then coordinator
 ordering plus concept containment; then Coach Debrief 2.0 / run history and seeded
-daily challenges. Avoid backend, accounts, multiplayer, real-money features,
-licensed IP, or a mobile wrapper until the alpha loop is steadier.
+daily challenges. Avoid backend, accounts, multiplayer, real-money features, or
+licensed IP until the alpha loop is steadier; treat native packaging as a shell
+around the web app for now.
 
 ## Useful Files
 
@@ -63,5 +79,6 @@ licensed IP, or a mobile wrapper until the alpha loop is steadier.
 - `src/components/FootballSeason.tsx` - season orchestration.
 - `scripts/gridironBalance.ts` - Monte Carlo balance harness.
 - `scripts/gridironSmoke.tsx` - lightweight render smoke test.
+- `docs/PROJECT_MAP.md` - current layer diagram and folder map.
 - `docs/NFL_DFS_GRIDIRON_CALIBRATION.md` - what was found in `/Users/dominicbrown/Desktop/nfl_dfs` and how it should inform Gridiron without shipping real NFL content.
-- `AGENT_HANDOFF_LOG.md` - shared project log for Codex / Claude Code handoffs.
+- `docs/archive/` - historical DFS and AI review briefs preserved outside the active app path.
