@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   buildStarterDeck, scoreFootballPlay, shuffle, cardCost,
   HAND_SIZE, DRIVES_PER_MATCH, AUDIBLES_PER_DRIVE, MAX_PLAY_CARDS, DRIVE_BUDGET,
@@ -64,6 +64,48 @@ function drawUp(deck: FbCard[], hand: FbCard[], discard: FbCard[], rng: RNG) {
   return { deck: d, hand: h, discard: dp };
 }
 
+// Concepts splashy enough to earn a full-bleed banner. Everything else stays
+// quiet — the brief's rule is "boring concepts get a chip, splashy ones a banner."
+const SPLASH_CONCEPTS = new Set<FbConceptKey>(['double_stack_bomb', 'shootout_stack', 'pick_six', 'qb_keeper']);
+const DRIVE_STAMP = ['FIRST DOWN', 'DRIVE!', 'TOUCHDOWN!'] as const;
+
+interface PlayStampState {
+  id: number;
+  kind: 'drive' | 'concept' | 'turnover';
+  text: string;
+  tone: 'gold' | 'red';
+}
+
+// Count a number up to its target with an ease-out curve. Only animates on an
+// increase (a scored play); resets like a new drive snap instantly. Honors
+// reduced motion by snapping.
+function useCountUp(value: number, reduced: boolean) {
+  const [display, setDisplay] = useState(value);
+  const prev = useRef(value);
+
+  useEffect(() => {
+    const from = prev.current;
+    prev.current = value;
+    if (reduced || value <= from) {
+      setDisplay(value);
+      return undefined;
+    }
+    let raf = 0;
+    const start = performance.now();
+    const dur = 480;
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / dur);
+      const eased = 1 - Math.pow(1 - t, 3);
+      setDisplay(Math.round(from + (value - from) * eased));
+      if (t < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [value, reduced]);
+
+  return display;
+}
+
 function usePrefersReducedMotion() {
   const [reduced, setReduced] = useState(false);
 
@@ -97,7 +139,9 @@ export default function FootballMatch(props: MatchProps) {
   const [selected, setSelected] = useState<string[]>([]);
   const [showHelp, setShowHelp] = useState(false);
   const [scoreBeat, setScoreBeat] = useState(0);
+  const [stamp, setStamp] = useState<PlayStampState | null>(null);
   const reducedMotion = usePrefersReducedMotion();
+  const displayDriveScore = useCountUp(match.driveScore, reducedMotion);
 
   const selectedCards = useMemo(
     () => selected.map((id) => match.hand.find((c) => c.id === id)).filter(Boolean) as FbCard[],
@@ -144,6 +188,25 @@ export default function FootballMatch(props: MatchProps) {
     return () => timers.forEach((timer) => window.clearTimeout(timer));
   }, [match.lastPlay, match.popKey, reducedMotion]);
 
+  // A stalled drive earns a beat of mourning before the result panel.
+  useEffect(() => {
+    if (match.status !== 'lost') return undefined;
+    const timer = window.setTimeout(
+      () => setStamp({ id: match.popKey, kind: 'turnover', text: 'TURNOVER ON DOWNS', tone: 'red' }),
+      reducedMotion ? 0 : 120,
+    );
+    return () => window.clearTimeout(timer);
+  }, [match.status, match.popKey, reducedMotion]);
+
+  // Stamps and banners are a flash, not a panel — auto-dismiss them.
+  useEffect(() => {
+    if (!stamp) return undefined;
+    const base = stamp.kind === 'turnover' ? 1400 : 1050;
+    const ms = reducedMotion ? Math.min(base, 850) : base;
+    const timer = window.setTimeout(() => setStamp((s) => (s?.id === stamp.id && s.kind === stamp.kind ? null : s)), ms);
+    return () => window.clearTimeout(timer);
+  }, [stamp, reducedMotion]);
+
   function toggle(id: string) {
     if (match.status !== 'playing') return;
     setSelected((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : prev.length >= MAX_PLAY_CARDS ? prev : [...prev, id]);
@@ -153,6 +216,17 @@ export default function FootballMatch(props: MatchProps) {
     if (match.status !== 'playing' || selectedCards.length === 0 || overBudget) return;
     const result = scoreFootballPlay(selectedCards, scoreCtx);
     setScoreBeat(0);
+
+    // Theatre: a cleared drive escalates FIRST DOWN → DRIVE! → TOUCHDOWN!;
+    // otherwise a splash concept gets its own banner. Quiet plays stay quiet.
+    if (result.valid) {
+      if (match.driveScore + result.total >= target) {
+        setStamp({ id: Date.now(), kind: 'drive', text: DRIVE_STAMP[Math.min(match.driveIndex, DRIVE_STAMP.length - 1)], tone: 'gold' });
+      } else if (SPLASH_CONCEPTS.has(result.concept)) {
+        setStamp({ id: Date.now(), kind: 'concept', text: FB_CONCEPT_LABEL[result.concept] ?? result.playName, tone: 'gold' });
+      }
+    }
+
     setMatch((m) => {
       const playedIds = new Set(selected);
       const handAfter = m.hand.filter((c) => !playedIds.has(c.id));
@@ -200,7 +274,7 @@ export default function FootballMatch(props: MatchProps) {
   }
 
   return (
-    <div style={{ minHeight: '100svh', padding: '14px 14px 26px', display: 'flex', flexDirection: 'column', gap: 11 }}>
+    <div style={{ minHeight: '100svh', padding: '14px 14px 26px', display: 'flex', flexDirection: 'column', gap: 11, position: 'relative' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <button onClick={props.onHome} style={btnGhost}>←</button>
         <div style={{ fontSize: 11, color: FB.gold, letterSpacing: 1.5, fontWeight: 900 }}>
@@ -223,7 +297,7 @@ export default function FootballMatch(props: MatchProps) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 9 }}>
           <div>
             <div style={{ fontSize: 9.5, color: FB.textFaint, letterSpacing: 1.5, fontWeight: 800 }}>DRIVE SCORE</div>
-            <div key={match.popKey} className="fb-num fb-pop" style={{ fontSize: 40, fontWeight: 900, color: FB.text, lineHeight: 1 }}>{match.driveScore}</div>
+            <div key={match.popKey} className="fb-num fb-pop" style={{ fontSize: 40, fontWeight: 900, color: FB.text, lineHeight: 1 }}>{displayDriveScore}</div>
           </div>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontSize: 9.5, color: FB.textFaint, letterSpacing: 1.5, fontWeight: 800 }}>TARGET</div>
@@ -315,7 +389,42 @@ export default function FootballMatch(props: MatchProps) {
           cta="See Results →" onCta={() => props.onLost({ drive: match.driveIndex + 1, score: match.totalScore })} />
       )}
 
+      {stamp && <PlayStamp stamp={stamp} reduced={reducedMotion} onSkip={() => setStamp(null)} />}
+
       {showHelp && <FootballHelpModal onClose={() => setShowHelp(false)} />}
+    </div>
+  );
+}
+
+function PlayStamp({ stamp, reduced, onSkip }: { stamp: PlayStampState; reduced: boolean; onSkip: () => void }) {
+  const tone = stamp.tone === 'red' ? FB.red : FB.gold;
+  const isTurnover = stamp.kind === 'turnover';
+  const animClass = reduced ? undefined : isTurnover ? 'fb-stamp-slam' : 'fb-banner-slide';
+  return (
+    <div
+      onClick={onSkip}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '0 16px', background: isTurnover ? 'rgba(8,5,7,0.5)' : 'transparent', cursor: 'pointer',
+      }}
+    >
+      <div
+        className={animClass}
+        style={{
+          fontSize: isTurnover ? 30 : 34, fontWeight: 900, letterSpacing: 1, textAlign: 'center', lineHeight: 1.05,
+          color: isTurnover ? '#fff' : '#0b0b0b',
+          textTransform: 'uppercase', maxWidth: 460,
+          padding: isTurnover ? '14px 22px' : '12px 26px',
+          borderRadius: 12,
+          transform: isTurnover ? 'rotate(-7deg)' : 'skewX(-7deg)',
+          background: isTurnover ? 'transparent' : `linear-gradient(90deg, ${tone}, #ffd76a)`,
+          border: isTurnover ? `3px solid ${FB.red}` : 'none',
+          boxShadow: isTurnover ? 'none' : '0 8px 30px -6px rgba(240,180,41,0.7)',
+          WebkitTextStroke: isTurnover ? '0' : undefined,
+        }}
+      >
+        {stamp.text}
+      </div>
     </div>
   );
 }
