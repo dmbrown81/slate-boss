@@ -9,10 +9,15 @@ flowchart TD
   B --> C["FootballHome"]
   B --> D["FootballSeason"]
 
-  D --> E["FootballTeamSelect"]
-  D --> F["FootballMatch"]
-  D --> G["FootballReward"]
+  D --> E["FootballTeamSelect (grid)"]
+  D --> F["FootballMatch (theatre)"]
+  D --> G["FootballReward (card draft)"]
   D --> H["FootballRunSummary"]
+
+  E --> ID["coachIdentity + teamIdentity"]
+  F --> ID
+  G --> ID
+  H --> ID
 
   F --> I["Gridiron engine"]
   G --> I
@@ -38,16 +43,21 @@ flowchart TD
 
 ## Active Source
 
-- `src/components/FootballHome.tsx` - title screen, help entry, resume/new season.
-- `src/components/FootballSeason.tsx` - top-level season state machine.
-- `src/components/FootballMatch.tsx` - game UI, hand selection, scoring preview, ledger.
-- `src/components/FootballReward.tsx` - War Room shop and reward decisions.
-- `src/components/FootballRunSummary.tsx` - end-of-run debrief.
+- `src/components/FootballHome.tsx` - title screen, help entry, resume/new season, Daily Scrimmage, best-run recap.
+- `src/components/FootballTeamSelect.tsx` - 2-up grid of 3:4 team cards (palette + coach portrait + play-style + difficulty), detail panel, Start.
+- `src/components/FootballSeason.tsx` - top-level season state machine; accumulates season score, threads the optional daily seed.
+- `src/components/FootballMatch.tsx` - game UI, hand selection, scoring preview/ledger, plus the theatre layer (count-up, concept banners, drive/turnover stamps) and coach stripe.
+- `src/components/FootballReward.tsx` - War Room card draft: lane tier badges, two-tap buy via detail sheet, bank/skip tile.
+- `src/components/FootballRunSummary.tsx` - end-of-run debrief, coach opener, season score, local-best compare, share string.
+- `src/components/FootballHelpModal.tsx` - in-game How to Play (quick-start + full-reference toggle; reads engine data).
+- `src/components/coachIdentity.tsx` - geometric single-colour CoachPortrait SVG (presentation only).
+- `src/components/teamIdentity.ts` - per-team palette, coach name, quote, play-style tag (presentation only).
 - `src/components/footballStyles.ts` - shared visual tokens and button/card helpers.
 - `src/lib/footballRogue.ts` - core card/scoring model.
 - `src/lib/footballRun.ts` - run progression and reward catalog.
 - `src/lib/gridironEconomy.ts` - Front Office Funds economy.
-- `src/lib/gridironStorage.ts` - local save/resume persistence.
+- `src/lib/gridironStorage.ts` - local save/resume + run history (`gridiron_history_v1`).
+- `src/lib/gridironCalibration.ts` - read-only fictional tuning constants.
 - `src/lib/rng.ts` - deterministic random helpers.
 - `src/lib/seedData.ts` - fictional football data used by the Gridiron card model.
 

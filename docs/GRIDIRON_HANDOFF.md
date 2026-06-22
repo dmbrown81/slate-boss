@@ -2,7 +2,7 @@
 
 > A self-contained packet for an outside designer, engineer, or AI model to review the game, audit the code, and give feedback. You can hand someone *just this file* and they'll understand where the project is and what to critique.
 
-_Last updated: 2026-06-20 · Branch: `main` · Status: productized alpha with playable 5-game **season**, team-as-deck selection, save/resume, seeded run scaffolding, War Room economy, Player Traits, mobile/defense lane depth, boss preview, NFL/DFS-derived calibration notes, Coach Debrief, and balance diagnostics._
+_Last updated: 2026-06-22 · Branch: `gridiron-ux-sprint` (PR #5 → `main`) · Status: productized alpha with playable 5-game **season**, team-as-deck selection, save/resume, seeded run scaffolding, War Room economy, Player Traits, mobile/defense lane depth, boss preview, NFL/DFS-derived calibration notes, Coach Debrief, balance diagnostics, plus a UX sprint: play-resolution **theatre**, a **coach + team-palette identity** layer, a **War Room card draft**, a **Team Select grid**, and a local **retention layer** (run history + Daily Scrimmage seed)._
 
 ---
 
@@ -11,7 +11,7 @@ _Last updated: 2026-06-20 · Branch: `main` · Status: productized alpha with pl
 **Gridiron** is a single-player, football-native **card roguelike** — Balatro-style engine-building, but the scoring language is football instead of poker. It lives inside the **Slate Boss** repository and is now the active app product. The original Classic Slate Boss DFS simulator has been removed from the active source tree and remains recoverable from the archive branch/tag.
 
 - **No real IP.** Fictional teams and players only. No NFL marks, no real names, no real money, no prizes. The architecture is intentionally "license-agnostic" (names are display-only data) so a licensed dataset could drop in later without a rewrite — but that is a far-future dream, not a near-term plan.
-- **Design ethos:** clean, text-and-math-forward, mobile-first. The fun is *outsmarting a transparent system*, not graphics. No animation budget beyond small touches.
+- **Design ethos:** clean, text-and-math-forward, mobile-first. The fun is *outsmarting a transparent system*, not graphics. Motion is now used deliberately for *celebration and weight* (a play-resolution theatre layer — see §3/§4h), but every animation is skippable on tap and fully disabled under `prefers-reduced-motion`. No bitmap art, no generative art; decoration is color + geometry + motion only.
 
 **The pitch:** Build the deck. Call the play. Beat the defense.
 
@@ -24,7 +24,8 @@ npm install
 npm run dev -- --host 127.0.0.1     # http://127.0.0.1:5173/slate-boss/
 npm run lint                         # eslint, must pass
 npm run build                        # tsc + vite, must pass
-npm run balance:gridiron             # Monte-Carlo balance harness (skill-gap report)
+npm run smoke:gridiron               # server-renders every screen; must pass
+npm run balance:gridiron -- 3000     # Monte-Carlo balance harness (skill-gap report)
 ```
 
 The app boots into the Gridiron title screen → **Kickoff** to play. **How to Play** opens the in-game help. The visible and compiled product path is Gridiron-only.
@@ -40,10 +41,10 @@ Each **game = 3 drives**. Each drive has a **points target that rises** drive to
 1. Draw an 8-card hand from your deck. Each card is a **football action** (Deep Ball, Power Run, Deep Catch, Sack, Interception, Field Goal…), and its value is weighted by the source player's archetype.
 2. The hand is grouped by role (**QB Pass / Catch / Run / Defense / Kick**) so the player can read the football grammar quickly.
 3. Tap **up to 4 cards** to assemble a play. A live **preview** shows the play's name and full score *before* you commit — this is the hero UI.
-4. **Run the play** → its points add to the drive score; the cards are spent, then a staged **Scoring Sequence** recaps Base → Execution → Big Play → Final. Or **Audible** (3/drive) to throw selected cards back and redraw, spending no budget.
-5. Hit the target → bank the drive, advance (fresh hand/budget). Run out of **Play Budget** below the target → the drive stalls and the run ends.
+4. **Run the play** → the drive score **counts up** to its new total; the cards are spent, then a single canonical **Scoring Sequence** recaps Base → Execution → Big Play → Final in the preview slot. Splash concepts (Double-Stack Bomb, Shootout, Pick Six, QB Keeper) fire a gold full-bleed **banner**; clearing a drive stamps **FIRST DOWN → DRIVE! → TOUCHDOWN!** by drive index. Or **Audible** (3/drive) to throw selected cards back and redraw, spending no budget.
+5. Hit the target → bank the drive, advance (fresh hand/budget). Run out of **Play Budget** below the target → a **TURNOVER ON DOWNS** stamp over a dimmed field, then the run ends.
 
-The first game includes a contextual **Coach's First Drive** panel that teaches the key grammar: QB Pass + same-team Catch = Stack TD. It disappears after the first taught play.
+The first game includes a contextual **Coach's First Drive** panel that teaches the key grammar: QB Pass + same-team Catch = Stack TD. On Game 1 / Drive 1 the scoreboard also collapses secondary build/defense/coordinator detail so there's a single teaching voice; the detail returns after the first taught play.
 
 **Scoring is deterministic.** Variance lives entirely in the **draw**, never in a hidden roll — so the ledger is always teachable and every win/loss is on the player.
 
@@ -97,6 +98,12 @@ From Game 2 onward, each match shows an opposing defensive scheme on the scorebo
 - **Turnover Drill** — defensive splash plays lose Big Play; clean offense gains Execution.
 - **Adaptive DC** — repeated concepts are punished harder.
 
+### 4h. Theatre & team identity (presentation layer — no engine impact)
+The match now *reacts* to a play instead of silently ticking: a requestAnimationFrame **count-up** on the drive score, a gold concept **banner** for splash plays, escalating drive-clear **stamps**, and a red **turnover** stamp on a stall. Each team also has a **face**: a fictional coach (name + signature quote), a two-colour palette, and a geometric single-colour **coach portrait** (`coachIdentity.tsx` / `teamIdentity.ts` — presentation-only; `TEAM_PROFILES` in the engine stays colour/coach-free). The portrait + palette surface as a scoreboard stripe, the War Room header (with boss-aware advice), the Run Summary opener, and the Team Select cards. All motion is tap-skippable and honors `prefers-reduced-motion`.
+
+### 4i. Retention layer (local, no accounts)
+A **Daily Scrimmage** entry on Home seeds a deterministic run from the UTC date. Completed runs are written to a local **run history** (`gridiron_history_v1`, last 10), and the **best run** surfaces on Home and the Run Summary. Run score is the **season cumulative** (sum of every match's points). No leaderboard, no accounts, no server — see §8 for whether this is enough.
+
 ---
 
 ## 5. Balance snapshot
@@ -128,18 +135,21 @@ History: the build started with smart ≈ random (~1-pt gap — meta-layer was n
 - `src/lib/footballRun.ts` — season run state (`FbRunState`), seeded run helpers, `gameTargets` escalation, reward catalog + `generateRewards`, lane-aware reward shelves, War Room reward hydration, build identity helpers, reward impact projections, Coach Debrief.
 - `src/lib/gridironCalibration.ts` — read-only calibration constants derived from the local `nfl_dfs` research folder; use them to tune fictional archetypes and match conditions, not to ship NFL content.
 - `src/lib/gridironEconomy.ts` — Front Office Funds, win purse, interest, reroll/skip economy, War Room purchase cap.
-- `src/lib/gridironStorage.ts` — versioned Gridiron save/resume state under `gridiron_run_v1`.
+- `src/lib/gridironStorage.ts` — versioned Gridiron save/resume under `gridiron_run_v1`, plus run history (`gridiron_history_v1`) and best-run selection.
 
 **UI (React, inline styles + shared tokens):**
 - `src/components/footballStyles.ts` — design tokens (the single source of visual truth).
-- `src/components/FootballHome.tsx` — title screen.
-- `src/components/FootballSeason.tsx` — orchestrates the run (match → reward → summary).
-- `src/components/FootballMatch.tsx` — one game (scoreboard, hand, live preview/ledger).
-- `src/components/FootballReward.tsx` — the War Room shop: Funds, priced rewards, reroll, skip/bank, next scout.
-- `src/components/FootballRunSummary.tsx` — end-of-season summary.
-- `src/components/FootballHelpModal.tsx` — in-game How to Play (reads engine data so it can't drift).
+- `src/components/teamIdentity.ts` — per-team palette, fictional coach name, quote, play-style tag (presentation data; engine stays colour/coach-free).
+- `src/components/coachIdentity.tsx` — geometric single-colour `CoachPortrait` SVG (no real people, no licenses).
+- `src/components/FootballHome.tsx` — title screen, resume/new, Daily Scrimmage, best-run recap.
+- `src/components/FootballTeamSelect.tsx` — 2-up grid of 3:4 team cards (palette + coach portrait + play-style + difficulty) → detail → Start.
+- `src/components/FootballSeason.tsx` — orchestrates the run (match → reward → summary); accumulates season score; threads the optional daily seed.
+- `src/components/FootballMatch.tsx` — one game (scoreboard + coach stripe, grouped hand, live preview, canonical scoring sequence, count-up, banners/stamps).
+- `src/components/FootballReward.tsx` — the War Room **card draft**: coach advice header, 3-up reward grid with lane-glow tier badges, two-tap buy via a detail sheet, dedicated bank/skip tile, reroll, next scout.
+- `src/components/FootballRunSummary.tsx` — coach opener, season score, local-best comparison, share string, debrief.
+- `src/components/FootballHelpModal.tsx` — in-game How to Play (quick-start + full reference toggle; reads engine data so it can't drift).
 - `src/App.tsx` — minimal routing between the Gridiron title screen and season flow.
-- `src/index.css` — global theme + keyframes.
+- `src/index.css` — global theme + keyframes (incl. banner/stamp/count-up motion and the `prefers-reduced-motion` block).
 
 Classic Slate Boss source has been removed from the active app tree. Historical
 DFS and AI review material lives in `docs/archive/`; the playable classic code is
@@ -149,30 +159,33 @@ recoverable from the `archive/classic-dfs-sim` branch and `classic-dfs-sim-2026-
 
 ## 7. Roadmap
 
-**Done:** core match loop, three-channel scoring, Play Budget, scaling coordinators (incl. season-long Franchise QB), the **5-game season shell**, a **permanent balance harness**, the **skill-decisive rebalance**, the **game-theory pass** (leveled Game Plan + geometric targets), the **clarity/boss pass** — guided first drive, grouped hand, current build identity, reward impact projections, boss defensive schemes, and staged scoring feedback (§3–5) — plus **five team-as-deck identities**, seeded run scaffolding, save/resume, next-game boss/weather scout, War Room/Funds economy, Player Traits, weighted environment calibration, mobile/defense lane depth, per-lane commitment diagnostics, Coach Debrief, and a lightweight Gridiron smoke test.
+**Done:** core match loop, three-channel scoring, Play Budget, scaling coordinators (incl. season-long Franchise QB), the **5-game season shell**, a **permanent balance harness**, the **skill-decisive rebalance**, the **game-theory pass** (leveled Game Plan + geometric targets), the **clarity/boss pass** (guided first drive, grouped hand, current build identity, reward impact projections, boss defensive schemes), plus **five team-as-deck identities**, seeded run scaffolding, save/resume, next-game boss/weather scout, War Room/Funds economy, Player Traits, weighted environment calibration, mobile/defense lane depth, per-lane commitment diagnostics, Coach Debrief, and a Gridiron smoke test. **UX sprint (PR #5):** play-resolution **theatre** (count-up, concept banners, drive/turnover stamps; reduced-motion safe), a **coach + team-palette identity** layer, the **War Room card draft** with decision-lane tier badges and two-tap buy, the **Team Select grid ritual**, a quick-start Help split, and the **retention layer** (run history + best-run recap + Daily Scrimmage seed + season-cumulative score).
 
-> **Presentation idea on the table (not yet built):** push Gridiron as a landscape/tablet-first app for more screen real estate (coordinators + Game Plans + hand side-by-side). Worth prototyping once content (teams/bosses) lands; the current layout is mobile-portrait single-column.
+> **Presentation idea on the table (not yet built):** push Gridiron as a landscape/tablet-first app for more screen real estate (coordinators + Game Plans + hand side-by-side). The current layout is mobile-portrait single-column.
 
 **Next, in order** (productized alpha, still design-flexible):
 1. **Film Tools** — one-use consumables, one slot, buyable in the War Room.
-2. **War Room clarity** — label reward cards by decision lane: Engine, Counter, Consistency, Value, Risk.
+2. **Boss intro card** — a short full-screen reveal (name, scheme, hint) before each match from Game 2.
 3. **Coordinator ordering + containment** — resolve coordinators left-to-right, expose up/down controls, and make bigger concepts trigger contained concept effects where readable.
-4. **Daily challenge + stronger share strings** — the seed path exists; next step is a daily seed entry point and replayable summary.
+4. **War Room compare mode** — long-press to pin two rewards side-by-side (the card-draft sheet exists; this is the A-vs-B helper on top).
 5. **More deck manipulation rewards** — copy/convert/cost-reduce/respec in small, readable doses.
+6. **Sensory feedback** — optional sound + haptics on big plays/clears/stalls (currently the theatre is visual-only).
 
-Deferred: art/animation, accounts/backend, multiplayer, real-money, large content catalogs.
+Deferred: bitmap/generative art, accounts/backend, multiplayer, real-money, large content catalogs.
 
 ---
 
 ## 8. Open questions / things to challenge
 
-1. **Pacing:** skilled play wins ~53% of seasons after boss schemes (random ~11%, un-built ~0%). Is this too punishing for kids/testers, or a good roguelike baseline?
-2. **Team identity feel:** five team decks are viable in the harness. Do players *feel* those identities strongly enough, especially Volts and Ghosts?
-3. **Play Budget vs. a separate currency:** we folded the cap into the play resource rather than adding a 4th scarce resource. Right call, or does a distinct wallet add depth?
-4. **Three channels on a small screen:** clarifying, or too much math at once for a casual player?
-5. **Cognitive load:** is "season → 5 games → 3 drives each" clear, or one nesting level too many?
-6. **Onboarding:** first-drive coach exists now. Does it teach enough without slowing repeat runs?
-7. **Save granularity:** current persistence resumes the current season at the game/reward level. Is that enough for alpha, or do testers expect exact mid-drive restore?
+1. **Cold-start Game-1 difficulty (highest-value gap — nothing measures it):** the balance harness only reports *optimized synergy play across full seasons*. It says nothing about a brand-new player, starter deck, no upgrades, Game 1. With a high opening target and a budget that affords ~3 plays, you must hit near-optimal stacks immediately or stall. Is Game 1 survivable for someone who hasn't learned stacking yet — and where exactly does a cold player bounce?
+2. **Number legibility / scoring scale:** targets in the high hundreds, multipliers like ×1.40, three channels updating at once. The theatre adds weight, but the raw magnitudes are unchanged. Does the *scale itself* read at a glance, or is it still "tax-software math"?
+3. **Retention depth:** Daily Scrimmage is a deterministic seed with no locked challenge, no leaderboard, no "already played today"; run history is local last-10. Is this enough to reopen the app tomorrow, or is it retention theater?
+4. **Mobile ergonomics & accessibility:** match-screen scroll length, thumb reach (hand vs. Run button), touch-target sizes, and **color-only encoding** — the three scoring channels *and* the War Room lanes are distinguished purely by color (a colorblind risk). Contrast and screen-reader support are unaudited. We ship `prefers-reduced-motion` and nothing else.
+5. **Team identity feel:** five decks are viable in the harness and now have coaches/palettes. Do players *feel* those identities — especially Volts and Ghosts — in play, not just on the select screen?
+6. **Three channels on a small screen:** clarifying, or too much math at once for a casual player?
+7. **Cognitive load:** is "season → 5 games → 3 drives each" clear, or one nesting level too many?
+8. **Onboarding:** first-drive coach + collapsed-clutter focus exist. Does it teach enough without slowing repeat runs? Should the brief's "3 captions / 3 taps" overlay replace the panel entirely on Game 1?
+9. **Theatre dosage:** are the banners/stamps the right intensity and frequency, or will they annoy on the 200th run even with tap-to-skip?
 
 ---
 
