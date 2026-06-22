@@ -4,6 +4,8 @@ import {
   type TeamArchetype,
 } from '../lib/footballRogue';
 import { FB, btnPrimary, card, sectionLabel } from './footballStyles';
+import { CoachPortrait } from './coachIdentity';
+import { TEAM_IDENTITY } from './teamIdentity';
 
 const DIFF_COLOR: Record<'Easy' | 'Medium' | 'Hard', string> = {
   Easy: FB.green,
@@ -30,44 +32,11 @@ export default function FootballTeamSelect({ onStart, onHome }: { onStart: (team
         Each team is a different starting deck, coordinator pair, and cost identity — not a skin. Your team decides which plays come cheap and which scoring engine you want to chase.
       </div>
 
-      {/* Team chooser */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 14 }}>
-        {TEAM_ARCHETYPES.map((id) => {
-          const t = TEAM_PROFILES[id];
-          const active = id === picked;
-          return (
-            <button
-              key={id}
-              onClick={() => setPicked(id)}
-              style={{
-                ...card(12),
-                textAlign: 'left',
-                padding: '12px 13px',
-                cursor: 'pointer',
-                background: active ? 'linear-gradient(160deg,#17222f,#101720)' : FB.panelSoft,
-                border: `1px solid ${active ? FB.gold : FB.border}`,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 12,
-              }}
-            >
-              <div style={{ flex: 1 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 15, fontWeight: 800, color: FB.text }}>{t.displayName}</span>
-                  {t.firstRunRecommended && (
-                    <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: 0.4, color: FB.green, background: FB.greenSoft, border: `1px solid ${FB.green}`, borderRadius: 999, padding: '2px 7px' }}>
-                      START HERE
-                    </span>
-                  )}
-                </div>
-                <div style={{ fontSize: 11, color: FB.textDim, marginTop: 3 }}>{t.description.split('—')[0].trim()}</div>
-              </div>
-              <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: 0.4, color: DIFF_COLOR[t.difficulty], border: `1px solid ${DIFF_COLOR[t.difficulty]}`, borderRadius: 6, padding: '3px 7px', whiteSpace: 'nowrap' }}>
-                {t.difficulty}
-              </span>
-            </button>
-          );
-        })}
+      {/* Team chooser — grid ritual */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, justifyContent: 'center', marginTop: 14 }}>
+        {TEAM_ARCHETYPES.map((id) => (
+          <TeamGridCard key={id} id={id} active={id === picked} onPick={() => setPicked(id)} />
+        ))}
       </div>
 
       {/* Detail of picked team */}
@@ -94,6 +63,42 @@ export default function FootballTeamSelect({ onStart, onHome }: { onStart: (team
         🏈 Start the season with {p.displayName}
       </button>
     </div>
+  );
+}
+
+// 3:4 team card: coach portrait over a team-colour band, name + difficulty,
+// and a one-line play-style tag. Tap selects; the Start button is the commit.
+function TeamGridCard({ id, active, onPick }: { id: TeamArchetype; active: boolean; onPick: () => void }) {
+  const t = TEAM_PROFILES[id];
+  const ident = TEAM_IDENTITY[id];
+  return (
+    <button
+      onClick={onPick}
+      style={{
+        ...card(14), width: 'calc(50% - 5px)', maxWidth: 200, cursor: 'pointer', textAlign: 'center',
+        padding: 0, overflow: 'hidden', position: 'relative',
+        border: `1.5px solid ${active ? ident.primary : FB.border}`,
+        boxShadow: active ? `0 0 0 1px ${ident.primary}, 0 8px 22px -12px ${ident.primary}` : 'none',
+      }}
+    >
+      <div style={{ background: `linear-gradient(160deg, ${ident.primary}33, #0a0f16)`, padding: '14px 0 10px', display: 'flex', justifyContent: 'center' }}>
+        <CoachPortrait team={id} size={56} />
+      </div>
+      <div style={{ padding: '9px 10px 12px' }}>
+        <div style={{ fontSize: 14, fontWeight: 900, color: FB.text }}>{t.displayName}</div>
+        <div style={{ fontSize: 10.5, color: ident.primary, fontWeight: 800, marginTop: 2 }}>{ident.playStyle}</div>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: 0.4, color: DIFF_COLOR[t.difficulty], border: `1px solid ${DIFF_COLOR[t.difficulty]}`, borderRadius: 6, padding: '2px 7px' }}>
+            {t.difficulty}
+          </span>
+          {t.firstRunRecommended && (
+            <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: 0.4, color: FB.green, background: FB.greenSoft, border: `1px solid ${FB.green}`, borderRadius: 6, padding: '2px 7px' }}>
+              START HERE
+            </span>
+          )}
+        </div>
+      </div>
+    </button>
   );
 }
 
