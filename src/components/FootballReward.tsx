@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { FB, card, sectionLabel, btnPrimary, btnGhost } from './footballStyles';
 import {
   FB_BOSS_SCHEMES, FB_COORDINATORS, FB_CONCEPT_LABEL, FB_ENVIRONMENTS, FB_CARD_MODIFIERS,
@@ -48,6 +49,13 @@ export default function FootballReward({ run, rewards, creditInfo, rerollCost, p
   const coachAdvice = nextBossScheme === 'balanced'
     ? `${coachId.quote} ${nextBoss.label} is next — feed your engine.`
     : `${nextBoss.label} is up next. ${nextBoss.hint} Shop the Counter lane.`;
+  const [detail, setDetail] = useState<Reward | null>(null);
+  const detailAffordable = detail ? run.funds >= detail.cost && !purchaseLimitReached : false;
+
+  function buyFromSheet(reward: Reward) {
+    onBuy(reward);
+    setDetail(null);
+  }
 
   return (
     <div style={{ minHeight: '100svh', padding: '20px 16px 28px', display: 'flex', flexDirection: 'column' }}>
@@ -115,52 +123,38 @@ export default function FootballReward({ run, rewards, creditInfo, rerollCost, p
         </div>
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {rewards.length === 0 && (
-          <div style={{ ...card(12), padding: '16px 14px', textAlign: 'center', color: FB.textDim, fontSize: 12.5 }}>
-            Shelf cleared. Reroll for more, or head to the next game.
-          </div>
-        )}
-        {rewards.map((rw) => {
-          const affordable = run.funds >= rw.cost && !purchaseLimitReached;
-          const lane = rewardDecisionLane(run, rw, nextBossScheme);
-          const laneStyle = LANE_STYLE[lane];
-          return (
-            <button
+      {rewards.length === 0 ? (
+        <div style={{ ...card(12), padding: '16px 14px', textAlign: 'center', color: FB.textDim, fontSize: 12.5 }}>
+          Shelf cleared. Reroll for more, or head to the next game.
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+          {rewards.map((rw) => (
+            <RewardCard
               key={rw.id}
-              onClick={() => affordable && onBuy(rw)}
-              disabled={!affordable}
-              style={{ ...card(14), padding: '14px 14px', cursor: affordable ? 'pointer' : 'not-allowed', textAlign: 'left', display: 'flex', gap: 13, alignItems: 'center', borderLeft: `4px solid ${laneStyle.color}`, opacity: affordable ? 1 : 0.55 }}
-            >
-              <span style={{ fontSize: 26 }}>{rw.emoji}</span>
-              <div style={{ flex: 1 }}>
-                <div style={{ display: 'flex', gap: 7, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: FB.text }}>{rw.title}</div>
-                  <span style={{ fontSize: 9.5, fontWeight: 900, color: laneStyle.color, background: laneStyle.bg, border: `1px solid ${laneStyle.color}66`, borderRadius: 999, padding: '2px 7px' }}>{lane}</span>
-                  <span style={{ fontSize: 9.5, fontWeight: 900, color: KIND_COLOR[rw.kind], background: FB.inset, border: `1px solid ${FB.borderSoft}`, borderRadius: 999, padding: '2px 7px' }}>{rewardFitLabel(run, rw)}</span>
-                </div>
-                <div style={{ fontSize: 10.5, color: laneStyle.color, lineHeight: 1.35, marginTop: 3, fontWeight: 800 }}>{laneStyle.copy}</div>
-                <div style={{ fontSize: 12, color: FB.textDim, lineHeight: 1.4, marginTop: 2 }}>{rw.detail}</div>
-                <div style={{ fontSize: 12.5, color: FB.gold, lineHeight: 1.35, marginTop: 7, fontWeight: 800 }}>{rewardImpact(run, rw, nextBossScheme)}</div>
-              </div>
-              <span className="fb-num" style={{ flexShrink: 0, fontSize: 15, fontWeight: 900, color: affordable ? FB.gold : FB.red, background: affordable ? FB.goldSoft : '#2a141a', border: `1px solid ${affordable ? '#5a4112' : '#6b3344'}`, borderRadius: 8, padding: '5px 9px' }}>${rw.cost}</span>
-            </button>
-          );
-        })}
-        {purchases === 0 && (
-          <button
-            onClick={onProceed}
-            style={{ ...card(14), padding: '13px 14px', cursor: 'pointer', textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderColor: '#5a4112', background: 'linear-gradient(160deg,#17170d,#0e151d)' }}
-          >
-            <div>
-              <div style={{ fontSize: 10, color: FB.gold, letterSpacing: 1.1, fontWeight: 900 }}>BANK VISIT</div>
-              <div style={{ fontSize: 13, color: FB.text, fontWeight: 800, marginTop: 2 }}>Skip buys and save for later</div>
-              <div style={{ fontSize: 11.5, color: FB.textDim, marginTop: 2 }}>Adds ${SKIP_REWARD} Funds, then advances to the next game.</div>
-            </div>
-            <span className="fb-num" style={{ fontSize: 17, fontWeight: 900, color: FB.gold }}>+${SKIP_REWARD}</span>
-          </button>
-        )}
-      </div>
+              reward={rw}
+              run={run}
+              nextBossScheme={nextBossScheme}
+              affordable={run.funds >= rw.cost && !purchaseLimitReached}
+              onPick={() => setDetail(rw)}
+            />
+          ))}
+        </div>
+      )}
+
+      {purchases === 0 && (
+        <button
+          onClick={onProceed}
+          style={{ ...card(14), padding: '13px 14px', marginTop: 10, cursor: 'pointer', textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderColor: '#5a4112', background: 'linear-gradient(160deg,#17170d,#0e151d)' }}
+        >
+          <div>
+            <div style={{ fontSize: 10, color: FB.gold, letterSpacing: 1.1, fontWeight: 900 }}>BANK VISIT</div>
+            <div style={{ fontSize: 13, color: FB.text, fontWeight: 800, marginTop: 2 }}>Skip buys and save for later</div>
+            <div style={{ fontSize: 11.5, color: FB.textDim, marginTop: 2 }}>Adds ${SKIP_REWARD} Funds, then advances to the next game.</div>
+          </div>
+          <span className="fb-num" style={{ fontSize: 17, fontWeight: 900, color: FB.gold }}>+${SKIP_REWARD}</span>
+        </button>
+      )}
 
       {purchases > 0 && (
         <button onClick={onProceed} style={{ ...btnPrimary, width: '100%', marginTop: 18 }}>
@@ -200,6 +194,88 @@ export default function FootballReward({ run, rewards, creditInfo, rerollCost, p
             })}
           </div>
         )}
+      </div>
+
+      {detail && (
+        <RewardSheet
+          reward={detail}
+          run={run}
+          nextBossScheme={nextBossScheme}
+          affordable={detailAffordable}
+          purchaseLimitReached={purchaseLimitReached}
+          onBuy={buyFromSheet}
+          onClose={() => setDetail(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// A draft card: emoji hero, lane-glow tier badge, name, fat price strip.
+// Tapping inspects (opens the sheet); buying is the second, deliberate tap.
+function RewardCard({ reward, run, nextBossScheme, affordable, onPick }: {
+  reward: Reward; run: FbRunState; nextBossScheme: FbBossSchemeKey; affordable: boolean; onPick: () => void;
+}) {
+  const lane = rewardDecisionLane(run, reward, nextBossScheme);
+  const laneStyle = LANE_STYLE[lane];
+  const glow = lane === 'Counter' || rewardFitLabel(run, reward) === 'Feeds current plan';
+  return (
+    <button
+      onClick={onPick}
+      style={{
+        ...card(12), position: 'relative', padding: '11px 8px 0', cursor: 'pointer', textAlign: 'center',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, minHeight: 152, overflow: 'hidden',
+        borderTop: `3px solid ${laneStyle.color}`, opacity: affordable ? 1 : 0.6,
+      }}
+    >
+      <span style={{ fontSize: 26, lineHeight: 1 }}>{reward.emoji}</span>
+      <span style={{
+        fontSize: 8, fontWeight: 900, letterSpacing: 0.5, color: laneStyle.color, background: laneStyle.bg,
+        border: `1px solid ${laneStyle.color}66`, borderRadius: 999, padding: '2px 7px',
+        boxShadow: glow ? `0 0 10px -2px ${laneStyle.color}` : undefined,
+      }}>{lane.toUpperCase()}</span>
+      <div style={{ fontSize: 11, fontWeight: 800, color: FB.text, lineHeight: 1.2 }}>{reward.title}</div>
+      <div style={{ flex: 1 }} />
+      <div className="fb-num" style={{
+        width: '100%', margin: '0 -8px', padding: '7px 0', fontSize: 13, fontWeight: 900,
+        color: affordable ? '#1a1206' : FB.red, background: affordable ? 'linear-gradient(180deg,#f7c544,#e6a519)' : '#2a141a',
+      }}>${reward.cost}</div>
+    </button>
+  );
+}
+
+// Two-tap commit: the inspected card opens here; Buy lives inside the sheet.
+function RewardSheet({ reward, run, nextBossScheme, affordable, purchaseLimitReached, onBuy, onClose }: {
+  reward: Reward; run: FbRunState; nextBossScheme: FbBossSchemeKey; affordable: boolean; purchaseLimitReached: boolean;
+  onBuy: (reward: Reward) => void; onClose: () => void;
+}) {
+  const lane = rewardDecisionLane(run, reward, nextBossScheme);
+  const laneStyle = LANE_STYLE[lane];
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(6,9,13,0.66)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+      <div onClick={(e) => e.stopPropagation()} className="fb-rise" style={{ width: '100%', maxWidth: 480, background: FB.panel, borderTop: `3px solid ${laneStyle.color}`, borderRadius: '16px 16px 0 0', padding: '16px 16px 22px' }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <span style={{ fontSize: 30 }}>{reward.emoji}</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 17, fontWeight: 900, color: FB.text }}>{reward.title}</div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+              <span style={{ fontSize: 9.5, fontWeight: 900, color: laneStyle.color, background: laneStyle.bg, border: `1px solid ${laneStyle.color}66`, borderRadius: 999, padding: '2px 7px' }}>{lane}</span>
+              <span style={{ fontSize: 9.5, fontWeight: 900, color: KIND_COLOR[reward.kind], background: FB.inset, border: `1px solid ${FB.borderSoft}`, borderRadius: 999, padding: '2px 7px' }}>{rewardFitLabel(run, reward)}</span>
+            </div>
+          </div>
+          <span className="fb-num" style={{ flexShrink: 0, fontSize: 16, fontWeight: 900, color: FB.gold, background: FB.goldSoft, border: '1px solid #5a4112', borderRadius: 8, padding: '6px 10px' }}>${reward.cost}</span>
+        </div>
+        <div style={{ fontSize: 11.5, color: laneStyle.color, fontWeight: 800, marginTop: 12 }}>{laneStyle.copy}</div>
+        <div style={{ fontSize: 12.5, color: FB.textDim, lineHeight: 1.45, marginTop: 4 }}>{reward.detail}</div>
+        <div style={{ fontSize: 12.5, color: FB.gold, lineHeight: 1.4, marginTop: 8, fontWeight: 800 }}>{rewardImpact(run, reward, nextBossScheme)}</div>
+        <button
+          onClick={() => affordable && onBuy(reward)}
+          disabled={!affordable}
+          style={{ ...btnPrimary, width: '100%', marginTop: 16, ...(affordable ? {} : { background: '#1a2330', color: FB.textFaint, boxShadow: 'none', cursor: 'not-allowed' }) }}
+        >
+          {affordable ? `Buy · $${reward.cost}` : purchaseLimitReached ? 'War Room limit reached' : 'Not enough Funds'}
+        </button>
+        <button onClick={onClose} style={{ ...btnGhost, width: '100%', marginTop: 8, padding: '11px 0' }}>Keep looking</button>
       </div>
     </div>
   );
