@@ -3,6 +3,8 @@ import { FB, btnPrimary, btnGhost, card } from './footballStyles';
 import { FB_CONCEPT_LABEL, FB_COORDINATORS, TEAM_PROFILES } from '../lib/footballRogue';
 import { buildCoachDebrief, buildIdentity, deckValueSummary, SEASON_GAMES, type FbRunState } from '../lib/footballRun';
 import { bestGridironHistoryRun, loadGridironHistory, saveGridironHistoryEntry } from '../lib/gridironStorage';
+import { CoachPortrait } from './coachIdentity';
+import { TEAM_IDENTITY } from './teamIdentity';
 
 interface Props {
   won: boolean;
@@ -20,6 +22,12 @@ export default function FootballRunSummary({ won, gamesWon, run, lostDrive, scor
   const identity = buildIdentity(run);
   const debrief = buildCoachDebrief(run, won, gamesWon, lostDrive);
   const team = TEAM_PROFILES[run.team];
+  const coachId = TEAM_IDENTITY[run.team];
+  const coachOpener = won
+    ? `We ran the table. ${coachId.quote}`
+    : gamesWon > 0
+      ? `${gamesWon} in the books before the wall. ${coachId.quote}`
+      : `Rough opener. ${coachId.quote} We regroup.`;
   const previousBest = bestGridironHistoryRun(loadGridironHistory());
   const bestLabel = previousBest
     ? `${TEAM_PROFILES[previousBest.team].displayName} · ${previousBest.won ? 'Champions' : `${previousBest.gamesWon}/${SEASON_GAMES}`} · ${previousBest.score}`
@@ -60,7 +68,15 @@ export default function FootballRunSummary({ won, gamesWon, run, lostDrive, scor
         </div>
       </div>
 
-      <div style={{ ...card(14), padding: '14px', marginTop: 16 }}>
+      <div style={{ ...card(14), padding: '12px 14px', marginTop: 14, display: 'flex', gap: 12, alignItems: 'center', borderLeft: `4px solid ${coachId.primary}` }}>
+        <CoachPortrait team={run.team} size={48} />
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 900, color: FB.text }}>{coachId.coachName}</div>
+          <div style={{ fontSize: 12, color: FB.textDim, lineHeight: 1.4, marginTop: 3, fontStyle: 'italic' }}>“{coachOpener}”</div>
+        </div>
+      </div>
+
+      <div style={{ ...card(14), padding: '14px', marginTop: 12 }}>
         <div style={{ marginBottom: 12, padding: '10px 11px', background: FB.inset, border: `1px solid ${identity.level >= 2 ? '#5a4112' : FB.borderSoft}`, borderRadius: 10 }}>
           <div style={{ fontSize: 10, color: FB.textFaint, letterSpacing: 1.2, fontWeight: 900 }}>FINAL BUILD</div>
           <div style={{ fontSize: 17, color: identity.level >= 2 ? FB.gold : FB.text, fontWeight: 900, marginTop: 2 }}>{identity.title}</div>

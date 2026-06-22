@@ -2,15 +2,18 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   buildStarterDeck, scoreFootballPlay, shuffle, cardCost,
   HAND_SIZE, DRIVES_PER_MATCH, AUDIBLES_PER_DRIVE, MAX_PLAY_CARDS, DRIVE_BUDGET,
-  FB_BOSS_SCHEMES, FB_COORDINATORS, FB_ENVIRONMENTS, FB_CONCEPT_LABEL, FB_CARD_MODIFIERS,
-  type FbBossSchemeKey, type FbCard, type FbCoordinatorKey, type FbEnvironmentKey, type FbPlaybook, type FbPlayResult, type FbConceptKey,
+  FB_BOSS_SCHEMES, FB_COORDINATORS, FB_ENVIRONMENTS, FB_CONCEPT_LABEL, FB_CARD_MODIFIERS, TEAM_PROFILES,
+  type FbBossSchemeKey, type FbCard, type FbCoordinatorKey, type FbEnvironmentKey, type FbPlaybook, type FbPlayResult, type FbConceptKey, type TeamArchetype,
 } from '../lib/footballRogue';
 import { mulberry32, stringSeed, type RNG } from '../lib/rng';
 import { buildIdentity } from '../lib/footballRun';
 import { FB, SIDE, btnPrimary, btnGhost } from './footballStyles';
+import { CoachPortrait } from './coachIdentity';
+import { TEAM_IDENTITY } from './teamIdentity';
 import FootballHelpModal from './FootballHelpModal';
 
 export interface MatchProps {
+  team: TeamArchetype;
   deck: FbCard[];
   coordinators: FbCoordinatorKey[];
   playbook: FbPlaybook;
@@ -122,7 +125,8 @@ function usePrefersReducedMotion() {
 }
 
 export default function FootballMatch(props: MatchProps) {
-  const { deck: runDeck, coordinators, playbook, bombGames, keeperGames, takeawayGames, targets, environment, bossScheme, gameNumber, totalGames, championship, seed } = props;
+  const { team, deck: runDeck, coordinators, playbook, bombGames, keeperGames, takeawayGames, targets, environment, bossScheme, gameNumber, totalGames, championship, seed } = props;
+  const teamId = TEAM_IDENTITY[team];
   const [matchRng] = useState<RNG>(() => mulberry32(stringSeed(`gridiron-match:${seed}:g${gameNumber}:${environment}:${bossScheme}`)));
 
   const [match, setMatch] = useState<MatchState>(() => {
@@ -283,7 +287,16 @@ export default function FootballMatch(props: MatchProps) {
         <button onClick={() => setShowHelp(true)} style={btnGhost}>?</button>
       </div>
 
-      <div className="fb-yard" style={{ background: championship ? 'linear-gradient(180deg,#2a2410,#0b1119)' : 'linear-gradient(180deg,#11202c,#0b1119)', border: `1px solid ${championship ? '#5a4a16' : FB.border}`, borderRadius: 16, padding: firstDriveFocus ? 11 : 15 }}>
+      <div className="fb-yard" style={{ background: championship ? 'linear-gradient(180deg,#2a2410,#0b1119)' : 'linear-gradient(180deg,#11202c,#0b1119)', border: `1px solid ${championship ? '#5a4a16' : FB.border}`, borderLeft: `4px solid ${teamId.primary}`, borderRadius: 16, padding: firstDriveFocus ? 11 : 15 }}>
+        {!firstDriveFocus && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <CoachPortrait team={team} size={30} />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 12, fontWeight: 900, color: FB.text, lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{teamId.coachName}</div>
+              <div style={{ fontSize: 10, color: teamId.primary, fontWeight: 800, letterSpacing: 0.3 }}>{TEAM_PROFILES[team].displayName}</div>
+            </div>
+          </div>
+        )}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
             {targets.map((_, i) => (

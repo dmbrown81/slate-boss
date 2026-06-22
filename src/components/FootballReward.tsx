@@ -5,6 +5,8 @@ import {
 } from '../lib/footballRogue';
 import { buildIdentity, deckValueSummary, rewardFitLabel, rewardImpact, SEASON_GAMES, type FbRunState, type Reward } from '../lib/footballRun';
 import { MAX_WAR_ROOM_PURCHASES, SKIP_REWARD, type ShopCreditInfo } from '../lib/gridironEconomy';
+import { CoachPortrait } from './coachIdentity';
+import { TEAM_IDENTITY } from './teamIdentity';
 
 interface Props {
   run: FbRunState;
@@ -42,6 +44,10 @@ export default function FootballReward({ run, rewards, creditInfo, rerollCost, p
   const canReroll = run.funds >= rerollCost && rewards.length > 0;
   const purchaseLimitReached = purchases >= MAX_WAR_ROOM_PURCHASES;
   const trained = run.deck.filter((c) => c.modifier);
+  const coachId = TEAM_IDENTITY[run.team];
+  const coachAdvice = nextBossScheme === 'balanced'
+    ? `${coachId.quote} ${nextBoss.label} is next — feed your engine.`
+    : `${nextBoss.label} is up next. ${nextBoss.hint} Shop the Counter lane.`;
 
   return (
     <div style={{ minHeight: '100svh', padding: '20px 16px 28px', display: 'flex', flexDirection: 'column' }}>
@@ -62,7 +68,15 @@ export default function FootballReward({ run, rewards, creditInfo, rerollCost, p
         )}
       </div>
 
-      <div style={{ ...card(12), padding: '12px 14px', marginTop: 14, borderColor: identity.level >= 2 ? '#5a4112' : FB.border }}>
+      <div style={{ ...card(12), padding: '12px 14px', marginTop: 14, display: 'flex', gap: 12, alignItems: 'center', borderLeft: `4px solid ${coachId.primary}` }}>
+        <CoachPortrait team={run.team} size={46} />
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 900, color: FB.text }}>{coachId.coachName}</div>
+          <div style={{ fontSize: 11.5, color: FB.textDim, lineHeight: 1.4, marginTop: 3 }}>{coachAdvice}</div>
+        </div>
+      </div>
+
+      <div style={{ ...card(12), padding: '12px 14px', marginTop: 10, borderColor: identity.level >= 2 ? '#5a4112' : FB.border }}>
         <div style={{ ...sectionLabel, marginBottom: 5 }}>Current build</div>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
           <div>

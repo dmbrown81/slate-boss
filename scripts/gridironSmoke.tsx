@@ -50,6 +50,7 @@ assert(reward.includes('FUNDS'), 'FootballReward should show Front Office Funds.
 
 const match = renderToString(
   <FootballMatch
+    team={run.team}
     deck={run.deck}
     coordinators={run.coordinators}
     playbook={run.playbook}

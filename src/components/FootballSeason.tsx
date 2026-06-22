@@ -192,6 +192,7 @@ export default function FootballSeason({ onHome, initialSeed }: { onHome: () => 
   return (
     <FootballMatch
       key={matchInstance}
+      team={run.team}
       deck={run.deck}
       coordinators={run.coordinators}
       playbook={run.playbook}
