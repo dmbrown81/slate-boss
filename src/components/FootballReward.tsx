@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { FB, card, sectionLabel, btnPrimary, btnGhost } from './footballStyles';
+import { FB, SIDE, card, sectionLabel, btnPrimary, btnGhost } from './footballStyles';
 import {
   FB_BOSS_SCHEMES, FB_COORDINATORS, FB_CONCEPT_LABEL, FB_ENVIRONMENTS, FB_CARD_MODIFIERS,
   type FbBossSchemeKey, type FbEnvironmentKey,
 } from '../lib/footballRogue';
-import { buildIdentity, deckValueSummary, rewardFitLabel, rewardImpact, SEASON_GAMES, type FbRunState, type Reward } from '../lib/footballRun';
+import { buildIdentity, deckValueSummary, filmToolTargets, rewardFitLabel, rewardImpact, FRONT_OFFICE, SEASON_GAMES, type FbRunState, type Reward, type FilmTool, type FrontOfficeUpgrade } from '../lib/footballRun';
 import { MAX_WAR_ROOM_PURCHASES, SKIP_REWARD, type ShopCreditInfo } from '../lib/gridironEconomy';
 import { CoachPortrait } from './coachIdentity';
 import { TEAM_IDENTITY } from './teamIdentity';
@@ -12,12 +12,16 @@ import { TEAM_IDENTITY } from './teamIdentity';
 interface Props {
   run: FbRunState;
   rewards: Reward[];
+  filmRoom: FilmTool[];
+  frontOfficeOffer: FrontOfficeUpgrade | null;
   creditInfo: ShopCreditInfo | null;
   rerollCost: number;
   purchases: number;
   nextBossScheme: FbBossSchemeKey;
   nextEnvironment: FbEnvironmentKey;
   onBuy: (reward: Reward) => void;
+  onBuyFilm: (tool: FilmTool, targetId?: string) => void;
+  onBuyFrontOffice: (up: FrontOfficeUpgrade) => void;
   onReroll: () => void;
   onProceed: () => void;
 }
@@ -28,15 +32,15 @@ const KIND_COLOR: Record<Reward['kind'], string> = {
 
 type DecisionLane = 'Engine' | 'Counter' | 'Consistency' | 'Value' | 'Risk';
 
-const LANE_STYLE: Record<DecisionLane, { color: string; bg: string; copy: string }> = {
-  Engine: { color: FB.blue, bg: '#0b1b32', copy: 'Builds your scaling plan' },
-  Counter: { color: FB.red, bg: '#2a1118', copy: 'Answers the next defense' },
-  Consistency: { color: FB.green, bg: FB.greenSoft, copy: 'Improves draw quality' },
-  Value: { color: FB.gold, bg: FB.goldSoft, copy: 'Raises your floor now' },
-  Risk: { color: '#b7a7ff', bg: '#140f24', copy: 'Adds a side lane' },
+const LANE_STYLE: Record<DecisionLane, { color: string; bg: string; copy: string; glyph: string }> = {
+  Engine: { color: FB.blue, bg: '#0b1b32', copy: 'Builds your scaling plan', glyph: 'ENG' },
+  Counter: { color: FB.red, bg: '#2a1118', copy: 'Answers the next defense', glyph: 'CNT' },
+  Consistency: { color: FB.green, bg: FB.greenSoft, copy: 'Improves draw quality', glyph: 'CON' },
+  Value: { color: FB.gold, bg: FB.goldSoft, copy: 'Raises your floor now', glyph: '$' },
+  Risk: { color: '#b7a7ff', bg: '#140f24', copy: 'Adds a side lane', glyph: '?' },
 };
 
-export default function FootballReward({ run, rewards, creditInfo, rerollCost, purchases, nextBossScheme, nextEnvironment, onBuy, onReroll, onProceed }: Props) {
+export default function FootballReward({ run, rewards, filmRoom, frontOfficeOffer, creditInfo, rerollCost, purchases, nextBossScheme, nextEnvironment, onBuy, onBuyFilm, onBuyFrontOffice, onReroll, onProceed }: Props) {
   const deck = deckValueSummary(run.deck);
   const nextGame = run.gameNumber + 1;
   const identity = buildIdentity(run);
@@ -50,6 +54,7 @@ export default function FootballReward({ run, rewards, creditInfo, rerollCost, p
     ? `${coachId.quote} ${nextBoss.label} is next — feed your engine.`
     : `${nextBoss.label} is up next. ${nextBoss.hint} Shop the Counter lane.`;
   const [detail, setDetail] = useState<Reward | null>(null);
+  const [filmDetail, setFilmDetail] = useState<FilmTool | null>(null);
   const detailAffordable = detail ? run.funds >= detail.cost && !purchaseLimitReached : false;
 
   function buyFromSheet(reward: Reward) {
@@ -66,7 +71,7 @@ export default function FootballReward({ run, rewards, creditInfo, rerollCost, p
         </div>
         <div style={{ textAlign: 'right' }}>
           <div className="fb-num" style={{ fontSize: 26, fontWeight: 900, color: FB.gold, lineHeight: 1 }}>${run.funds}</div>
-          <div style={{ fontSize: 9.5, color: FB.textFaint, fontWeight: 800, letterSpacing: 1 }}>FUNDS</div>
+          <div style={{ fontSize: 11, color: FB.textFaint, fontWeight: 800, letterSpacing: 1 }}>FUNDS</div>
         </div>
       </div>
       <div style={{ fontSize: 12, color: FB.textDim, marginTop: 6 }}>
@@ -91,7 +96,7 @@ export default function FootballReward({ run, rewards, creditInfo, rerollCost, p
             <div style={{ fontSize: 17, color: identity.level >= 2 ? FB.gold : FB.text, fontWeight: 900 }}>{identity.title}</div>
             <div style={{ fontSize: 11.5, color: FB.textDim, lineHeight: 1.35, marginTop: 3 }}>{identity.detail}</div>
           </div>
-          <span style={{ flexShrink: 0, fontSize: 10, color: identity.level >= 2 ? FB.gold : FB.green, background: identity.level >= 2 ? FB.goldSoft : FB.greenSoft, border: `1px solid ${identity.level >= 2 ? '#5a4112' : '#1f6b44'}`, borderRadius: 999, padding: '4px 8px', fontWeight: 900 }}>{identity.tag}</span>
+          <span style={{ flexShrink: 0, fontSize: 11, color: identity.level >= 2 ? FB.gold : FB.green, background: identity.level >= 2 ? FB.goldSoft : FB.greenSoft, border: `1px solid ${identity.level >= 2 ? '#5a4112' : '#1f6b44'}`, borderRadius: 999, padding: '4px 8px', fontWeight: 900 }}>{identity.tag}</span>
         </div>
       </div>
 
@@ -142,13 +147,34 @@ export default function FootballReward({ run, rewards, creditInfo, rerollCost, p
         </div>
       )}
 
+      {/* Film Room — one-use deck mutations (Tarot analog), own budget. */}
+      {filmRoom.length > 0 && (
+        <>
+          <div style={{ ...sectionLabel, margin: '16px 2px 8px', color: '#5fe0a0' }}>🎞️ Film Room · develop your deck</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
+            {filmRoom.map((tool) => (
+              <FilmToolCard key={tool.key} tool={tool} affordable={run.funds >= tool.cost} onPick={() => setFilmDetail(tool)} />
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Front Office — a rare run-persistent rule upgrade (Voucher analog). */}
+      {frontOfficeOffer && (
+        <FrontOfficeCard
+          offer={frontOfficeOffer}
+          affordable={run.funds >= frontOfficeOffer.cost}
+          onBuy={() => onBuyFrontOffice(frontOfficeOffer)}
+        />
+      )}
+
       {purchases === 0 && (
         <button
           onClick={onProceed}
           style={{ ...card(14), padding: '13px 14px', marginTop: 10, cursor: 'pointer', textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderColor: '#5a4112', background: 'linear-gradient(160deg,#17170d,#0e151d)' }}
         >
           <div>
-            <div style={{ fontSize: 10, color: FB.gold, letterSpacing: 1.1, fontWeight: 900 }}>BANK VISIT</div>
+            <div style={{ fontSize: 11, color: FB.gold, letterSpacing: 1.1, fontWeight: 900 }}>BANK VISIT</div>
             <div style={{ fontSize: 13, color: FB.text, fontWeight: 800, marginTop: 2 }}>Skip buys and save for later</div>
             <div style={{ fontSize: 11.5, color: FB.textDim, marginTop: 2 }}>Adds ${SKIP_REWARD} Funds, then advances to the next game.</div>
           </div>
@@ -174,10 +200,10 @@ export default function FootballReward({ run, rewards, creditInfo, rerollCost, p
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {run.coordinators.map((k) => (
-            <span key={k} style={{ fontSize: 10, fontWeight: 800, color: '#b7a7ff', background: '#140f24', border: '1px solid #2a2440', borderRadius: 7, padding: '4px 8px' }}>{FB_COORDINATORS[k].name}</span>
+            <span key={k} style={{ fontSize: 11, fontWeight: 800, color: '#b7a7ff', background: '#140f24', border: '1px solid #2a2440', borderRadius: 7, padding: '4px 8px' }}>{FB_COORDINATORS[k].name}</span>
           ))}
           {(Object.entries(run.playbook) as [string, number][]).filter(([, l]) => l > 0).map(([c, l]) => (
-            <span key={c} style={{ fontSize: 10, fontWeight: 800, color: '#5fe0a0', background: '#0c2419', border: '1px solid #1f6b44', borderRadius: 7, padding: '4px 8px' }}>
+            <span key={c} style={{ fontSize: 11, fontWeight: 800, color: '#5fe0a0', background: '#0c2419', border: '1px solid #1f6b44', borderRadius: 7, padding: '4px 8px' }}>
               {FB_CONCEPT_LABEL[c as keyof typeof FB_CONCEPT_LABEL] ?? c} <span style={{ color: FB.gold }}>Lv{l}</span>
             </span>
           ))}
@@ -187,11 +213,20 @@ export default function FootballReward({ run, rewards, creditInfo, rerollCost, p
             {trained.map((c) => {
               const m = FB_CARD_MODIFIERS[c.modifier!];
               return (
-                <span key={c.id} style={{ fontSize: 10, fontWeight: 800, color: m.color, background: FB.inset, border: `1px solid ${m.color}44`, borderRadius: 7, padding: '4px 8px' }}>
+                <span key={c.id} style={{ fontSize: 11, fontWeight: 800, color: m.color, background: FB.inset, border: `1px solid ${m.color}44`, borderRadius: 7, padding: '4px 8px' }}>
                   {c.label} · {m.label}
                 </span>
               );
             })}
+          </div>
+        )}
+        {run.upgrades.length > 0 && (
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+            {run.upgrades.map((k) => (
+              <span key={k} style={{ fontSize: 11, fontWeight: 800, color: FB.gold, background: FB.goldSoft, border: '1px solid #5a4112', borderRadius: 7, padding: '4px 8px' }}>
+                {FRONT_OFFICE[k].emoji} {FRONT_OFFICE[k].name}
+              </span>
+            ))}
           </div>
         )}
       </div>
@@ -207,6 +242,16 @@ export default function FootballReward({ run, rewards, creditInfo, rerollCost, p
           onClose={() => setDetail(null)}
         />
       )}
+
+      {filmDetail && (
+        <FilmSheet
+          tool={filmDetail}
+          run={run}
+          affordable={run.funds >= filmDetail.cost}
+          onBuy={(targetId) => { onBuyFilm(filmDetail, targetId); setFilmDetail(null); }}
+          onClose={() => setFilmDetail(null)}
+        />
+      )}
     </div>
   );
 }
@@ -218,10 +263,13 @@ function RewardCard({ reward, run, nextBossScheme, affordable, onPick }: {
 }) {
   const lane = rewardDecisionLane(run, reward, nextBossScheme);
   const laneStyle = LANE_STYLE[lane];
-  const glow = lane === 'Counter' || rewardFitLabel(run, reward) === 'Feeds current plan';
+  const fit = rewardFitLabel(run, reward);
+  const glow = lane === 'Counter' || fit === 'Feeds current plan';
+  const callout = lane === 'Counter' ? 'Counters next defense' : fit === 'Feeds current plan' ? 'Best fit' : '';
   return (
     <button
       onClick={onPick}
+      aria-label={`Inspect ${lane} reward, ${reward.title}, cost ${reward.cost}${affordable ? '' : ', unaffordable'}`}
       style={{
         ...card(12), position: 'relative', padding: '11px 8px 0', cursor: 'pointer', textAlign: 'center',
         display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, minHeight: 152, overflow: 'hidden',
@@ -230,16 +278,21 @@ function RewardCard({ reward, run, nextBossScheme, affordable, onPick }: {
     >
       <span style={{ fontSize: 26, lineHeight: 1 }}>{reward.emoji}</span>
       <span style={{
-        fontSize: 8, fontWeight: 900, letterSpacing: 0.5, color: laneStyle.color, background: laneStyle.bg,
+        fontSize: 11, fontWeight: 900, letterSpacing: 0.5, color: laneStyle.color, background: laneStyle.bg,
         border: `1px solid ${laneStyle.color}66`, borderRadius: 999, padding: '2px 7px',
         boxShadow: glow ? `0 0 10px -2px ${laneStyle.color}` : undefined,
-      }}>{lane.toUpperCase()}</span>
+      }}>{laneStyle.glyph} · {lane.toUpperCase()}</span>
+      {callout && (
+        <span style={{ fontSize: 11, fontWeight: 900, color: FB.text, background: FB.inset, border: `1px solid ${FB.borderSoft}`, borderRadius: 999, padding: '2px 7px' }}>
+          {callout}
+        </span>
+      )}
       <div style={{ fontSize: 11, fontWeight: 800, color: FB.text, lineHeight: 1.2 }}>{reward.title}</div>
       <div style={{ flex: 1 }} />
       <div className="fb-num" style={{
         width: '100%', margin: '0 -8px', padding: '7px 0', fontSize: 13, fontWeight: 900,
         color: affordable ? '#1a1206' : FB.red, background: affordable ? 'linear-gradient(180deg,#f7c544,#e6a519)' : '#2a141a',
-      }}>${reward.cost}</div>
+      }}>{affordable ? '$' : '🔒 $'}{reward.cost}</div>
     </button>
   );
 }
@@ -259,13 +312,13 @@ function RewardSheet({ reward, run, nextBossScheme, affordable, purchaseLimitRea
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 17, fontWeight: 900, color: FB.text }}>{reward.title}</div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
-              <span style={{ fontSize: 9.5, fontWeight: 900, color: laneStyle.color, background: laneStyle.bg, border: `1px solid ${laneStyle.color}66`, borderRadius: 999, padding: '2px 7px' }}>{lane}</span>
-              <span style={{ fontSize: 9.5, fontWeight: 900, color: KIND_COLOR[reward.kind], background: FB.inset, border: `1px solid ${FB.borderSoft}`, borderRadius: 999, padding: '2px 7px' }}>{rewardFitLabel(run, reward)}</span>
+              <span style={{ fontSize: 11, fontWeight: 900, color: laneStyle.color, background: laneStyle.bg, border: `1px solid ${laneStyle.color}66`, borderRadius: 999, padding: '2px 7px' }}>{laneStyle.glyph} · {lane}</span>
+              <span style={{ fontSize: 11, fontWeight: 900, color: KIND_COLOR[reward.kind], background: FB.inset, border: `1px solid ${FB.borderSoft}`, borderRadius: 999, padding: '2px 7px' }}>{rewardFitLabel(run, reward)}</span>
             </div>
           </div>
           <span className="fb-num" style={{ flexShrink: 0, fontSize: 16, fontWeight: 900, color: FB.gold, background: FB.goldSoft, border: '1px solid #5a4112', borderRadius: 8, padding: '6px 10px' }}>${reward.cost}</span>
         </div>
-        <div style={{ fontSize: 11.5, color: laneStyle.color, fontWeight: 800, marginTop: 12 }}>{laneStyle.copy}</div>
+        <div style={{ fontSize: 11.5, color: laneStyle.color, fontWeight: 800, marginTop: 12 }}>{laneStyle.glyph} · {laneStyle.copy}</div>
         <div style={{ fontSize: 12.5, color: FB.textDim, lineHeight: 1.45, marginTop: 4 }}>{reward.detail}</div>
         <div style={{ fontSize: 12.5, color: FB.gold, lineHeight: 1.4, marginTop: 8, fontWeight: 800 }}>{rewardImpact(run, reward, nextBossScheme)}</div>
         <button
@@ -274,6 +327,107 @@ function RewardSheet({ reward, run, nextBossScheme, affordable, purchaseLimitRea
           style={{ ...btnPrimary, width: '100%', marginTop: 16, ...(affordable ? {} : { background: '#1a2330', color: FB.textFaint, boxShadow: 'none', cursor: 'not-allowed' }) }}
         >
           {affordable ? `Buy · $${reward.cost}` : purchaseLimitReached ? 'War Room limit reached' : 'Not enough Funds'}
+        </button>
+        <button onClick={onClose} style={{ ...btnGhost, width: '100%', marginTop: 8, padding: '11px 0' }}>Keep looking</button>
+      </div>
+    </div>
+  );
+}
+
+// A compact Film Tool card (2-up). Green accent = the "develop your deck" lane.
+function FilmToolCard({ tool, affordable, onPick }: { tool: FilmTool; affordable: boolean; onPick: () => void }) {
+  return (
+    <button
+      onClick={onPick}
+      aria-label={`Inspect Film Tool ${tool.name}, cost ${tool.cost}${affordable ? '' : ', unaffordable'}`}
+      style={{
+        ...card(12), position: 'relative', padding: '11px 10px 0', cursor: 'pointer', textAlign: 'center',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, minHeight: 150, overflow: 'hidden',
+        borderTop: '3px solid #5fe0a0', opacity: affordable ? 1 : 0.6,
+      }}
+    >
+      <span style={{ fontSize: 24, lineHeight: 1 }}>{tool.emoji}</span>
+      <div style={{ fontSize: 12, fontWeight: 900, color: FB.text, lineHeight: 1.2 }}>{tool.name}</div>
+      <div style={{ fontSize: 11, color: FB.textDim, lineHeight: 1.3 }}>{tool.detail}</div>
+      <div style={{ flex: 1 }} />
+      <div className="fb-num" style={{
+        width: '100%', margin: '0 -10px', padding: '7px 0', fontSize: 13, fontWeight: 900,
+        color: affordable ? '#08130d' : FB.red, background: affordable ? 'linear-gradient(180deg,#52d48f,#2aa85e)' : '#15231b',
+      }}>{affordable ? '$' : '🔒 $'}{tool.cost}</div>
+    </button>
+  );
+}
+
+// The Front Office offer — a rare, run-persistent rule upgrade. Full-width + gold
+// so it reads as special (it isn't a per-game buy; it changes the run).
+function FrontOfficeCard({ offer, affordable, onBuy }: { offer: FrontOfficeUpgrade; affordable: boolean; onBuy: () => void }) {
+  return (
+    <div style={{ ...card(14), padding: '12px 14px', marginTop: 10, borderColor: '#5a4112', background: 'linear-gradient(160deg,#1b160a,#0e151d)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ fontSize: 11, color: FB.gold, letterSpacing: 1.1, fontWeight: 900 }}>🏢 FRONT OFFICE · run upgrade</div>
+        <span className="fb-num" style={{ fontSize: 14, fontWeight: 900, color: FB.gold }}>${offer.cost}</span>
+      </div>
+      <div style={{ fontSize: 14, fontWeight: 900, color: FB.text, marginTop: 4 }}>{offer.emoji} {offer.name}</div>
+      <div style={{ fontSize: 11.5, color: FB.textDim, lineHeight: 1.4, marginTop: 2 }}>{offer.detail}</div>
+      <button
+        onClick={onBuy}
+        disabled={!affordable}
+        style={{ ...btnPrimary, width: '100%', marginTop: 10, ...(affordable ? {} : { background: '#1a2330', color: FB.textFaint, boxShadow: 'none', cursor: 'not-allowed' }) }}
+      >
+        {affordable ? `Install · $${offer.cost}` : 'Not enough Funds'}
+      </button>
+    </div>
+  );
+}
+
+// Bottom sheet to inspect + (optionally) target a Film Tool, then commit.
+function FilmSheet({ tool, run, affordable, onBuy, onClose }: {
+  tool: FilmTool; run: FbRunState; affordable: boolean; onBuy: (targetId?: string) => void; onClose: () => void;
+}) {
+  const [targetId, setTargetId] = useState<string | null>(null);
+  const targets = filmToolTargets(run, tool);
+  const needsTarget = tool.targeted;
+  const ready = affordable && (!needsTarget || Boolean(targetId));
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(6,9,13,0.66)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+      <div onClick={(e) => e.stopPropagation()} className="fb-rise" style={{ width: '100%', maxWidth: 480, background: FB.panel, borderTop: '3px solid #5fe0a0', borderRadius: '16px 16px 0 0', padding: '16px 16px 22px', maxHeight: '82vh', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <span style={{ fontSize: 30 }}>{tool.emoji}</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 17, fontWeight: 900, color: FB.text }}>{tool.name}</div>
+            <div style={{ fontSize: 11.5, color: '#5fe0a0', fontWeight: 800, marginTop: 2 }}>Film Tool · one use</div>
+          </div>
+          <span className="fb-num" style={{ flexShrink: 0, fontSize: 16, fontWeight: 900, color: FB.gold, background: FB.goldSoft, border: '1px solid #5a4112', borderRadius: 8, padding: '6px 10px' }}>${tool.cost}</span>
+        </div>
+        <div style={{ fontSize: 12.5, color: FB.textDim, lineHeight: 1.45, marginTop: 10 }}>{tool.detail}</div>
+        {needsTarget && (
+          <>
+            <div style={{ ...sectionLabel, margin: '13px 0 7px' }}>{targets.length ? 'Choose a card to develop' : 'No eligible card in your deck'}</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+              {targets.map((c) => {
+                const sel = c.id === targetId;
+                const s = SIDE[c.side];
+                return (
+                  <button key={c.id} onClick={() => setTargetId(c.id)} aria-label={`Target ${c.label}, ${c.position}, ${c.value} value`} style={{ background: sel ? s.grad : FB.panelSoft, border: `1.5px solid ${sel ? s.border : FB.borderSoft}`, borderRadius: 9, padding: '7px 6px', cursor: 'pointer', textAlign: 'left' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: 11, fontWeight: 900, color: s.text }}>{c.position}</span>
+                      <span className="fb-num" style={{ fontSize: 11, fontWeight: 900, color: FB.gold }}>${c.cost}</span>
+                    </div>
+                    <div style={{ fontSize: 11, fontWeight: 800, color: s.text, marginTop: 3, lineHeight: 1.05 }}>{c.label}</div>
+                    <div className="fb-num" style={{ fontSize: 14, fontWeight: 900, color: FB.text }}>{c.value}</div>
+                    <div style={{ fontSize: 11, color: FB.textFaint, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.modifier ? FB_CARD_MODIFIERS[c.modifier].label : c.playerName}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
+        <button
+          onClick={() => ready && onBuy(needsTarget ? targetId ?? undefined : undefined)}
+          disabled={!ready}
+          style={{ ...btnPrimary, width: '100%', marginTop: 14, ...(ready ? {} : { background: '#1a2330', color: FB.textFaint, boxShadow: 'none', cursor: 'not-allowed' }) }}
+        >
+          {!affordable ? 'Not enough Funds' : needsTarget && !targetId ? 'Pick a card first' : `Use · $${tool.cost}`}
         </button>
         <button onClick={onClose} style={{ ...btnGhost, width: '100%', marginTop: 8, padding: '11px 0' }}>Keep looking</button>
       </div>
@@ -313,7 +467,7 @@ function Mini({ label, value }: { label: string; value: string }) {
   return (
     <div style={{ flex: 1, background: FB.inset, border: `1px solid ${FB.borderSoft}`, borderRadius: 8, padding: '6px 0', textAlign: 'center' }}>
       <div className="fb-num" style={{ fontSize: 16, fontWeight: 900, color: FB.text }}>{value}</div>
-      <div style={{ fontSize: 9, color: FB.textFaint, fontWeight: 700 }}>{label.toUpperCase()}</div>
+      <div style={{ fontSize: 11, color: FB.textFaint, fontWeight: 700 }}>{label.toUpperCase()}</div>
     </div>
   );
 }

@@ -26,15 +26,17 @@ export const MAX_WAR_ROOM_PURCHASES = 2; // buy one reward, optionally a second.
 // What the War Room shows the player when they walk in after a win.
 export interface ShopCreditInfo { purse: number; interest: number; total: number; gameCleared: number }
 
-export function interestOn(funds: number): number {
-  return Math.min(INTEREST_CAP, Math.floor(Math.max(0, funds) / INTEREST_PER));
+export function interestOn(funds: number, cap: number = INTEREST_CAP): number {
+  return Math.min(cap, Math.floor(Math.max(0, funds) / INTEREST_PER));
 }
 
 // Funds credited on clearing game `gameCleared` (purse + interest on the balance
 // you walked in with). Returns the breakdown so the War Room can show the math.
-export function shopCredit(funds: number, gameCleared: number): { purse: number; interest: number; total: number } {
+// `interestCap` lets the Deep Pockets Front Office upgrade raise the ceiling;
+// it defaults to INTEREST_CAP so existing callers (and the harness) are unchanged.
+export function shopCredit(funds: number, gameCleared: number, interestCap: number = INTEREST_CAP): { purse: number; interest: number; total: number } {
   const purse = WIN_PURSE[gameCleared] ?? 0;
-  const interest = interestOn(funds);
+  const interest = interestOn(funds, interestCap);
   return { purse, interest, total: purse + interest };
 }
 

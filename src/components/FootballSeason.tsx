@@ -1,17 +1,21 @@
 import { useEffect, useMemo, useState } from 'react';
 import { randomBossScheme, randomEnvironment, type FbBossSchemeKey, type FbEnvironmentKey, type TeamArchetype } from '../lib/footballRogue';
 import {
-  createRun, gameTargets, generateRewards, isChampionship, rewardFromId, runRng, SEASON_GAMES,
-  type FbRunState, type Reward,
+  createRun, dailyTeamForSeed, gameTargets, generateRewards, isChampionship, rewardFromId, runRng, SEASON_GAMES,
+  audiblesPerDrive, effectiveInterestCap, rerollDiscount,
+  generateFilmRoom, generateFrontOfficeOffer, applyFrontOffice,
+  type FbRunState, type Reward, type FilmTool, type FrontOfficeUpgrade,
 } from '../lib/footballRun';
 import { MAX_WAR_ROOM_PURCHASES, rerollCost, shopCredit, SKIP_REWARD, type ShopCreditInfo } from '../lib/gridironEconomy';
-import { clearGridironRun, loadGridironRun, saveGridironRun } from '../lib/gridironStorage';
+import { clearGridironRun, loadGridironDaily, loadGridironRun, saveGridironRun } from '../lib/gridironStorage';
+import { stringSeed } from '../lib/rng';
 import FootballMatch from './FootballMatch';
 import FootballReward from './FootballReward';
 import FootballRunSummary from './FootballRunSummary';
 import FootballTeamSelect from './FootballTeamSelect';
 
 type Phase = 'select' | 'match' | 'reward' | 'summary';
+interface DailyRunInfo { date: string; seed: number; practice: boolean }
 
 function gameSetup(run: FbRunState): { env: FbEnvironmentKey; scheme: FbBossSchemeKey } {
   return {
@@ -31,9 +35,36 @@ function hydrateRewards(run: FbRunState, rewardIds: string[] | undefined, reroll
     .filter((reward): reward is Reward => Boolean(reward));
 }
 
+function filmRoomFor(run: FbRunState, rerolls = 0): FilmTool[] {
+  return generateFilmRoom(run, runRng(run, `filmroom:${rerolls}`));
+}
+function frontOfficeFor(run: FbRunState, rerolls = 0): FrontOfficeUpgrade | null {
+  return generateFrontOfficeOffer(run, runRng(run, `fooffer:${rerolls}`));
+}
+
 export default function FootballSeason({ onHome, initialSeed }: { onHome: () => void; initialSeed?: number }) {
   const [initial] = useState(() => {
     const saved = loadGridironRun();
+    // A fresh Daily skips Team Select: the assignment fixes the team for the day.
+    if (!saved) {
+      const daily = dailyRunInfo(initialSeed);
+      if (daily) {
+        const dailyRunState = createRun(dailyTeamForSeed(daily.seed), daily.seed);
+        const dailySetup = gameSetup(dailyRunState);
+        return {
+          phase: 'match' as Phase,
+          run: dailyRunState,
+          env: dailySetup.env,
+          scheme: dailySetup.scheme,
+          rewards: [] as Reward[],
+          filmRoom: [] as FilmTool[],
+          foOffer: null as FrontOfficeUpgrade | null,
+          rerolls: 0,
+          purchases: 0,
+          creditInfo: null as ShopCreditInfo | null,
+        };
+      }
+    }
     const run = saved?.run ?? createRun();
     const setup = gameSetup(run);
     const rerolls = saved?.warRoom?.rerolls ?? 0;
@@ -43,6 +74,8 @@ export default function FootballSeason({ onHome, initialSeed }: { onHome: () => 
       env: setup.env,
       scheme: setup.scheme,
       rewards: saved?.phase === 'reward' ? hydrateRewards(run, saved.warRoom?.rewardIds, rerolls) : [],
+      filmRoom: saved?.phase === 'reward' ? filmRoomFor(run, rerolls) : [],
+      foOffer: saved?.phase === 'reward' ? frontOfficeFor(run, rerolls) : null,
       rerolls,
       purchases: saved?.warRoom?.purchases ?? 0,
       creditInfo: saved?.warRoom?.creditInfo ?? null,
@@ -53,6 +86,8 @@ export default function FootballSeason({ onHome, initialSeed }: { onHome: () => 
   const [env, setEnv] = useState<FbEnvironmentKey>(initial.env);
   const [scheme, setScheme] = useState<FbBossSchemeKey>(initial.scheme);
   const [rewards, setRewards] = useState<Reward[]>(initial.rewards);
+  const [filmRoom, setFilmRoom] = useState<FilmTool[]>(initial.filmRoom);
+  const [foOffer, setFoOffer] = useState<FrontOfficeUpgrade | null>(initial.foOffer);
   const [rerolls, setRerolls] = useState(initial.rerolls);
   const [purchases, setPurchases] = useState(initial.purchases);
   const [creditInfo, setCreditInfo] = useState<ShopCreditInfo | null>(initial.creditInfo);
@@ -61,6 +96,7 @@ export default function FootballSeason({ onHome, initialSeed }: { onHome: () => 
   const [lostDrive, setLostDrive] = useState(0);
   const [runScore, setRunScore] = useState(0);
   const [pendingSeed, setPendingSeed] = useState<number | undefined>(() => initialSeed);
+  const [dailyRun] = useState<DailyRunInfo | null>(() => dailyRunInfo(initialSeed));
 
   const targets = useMemo(() => gameTargets(env, run.gameNumber), [env, run.gameNumber]);
   const rewardScout = useMemo(() => gameSetup({ ...run, gameNumber: run.gameNumber + 1 }), [run]);
@@ -85,6 +121,8 @@ export default function FootballSeason({ onHome, initialSeed }: { onHome: () => 
     setEnv(setup.env);
     setScheme(setup.scheme);
     setRewards([]);
+    setFilmRoom([]);
+    setFoOffer(null);
     setRerolls(0);
     setPurchases(0);
     setCreditInfo(null);
@@ -110,13 +148,15 @@ export default function FootballSeason({ onHome, initialSeed }: { onHome: () => 
       setPhase('summary');
     } else {
       // Credit the War Room: win purse + interest on the balance you banked.
-      const credit = shopCredit(withBomb.funds, run.gameNumber);
+      const credit = shopCredit(withBomb.funds, run.gameNumber, effectiveInterestCap(withBomb));
       const credited: FbRunState = { ...withBomb, funds: withBomb.funds + credit.total };
       setRun(credited);
       setCreditInfo({ ...credit, gameCleared: run.gameNumber });
       setRerolls(0);
       setPurchases(0);
       setRewards(rewardsFor(credited, 0));
+      setFilmRoom(filmRoomFor(credited, 0));
+      setFoOffer(frontOfficeFor(credited, 0));
       setPhase('reward');
     }
   }
@@ -131,14 +171,31 @@ export default function FootballSeason({ onHome, initialSeed }: { onHome: () => 
     setRewards((shelf) => shelf.filter((r) => r.id !== reward.id));
   }
 
+  // Film Tools + Front Office sit on their OWN budget (not the 2-reward cap) —
+  // they're a separate "spend Funds on the deck/run rules" decision.
+  function handleBuyFilm(tool: FilmTool, targetId?: string) {
+    if (run.funds < tool.cost) return;
+    const applied = tool.apply({ ...run, funds: run.funds - tool.cost }, targetId);
+    setRun(applied);
+    setFilmRoom((shelf) => shelf.filter((t) => t.key !== tool.key));
+  }
+
+  function handleBuyFrontOffice(up: FrontOfficeUpgrade) {
+    if (run.funds < up.cost) return;
+    setRun(applyFrontOffice({ ...run, funds: run.funds - up.cost }, up.key));
+    setFoOffer(null);
+  }
+
   function handleReroll() {
-    const cost = rerollCost(rerolls);
+    const cost = Math.max(1, rerollCost(rerolls) - rerollDiscount(run));
     if (run.funds < cost) return;
     const next: FbRunState = { ...run, funds: run.funds - cost };
     const n = rerolls + 1;
     setRun(next);
     setRerolls(n);
     setRewards(rewardsFor(next, n));
+    setFilmRoom(filmRoomFor(next, n));
+    setFoOffer(frontOfficeFor(next, n));
   }
 
   function handleProceed() {
@@ -171,19 +228,23 @@ export default function FootballSeason({ onHome, initialSeed }: { onHome: () => 
     return <FootballTeamSelect onStart={startSeason} onHome={onHome} />;
   }
   if (phase === 'summary') {
-    return <FootballRunSummary won={run.status === 'won'} gamesWon={gamesWon} run={run} lostDrive={lostDrive} score={runScore} onNewSeason={newSeason} onHome={onHome} />;
+    return <FootballRunSummary won={run.status === 'won'} gamesWon={gamesWon} run={run} lostDrive={lostDrive} score={runScore} dailyRun={dailyRun ?? undefined} onNewSeason={newSeason} onHome={onHome} />;
   }
   if (phase === 'reward') {
     return (
       <FootballReward
         run={run}
         rewards={rewards}
+        filmRoom={filmRoom}
+        frontOfficeOffer={foOffer}
         creditInfo={creditInfo}
-        rerollCost={rerollCost(rerolls)}
+        rerollCost={Math.max(1, rerollCost(rerolls) - rerollDiscount(run))}
         purchases={purchases}
         nextBossScheme={rewardScout.scheme}
         nextEnvironment={rewardScout.env}
         onBuy={handleBuy}
+        onBuyFilm={handleBuyFilm}
+        onBuyFrontOffice={handleBuyFrontOffice}
         onReroll={handleReroll}
         onProceed={handleProceed}
       />
@@ -206,9 +267,19 @@ export default function FootballSeason({ onHome, initialSeed }: { onHome: () => 
       totalGames={SEASON_GAMES}
       championship={isChampionship(run.gameNumber)}
       seed={run.seed}
+      audiblesPerDrive={audiblesPerDrive(run)}
       onWon={handleWon}
       onLost={handleLost}
       onHome={onHome}
     />
   );
+}
+
+function dailyRunInfo(seed: number | undefined): DailyRunInfo | null {
+  if (typeof seed !== 'number') return null;
+  const date = new Date().toISOString().slice(0, 10);
+  const dailySeed = stringSeed(`gridiron-daily:${date}`);
+  if (seed !== dailySeed) return null;
+  const existing = loadGridironDaily();
+  return { date, seed, practice: existing?.date === date };
 }

@@ -9,7 +9,7 @@ import {
   randomBossScheme, randomEnvironment, scoreFootballPlay,
   type FbCard,
 } from '../src/lib/footballRogue';
-import { createRun, gameTargets, generateRewards, isChampionship, runRng } from '../src/lib/footballRun';
+import { createRun, gameTargets, generateRewards, generateFilmRoom, isChampionship, runRng } from '../src/lib/footballRun';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -34,12 +34,16 @@ const reward = renderToString(
   <FootballReward
     run={run}
     rewards={rewards}
+    filmRoom={generateFilmRoom(run, runRng(run, 'smoke-film'))}
+    frontOfficeOffer={null}
     creditInfo={{ purse: 5, interest: 1, total: 6, gameCleared: 1 }}
     rerollCost={2}
     purchases={0}
     nextBossScheme={boss}
     nextEnvironment={env}
     onBuy={noop}
+    onBuyFilm={noop}
+    onBuyFrontOffice={noop}
     onReroll={noop}
     onProceed={noop}
   />,
@@ -47,6 +51,7 @@ const reward = renderToString(
 assert(reward.includes('War Room'), 'FootballReward should render the War Room.');
 assert(reward.includes('Next scout'), 'FootballReward should render the next-game scout.');
 assert(reward.includes('FUNDS'), 'FootballReward should show Front Office Funds.');
+assert(reward.includes('Film Room'), 'FootballReward should render the Film Room shelf.');
 
 const match = renderToString(
   <FootballMatch

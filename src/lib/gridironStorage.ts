@@ -1,8 +1,11 @@
 import type { FbRunState } from './footballRun';
 import { STARTING_FUNDS, type ShopCreditInfo } from './gridironEconomy';
+import { defaultHapticsEnabled } from './feedback';
 
 export const GRIDIRON_RUN_STORAGE_KEY = 'gridiron_run_v1';
 export const GRIDIRON_HISTORY_STORAGE_KEY = 'gridiron_history_v1';
+export const GRIDIRON_DAILY_STORAGE_KEY = 'gridiron_daily_v1';
+export const GRIDIRON_PREFS_STORAGE_KEY = 'gridiron_prefs_v1';
 // v2 added Front Office Funds + card Player Traits. v3 added the season-long lane
 // counters (keeperGames / takeawayGames) for the mobile & defense compounders. We
 // still read older saves and migrate them (additive backfill) so an in-progress
@@ -39,6 +42,17 @@ export interface GridironRunHistoryEntry {
   debrief: string;
 }
 
+export interface GridironDailyRecord {
+  date: string;
+  completedAt: string;
+  seed: number;
+  team: FbRunState['team'];
+  won: boolean;
+  gamesWon: number;
+  score: number;
+  streak: number;
+}
+
 function canUseStorage(): boolean {
   return typeof localStorage !== 'undefined';
 }
@@ -66,6 +80,7 @@ function migrate(persisted: GridironPersistedRun): GridironPersistedRun {
   if (typeof run.funds !== 'number') run.funds = STARTING_FUNDS;
   if (typeof run.keeperGames !== 'number') run.keeperGames = 0;
   if (typeof run.takeawayGames !== 'number') run.takeawayGames = 0;
+  if (!Array.isArray(run.upgrades)) run.upgrades = [];
   return { ...persisted, version: STORAGE_VERSION, run };
 }
 
@@ -154,4 +169,98 @@ export function bestGridironHistoryRun(history = loadGridironHistory()): Gridiro
     if (a.gamesWon !== b.gamesWon) return b.gamesWon - a.gamesWon;
     return b.score - a.score;
   })[0] ?? null;
+}
+
+function isDailyRecord(value: unknown): value is GridironDailyRecord {
+  if (!value || typeof value !== 'object') return false;
+  const v = value as Partial<GridironDailyRecord>;
+  return (
+    typeof v.date === 'string' &&
+    typeof v.completedAt === 'string' &&
+    typeof v.seed === 'number' &&
+    typeof v.team === 'string' &&
+    typeof v.won === 'boolean' &&
+    typeof v.gamesWon === 'number' &&
+    typeof v.score === 'number' &&
+    typeof v.streak === 'number'
+  );
+}
+
+export function loadGridironDaily(): GridironDailyRecord | null {
+  try {
+    if (!canUseStorage()) return null;
+    const raw = localStorage.getItem(GRIDIRON_DAILY_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return isDailyRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveGridironDailyResult(entry: Omit<GridironDailyRecord, 'completedAt' | 'streak'>): GridironDailyRecord | null {
+  try {
+    if (!canUseStorage()) return null;
+    const previous = loadGridironDaily();
+    const streak = previous?.date === entry.date
+      ? previous.streak
+      : previous?.date === previousUtcDate(entry.date)
+        ? previous.streak + 1
+        : 1;
+    const record: GridironDailyRecord = {
+      ...entry,
+      completedAt: new Date().toISOString(),
+      streak,
+    };
+    localStorage.setItem(GRIDIRON_DAILY_STORAGE_KEY, JSON.stringify(record));
+    return record;
+  } catch {
+    return null;
+  }
+}
+
+function previousUtcDate(date: string): string {
+  const atMidnight = Date.parse(`${date}T00:00:00.000Z`);
+  if (Number.isNaN(atMidnight)) return '';
+  return new Date(atMidnight - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+// ── Player preferences (device-local, not per-run) ───────────────────────────
+// Two presentation toggles + the preview's "show math" state. Kept tiny on
+// purpose: this is an alpha, not a settings framework. `showMath` is the only one
+// the match screen overrides (Game 1 always shows the equation to teach it).
+export interface GridironPrefs {
+  quickResults: boolean;   // snap non-splash theatre + halve the count-up
+  hapticsEnabled: boolean; // navigator.vibrate on clears / turnovers / signatures
+  showMath: boolean;       // expand the live equation in the play preview
+}
+
+function defaultPrefs(): GridironPrefs {
+  return { quickResults: false, hapticsEnabled: defaultHapticsEnabled(), showMath: false };
+}
+
+export function loadGridironPrefs(): GridironPrefs {
+  const fallback = defaultPrefs();
+  try {
+    if (!canUseStorage()) return fallback;
+    const raw = localStorage.getItem(GRIDIRON_PREFS_STORAGE_KEY);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw) as Partial<GridironPrefs>;
+    return {
+      quickResults: typeof parsed.quickResults === 'boolean' ? parsed.quickResults : fallback.quickResults,
+      hapticsEnabled: typeof parsed.hapticsEnabled === 'boolean' ? parsed.hapticsEnabled : fallback.hapticsEnabled,
+      showMath: typeof parsed.showMath === 'boolean' ? parsed.showMath : fallback.showMath,
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+export function saveGridironPrefs(prefs: GridironPrefs): void {
+  try {
+    if (!canUseStorage()) return;
+    localStorage.setItem(GRIDIRON_PREFS_STORAGE_KEY, JSON.stringify(prefs));
+  } catch {
+    // Preferences are a nicety; never let storage failure break play.
+  }
 }

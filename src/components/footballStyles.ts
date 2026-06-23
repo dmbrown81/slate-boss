@@ -16,7 +16,7 @@ export const FB = {
   // text
   text: '#e8edf4',
   textDim: '#8595aa',
-  textFaint: '#56657a',
+  textFaint: '#72839b',
   // brand
   gold: '#f0b429',
   goldSoft: '#3a2f12',
@@ -62,11 +62,12 @@ export const btnGhost: CSSProperties = {
   padding: '8px 12px',
   fontSize: 12,
   fontWeight: 700,
+  minHeight: 44,
   cursor: 'pointer',
 };
 
 export const sectionLabel: CSSProperties = {
-  fontSize: 10,
+  fontSize: 11,
   letterSpacing: 1.4,
   color: FB.textFaint,
   fontWeight: 800,

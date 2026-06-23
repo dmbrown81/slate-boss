@@ -8,8 +8,14 @@ import {
   type FbEnvironmentKey,
 } from '../lib/footballRogue';
 import { STARTING_FUNDS } from '../lib/gridironEconomy';
+import { FILM_TOOLS, FILM_TOOL_KEYS, FRONT_OFFICE, FRONT_OFFICE_KEYS } from '../lib/footballRun';
+import type { GridironPrefs } from '../lib/gridironStorage';
 
-interface Props { onClose: () => void; }
+interface Props {
+  onClose: () => void;
+  prefs?: GridironPrefs;
+  onPrefsChange?: (patch: Partial<GridironPrefs>) => void;
+}
 
 const CONCEPTS: { name: string; how: string; tier: 'big' | 'mid' | 'safe' }[] = [
   { name: 'Double-Stack Bomb', how: 'QB pass + two same-team catches', tier: 'big' },
@@ -24,7 +30,7 @@ const CONCEPTS: { name: string; how: string; tier: 'big' | 'mid' | 'safe' }[] = 
 
 const TIER_COLOR = { big: FB.gold, mid: FB.green, safe: FB.textDim } as const;
 
-export default function FootballHelpModal({ onClose }: Props) {
+export default function FootballHelpModal({ onClose, prefs, onPrefsChange }: Props) {
   const [showFullRules, setShowFullRules] = useState(false);
 
   return (
@@ -39,7 +45,7 @@ export default function FootballHelpModal({ onClose }: Props) {
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
           <div style={{ fontSize: 20, fontWeight: 900, color: FB.text }}>How to Play</div>
-          <button onClick={onClose} style={{ background: '#141b24', border: `1px solid ${FB.border}`, color: FB.textDim, borderRadius: 8, width: 30, height: 30, fontSize: 16, cursor: 'pointer' }}>✕</button>
+          <button onClick={onClose} aria-label="Close how to play" style={{ background: '#141b24', border: `1px solid ${FB.border}`, color: FB.textDim, borderRadius: 8, width: 44, height: 44, fontSize: 16, cursor: 'pointer' }}>✕</button>
         </div>
 
         <Block title="Quick start">
@@ -49,6 +55,29 @@ export default function FootballHelpModal({ onClose }: Props) {
             <li><Dot c={FB.blue} />After wins, spend Funds in the War Room to feed one core Game Plan.</li>
           </ul>
         </Block>
+
+        <Block title="What changes after Game 1">
+          The coach calls Game 1 with you, then steps back — from Game 2 you call it. The scoring
+          math hides behind <b>Show math</b> (tap it any time), and <b>Ask coach</b> brings the read back
+          on demand. The game stops teaching so it can start being yours.
+        </Block>
+
+        {prefs && onPrefsChange && (
+          <Block title="Preferences">
+            <Toggle
+              label="Quick results"
+              sub="Snap ordinary drive theatre; splash plays still celebrate."
+              on={prefs.quickResults}
+              onToggle={() => onPrefsChange({ quickResults: !prefs.quickResults })}
+            />
+            <Toggle
+              label="Haptics"
+              sub="Vibrate on drive clears, turnovers, and signature plays (supported devices)."
+              on={prefs.hapticsEnabled}
+              onToggle={() => onPrefsChange({ hapticsEnabled: !prefs.hapticsEnabled })}
+            />
+          </Block>
+        )}
 
         <button
           onClick={() => setShowFullRules((open) => !open)}
@@ -70,9 +99,9 @@ export default function FootballHelpModal({ onClose }: Props) {
           the play's name and score <i>before</i> you commit. Scoring is fully transparent:
           <Formula />
           <ul style={ul}>
-            <li><Dot c={FB.green} /><b>Base</b> — raw yards from your cards (the fuel).</li>
-            <li><Dot c={FB.blue} /><b>Execution</b> — a flat bonus from clean concepts (reliable).</li>
-            <li><Dot c={FB.gold} /><b>Big Play</b> — a multiplier from elite synergies (explosive).</li>
+            <li><Dot c={FB.green} label="B" /><b>B Base</b> — raw yards from your cards (the fuel).</li>
+            <li><Dot c={FB.blue} label="+" /><b>+EXE Execution</b> — a flat bonus from clean concepts (reliable).</li>
+            <li><Dot c={FB.gold} label="×" /><b>×BP Big Play</b> — a multiplier from elite synergies (explosive).</li>
           </ul>
           A great build feeds all three. Pump only one and you stall.
         </Block>
@@ -146,6 +175,35 @@ export default function FootballHelpModal({ onClose }: Props) {
           small bonus. Funds are separate from in-match Play Budget.
         </Block>
 
+        <Block title="Film Room (one-use tools)">
+          The War Room has a <b>Film Room</b> shelf of one-use <b>Film Tools</b> that develop your deck
+          instead of just scoring: cut a weak card, clone your best one, restructure a contract to cost
+          less, or install a trait. They spend Funds from their own budget (separate from the two reward
+          buys), and apply the moment you buy them.
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 8 }}>
+            {FILM_TOOL_KEYS.map((k) => (
+              <div key={k} style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
+                <span style={{ fontSize: 12, fontWeight: 800, color: '#5fe0a0', minWidth: 120 }}>{FILM_TOOLS[k].emoji} {FILM_TOOLS[k].name}</span>
+                <span style={{ fontSize: 11.5, color: FB.textDim }}>{FILM_TOOLS[k].detail}</span>
+              </div>
+            ))}
+          </div>
+        </Block>
+
+        <Block title="Front Office (run upgrades)">
+          Rarely, the War Room offers a <b>Front Office</b> upgrade — a permanent rule change for the rest
+          of the run (not a one-game buy). They never change the scoring math; they change what the run
+          lets you do.
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 8 }}>
+            {FRONT_OFFICE_KEYS.map((k) => (
+              <div key={k} style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
+                <span style={{ fontSize: 12, fontWeight: 800, color: FB.gold, minWidth: 120 }}>{FRONT_OFFICE[k].emoji} {FRONT_OFFICE[k].name}</span>
+                <span style={{ fontSize: 11.5, color: FB.textDim }}>{FRONT_OFFICE[k].detail}</span>
+              </div>
+            ))}
+          </div>
+        </Block>
+
         <Block title="Player Traits">
           Some War Room rewards develop one of your cards, giving it a permanent <b>trait</b> shown as a badge
           on the card face. One trait per card.
@@ -193,6 +251,26 @@ export default function FootballHelpModal({ onClose }: Props) {
   );
 }
 
+function Toggle({ label, sub, on, onToggle }: { label: string; sub: string; on: boolean; onToggle: () => void }) {
+  return (
+    <button
+      onClick={onToggle}
+      role="switch"
+      aria-checked={on}
+      aria-label={`${label}: ${on ? 'on' : 'off'}`}
+      style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, background: FB.panelSoft, border: `1px solid ${on ? FB.gold : FB.border}`, borderRadius: 10, padding: '10px 12px', marginBottom: 8, cursor: 'pointer', textAlign: 'left' }}
+    >
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 800, color: FB.text }}>{label}</div>
+        <div style={{ fontSize: 11.5, color: FB.textDim, lineHeight: 1.35, marginTop: 2 }}>{sub}</div>
+      </div>
+      <span aria-hidden="true" style={{ flexShrink: 0, width: 42, height: 24, borderRadius: 999, background: on ? FB.gold : '#2a3442', position: 'relative', transition: 'background .15s' }}>
+        <span style={{ position: 'absolute', top: 2, left: on ? 20 : 2, width: 20, height: 20, borderRadius: '50%', background: on ? '#1a1206' : '#aab4c2', transition: 'left .15s' }} />
+      </span>
+    </button>
+  );
+}
+
 function Block({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div style={{ marginBottom: 18 }}>
@@ -205,12 +283,12 @@ function Block({ title, children }: { title: string; children: ReactNode }) {
 function Formula() {
   return (
     <div className="fb-num" style={{ textAlign: 'center', fontSize: 14, fontWeight: 800, color: FB.text, background: FB.inset, border: `1px solid ${FB.border}`, borderRadius: 10, padding: '10px 8px', margin: '10px 0' }}>
-      <span style={{ color: FB.green }}>Base</span> × (1 + <span style={{ color: FB.blue }}>Execution</span>) × <span style={{ color: FB.gold }}>Big Play</span>
+      <span style={{ color: FB.green }}>B Base</span> × (1 + <span style={{ color: FB.blue }}>+EXE</span>) × <span style={{ color: FB.gold }}>×BP</span>
     </div>
   );
 }
 
 const ul: CSSProperties = { listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 };
-function Dot({ c }: { c: string }) {
-  return <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: c, marginRight: 8 }} />;
+function Dot({ c, label }: { c: string; label?: string }) {
+  return <span aria-hidden="true" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, borderRadius: 3, background: c, color: '#071016', marginRight: 8, fontSize: 11, fontWeight: 900, lineHeight: 1 }}>{label}</span>;
 }

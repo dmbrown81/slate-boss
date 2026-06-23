@@ -2,13 +2,13 @@
 // A run is a season of games; clear them all to win the championship.
 
 import {
-  buildTeamDeck, driveTargets, createFreeAgentCard, TEAM_PROFILES,
-  FB_COORDINATORS, MAX_COORDINATORS, FB_CONCEPT_LABEL, FB_CARD_MODIFIERS,
+  buildTeamDeck, driveTargets, createFreeAgentCard, TEAM_PROFILES, TEAM_ARCHETYPES,
+  FB_COORDINATORS, MAX_COORDINATORS, AUDIBLES_PER_DRIVE, FB_CONCEPT_LABEL, FB_CARD_MODIFIERS,
   scoreFootballPlay, shuffle,
   FREE_AGENT_KEYS,
   type FbBossSchemeKey, type FbCard, type FbCardModifier, type FbCoordinatorKey, type FbPlaybook, type FbEnvironmentKey, type FbConceptKey, type FreeAgentKey, type TeamArchetype,
 } from './footballRogue';
-import { STARTING_FUNDS } from './gridironEconomy';
+import { STARTING_FUNDS, INTEREST_CAP } from './gridironEconomy';
 import { mulberry32, stringSeed, type RNG } from './rng';
 
 export const SEASON_GAMES = 5;
@@ -24,6 +24,7 @@ export interface FbRunState {
   keeperGames: number;       // games in which you landed a QB Keeper (The Improviser)
   takeawayGames: number;     // games with 2+ takeaways (Takeaway Machine)
   funds: number;             // Front Office Funds — the between-game economy
+  upgrades: FrontOfficeKey[]; // run-persistent rule upgrades (the Voucher analog)
   status: 'playing' | 'won' | 'lost';
 }
 
@@ -48,12 +49,21 @@ export function createRun(team: TeamArchetype = 'balanced', seed = createGridiro
     keeperGames: 0,
     takeawayGames: 0,
     funds: STARTING_FUNDS,
+    upgrades: [],
     status: 'playing',
   };
 }
 
 export function isChampionship(gameNumber: number): boolean {
   return gameNumber >= SEASON_GAMES;
+}
+
+// The Daily Scrimmage is a fixed assignment: the seed (a UTC-date hash) picks the
+// team deterministically, so everyone playing today's daily gets the same team,
+// weather, and bosses. This is what turns the daily from a replayable seed into a
+// ritual ("today you're the Volts").
+export function dailyTeamForSeed(seed: number): TeamArchetype {
+  return TEAM_ARCHETYPES[seed % TEAM_ARCHETYPES.length];
 }
 
 // Targets escalate across the season; the championship gets an extra bump.
@@ -295,7 +305,7 @@ export function generateRewards(run: FbRunState, rng: RNG = Math.random): Reward
   const picks: Reward[] = [];
 
   // 1) Keystone
-  const coord = run.coordinators.length < MAX_COORDINATORS ? firstAvailableCoord(lean, run.coordinators) : null;
+  const coord = run.coordinators.length < effectiveMaxCoordinators(run) ? firstAvailableCoord(lean, run.coordinators) : null;
   if (coord && rng() < 0.6) picks.push(coordinatorReward(coord));
   else picks.push(playbookReward(primary, lvl(primary) + 1));
 
@@ -307,6 +317,15 @@ export function generateRewards(run: FbRunState, rng: RNG = Math.random): Reward
   const flex: Reward[] = [STRENGTH, trainingReward(LEAN_TRAINING[lean])];
   if (run.deck.length > 26) flex.push(TRIM); else flex.push(cardReward(LEAN_CARD[lean][0]));
   picks.push(shuffle(flex, rng)[0]);
+
+  // 4) Optional extra slot from the "Bigger Front Office" upgrade. Gated on the
+  // upgrade so a fresh run (and the balance harness) sees exactly 3 — no drift.
+  if (warRoomRewardSlots(run) > picks.length) {
+    const used = new Set(picks.map((p) => p.id));
+    const extras: Reward[] = [STRENGTH, TRIM, cardReward(LEAN_CARD[lean][0]), trainingReward(LEAN_TRAINING[lean])];
+    const extra = extras.find((r) => !used.has(r.id));
+    if (extra) picks.push(extra);
+  }
 
   return shuffle(picks, rng);
 }
@@ -417,6 +436,64 @@ export function buildCoachDebrief(run: FbRunState, won: boolean, gamesWon: numbe
       : 'Add one backup concept that scores through the boss your main plan hates most.',
     tags: [...tags, { label: 'Stalled', value: `G${gamesWon + 1} D${lostDrive}` }],
   };
+}
+
+// ── Loss attribution (presentation-only; derived from run state) ─────────────
+// Balatro losses land because they read as "I built wrong," not "the game
+// cheated." This turns the final run state into a ranked set of CONCRETE reasons
+// the season ended — every bullet cites a real number, no generic "play better."
+// Two builds that lose differently produce different bullets. No engine math.
+export interface LossReason { label: string; detail: string; severity: number; }
+
+export function buildLossReasons(run: FbRunState, gamesWon: number, lostDrive: number): LossReason[] {
+  const deck = deckValueSummary(run.deck);
+  const top = topGamePlan(run.playbook);
+  const scalers = run.coordinators.filter((key) => FB_COORDINATORS[key].scaling !== 'flat').length;
+  const traits = run.deck.filter((c) => c.modifier).length;
+  const candidates: LossReason[] = [];
+
+  // Commitment — the strategic spine. The single biggest predictor of a loss.
+  if (!top) {
+    candidates.push({ severity: 100, label: 'No Game Plan committed', detail: 'You never leveled a concept. Targets compound about 24% per game, so flat value alone plateaus — usually by Game 3.' });
+  } else if (top.level < 2) {
+    candidates.push({ severity: 90, label: `${top.label} stalled at Lv${top.level}`, detail: 'A Game Plan only becomes a multiplier at Lv2+. Yours never switched on its compounding Big Play.' });
+  }
+
+  // Scaling staff — flat coordinators don't grow into the late curve.
+  if (scalers < 2) {
+    candidates.push({ severity: 78, label: `Only ${scalers} scaling coordinator${scalers === 1 ? '' : 's'}`, detail: 'Flat staff stay flat. Late games need within-game or season ramps (Air Raid, Franchise QB, Pressure Chain…) to keep pace.' });
+  }
+
+  // Budget pressure — an expensive deck means fewer calls per drive.
+  if (deck.avgCost >= 2.6) {
+    candidates.push({ severity: 64, label: `Deck averaged $${deck.avgCost} / card`, detail: 'Pricey cards squeezed your Play Budget — you could not fit enough calls per drive to reach the target.' });
+  }
+
+  // Draw dilution — a bloated deck buries the cards your plan needs.
+  if (deck.size >= 28) {
+    candidates.push({ severity: 52, label: `${deck.size}-card deck`, detail: 'A big deck draws your best concept less often. A Trim raises draw quality and consistency.' });
+  }
+
+  // Thin staff overall — leaves engine slots on the table.
+  if (run.coordinators.length < 4) {
+    candidates.push({ severity: 44, label: `${run.coordinators.length}-coordinator staff`, detail: 'You can run up to 5. A thin staff caps how high the engine can scale into Games 4 and 5.' });
+  }
+
+  // Stranded economy — unspent Funds are unbuilt power.
+  if (run.funds >= 6) {
+    candidates.push({ severity: 40, label: `$${run.funds} left unspent`, detail: 'Funds sitting in the Front Office are power you never built. Bank toward a keystone, but do not strand it.' });
+  }
+
+  // No developed players — traits are free ceiling + consistency.
+  if (traits === 0) {
+    candidates.push({ severity: 30, label: 'No developed players', detail: 'You never took a Training reward. Traits add ceiling (Explosive) and a safety net (Reliable).' });
+  }
+
+  // Always-present floor reason so the panel never shows fewer than a few bullets,
+  // and a near-perfect build that still lost gets an honest "cold draw" read.
+  candidates.push({ severity: 5, label: `Stalled on Drive ${lostDrive}, Game ${gamesWon + 1}`, detail: 'The drive ran out of Play Budget before the target. A cold hand happens — but a deeper engine survives one.' });
+
+  return candidates.sort((a, b) => b.severity - a.severity).slice(0, 3);
 }
 
 function bestCard(deck: FbCard[], pred: (c: FbCard) => boolean, exclude = new Set<string>()): FbCard | undefined {
@@ -557,4 +634,175 @@ export function rewardImpact(run: FbRunState, reward: Reward, bossScheme: FbBoss
   if (reward.kind === 'trim') return `Deck ${beforeDeck.size} → ${afterDeck.size}; draw your best cards more often.`;
   if (reward.kind === 'upgrade') return `Avg yards ${beforeDeck.avgValue} → ${afterDeck.avgValue}; helps early flat scoring.`;
   return 'Adds a scaling piece for the rest of the season.';
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// DEPTH LAYER — Film Tools (Tarot analog) + Front Office Upgrades (Voucher analog)
+//
+// These add Balatro-style decision depth WITHOUT touching the scoring engine:
+//   • Film Tools  = one-use deck/card mutations (cut, clone, develop, restructure).
+//   • Front Office = run-persistent RULE upgrades (more staff, audibles, economy).
+// They live in a SEPARATE War Room shelf, so the balance harness (which only
+// pilots the 3 base reward slots) stays byte-identical and its numbers hold.
+// Film Tools apply immediately on purchase (v1 — no in-match consumable tray yet).
+// ════════════════════════════════════════════════════════════════════════════
+
+// ── Film Tools ───────────────────────────────────────────────────────────────
+export type FilmToolKey =
+  | 'film_cut' | 'clone_tape' | 'bulk_up' | 'contract_restructure' | 'deep_threat'
+  | 'reliable_hands' | 'explosive_pkg' | 'clutch_reps' | 'boss_prep' | 'hot_route_install';
+
+export interface FilmTool {
+  key: FilmToolKey;
+  emoji: string;
+  name: string;
+  detail: string;
+  cost: number;
+  targeted: boolean;                     // does it need the player to pick a card?
+  eligible: (c: FbCard) => boolean;      // valid targets (ignored when !targeted)
+  apply: (run: FbRunState, targetId?: string) => FbRunState;
+}
+
+let filmCounter = 0;
+function cloneFilmCard(c: FbCard): FbCard {
+  filmCounter += 1;
+  return { ...c, id: `${c.id}-film${filmCounter}` };
+}
+function mutateCard(run: FbRunState, targetId: string | undefined, fn: (c: FbCard) => FbCard): FbRunState {
+  if (!targetId) return run;
+  return { ...run, deck: run.deck.map((c) => (c.id === targetId ? fn(c) : c)) };
+}
+const untraited = (c: FbCard) => !c.modifier;
+
+export const FILM_TOOLS: Record<FilmToolKey, FilmTool> = {
+  film_cut: {
+    key: 'film_cut', emoji: '✂️', name: 'Film Cut', cost: 3, targeted: false, eligible: () => true,
+    detail: 'Cut your lowest-value card so your best plays come up more often.',
+    apply: (run) => {
+      const lowest = [...run.deck].sort((a, b) => a.value - b.value || a.cost - b.cost)[0];
+      return lowest ? { ...run, deck: run.deck.filter((c) => c.id !== lowest.id) } : run;
+    },
+  },
+  clone_tape: {
+    key: 'clone_tape', emoji: '🎬', name: 'Clone the Tape', cost: 5, targeted: true, eligible: () => true,
+    detail: 'Duplicate any card — draw your signature play more often.',
+    apply: (run, id) => {
+      const target = run.deck.find((c) => c.id === id);
+      return target ? { ...run, deck: [...run.deck, cloneFilmCard(target)] } : run;
+    },
+  },
+  bulk_up: {
+    key: 'bulk_up', emoji: '🏋️', name: 'Bulk Up', cost: 3, targeted: true, eligible: () => true,
+    detail: '+34 Base yards to one card, forever.',
+    apply: (run, id) => mutateCard(run, id, (c) => ({ ...c, value: c.value + 34 })),
+  },
+  contract_restructure: {
+    key: 'contract_restructure', emoji: '📝', name: 'Contract Restructure', cost: 4, targeted: true,
+    eligible: (c) => c.cost > 1,
+    detail: 'Cut one card’s cap cost by 1 (min 1) — fit it into more plays per drive.',
+    apply: (run, id) => mutateCard(run, id, (c) => ({ ...c, cost: Math.max(1, c.cost - 1) })),
+  },
+  deep_threat: {
+    key: 'deep_threat', emoji: '🚀', name: 'Deep Threat Reps', cost: 4, targeted: true,
+    eligible: (c) => c.action === 'short_catch',
+    detail: 'Turn a Quick Catch into a Deep Catch (+30 yards) — unlocks the shot-play bonus.',
+    apply: (run, id) => mutateCard(run, id, (c) => ({ ...c, action: 'deep_catch', label: 'Deep Catch', value: c.value + 30 })),
+  },
+  reliable_hands: {
+    key: 'reliable_hands', emoji: '🧱', name: 'Reliable Hands', cost: 4, targeted: true, eligible: untraited,
+    detail: 'Give a card the Reliable trait — it waives the Busted Play penalty.',
+    apply: (run, id) => mutateCard(run, id, (c) => ({ ...c, modifier: 'reliable' })),
+  },
+  explosive_pkg: {
+    key: 'explosive_pkg', emoji: '💥', name: 'Explosive Package', cost: 5, targeted: true,
+    eligible: (c) => untraited(c) && (c.side === 'pass' || c.side === 'catch' || c.side === 'run'),
+    detail: 'Give a skill card the Explosive trait — +0.10 Big Play on clean concepts.',
+    apply: (run, id) => mutateCard(run, id, (c) => ({ ...c, modifier: 'explosive' })),
+  },
+  clutch_reps: {
+    key: 'clutch_reps', emoji: '⏱️', name: 'Clutch Reps', cost: 4, targeted: true, eligible: untraited,
+    detail: 'Give a card the Clutch trait — +20 Base on Drive 3 and in the Championship.',
+    apply: (run, id) => mutateCard(run, id, (c) => ({ ...c, modifier: 'clutch' })),
+  },
+  boss_prep: {
+    key: 'boss_prep', emoji: '🛡️', name: 'Boss Prep', cost: 4, targeted: true, eligible: untraited,
+    detail: 'Give a card the Protected trait — halves the opposing scheme penalty.',
+    apply: (run, id) => mutateCard(run, id, (c) => ({ ...c, modifier: 'protected' })),
+  },
+  hot_route_install: {
+    key: 'hot_route_install', emoji: '🔀', name: 'Hot Route Install', cost: 5, targeted: true,
+    eligible: (c) => untraited(c) && c.side === 'catch',
+    detail: 'Give a catch the Hot Route trait — it stacks with ANY quarterback.',
+    apply: (run, id) => mutateCard(run, id, (c) => ({ ...c, modifier: 'hot_route' })),
+  },
+};
+
+export const FILM_TOOL_KEYS = Object.keys(FILM_TOOLS) as FilmToolKey[];
+
+// Two Film Tools per War Room visit, weighted to what the deck can actually use
+// (e.g. don't offer Deep Threat Reps with no Quick Catch to convert).
+export function generateFilmRoom(run: FbRunState, rng: RNG = Math.random): FilmTool[] {
+  const usable = FILM_TOOL_KEYS.filter((k) => {
+    const t = FILM_TOOLS[k];
+    return !t.targeted || run.deck.some((c) => t.eligible(c));
+  });
+  return shuffle(usable, rng).slice(0, 2).map((k) => FILM_TOOLS[k]);
+}
+
+export function filmToolTargets(run: FbRunState, tool: FilmTool): FbCard[] {
+  if (!tool.targeted) return [];
+  return run.deck.filter((c) => tool.eligible(c)).sort((a, b) => b.value - a.value || a.cost - b.cost);
+}
+
+// ── Front Office Upgrades (run-persistent rule modifiers) ────────────────────
+export type FrontOfficeKey =
+  | 'staff_expansion' | 'extra_audible' | 'reroll_discount' | 'deep_pockets' | 'extra_reward';
+
+export interface FrontOfficeUpgrade {
+  key: FrontOfficeKey;
+  emoji: string;
+  name: string;
+  detail: string;
+  cost: number;
+}
+
+export const FRONT_OFFICE: Record<FrontOfficeKey, FrontOfficeUpgrade> = {
+  staff_expansion: { key: 'staff_expansion', emoji: '🏟️', name: 'Staff Expansion', cost: 6, detail: 'Hire up to 6 coordinators instead of 5 — one more multiplier slot for the season.' },
+  extra_audible: { key: 'extra_audible', emoji: '📻', name: 'Headset Upgrade', cost: 5, detail: '+1 Audible every drive for the rest of the run — dig for your concept more often.' },
+  reroll_discount: { key: 'reroll_discount', emoji: '🔁', name: 'Scouting Network', cost: 5, detail: 'Every War Room reroll costs $1 less (min $1) for the rest of the run.' },
+  deep_pockets: { key: 'deep_pockets', emoji: '🏦', name: 'Deep Pockets', cost: 6, detail: 'Raise the interest cap by $2 — banking Funds pays off harder.' },
+  extra_reward: { key: 'extra_reward', emoji: '📋', name: 'Bigger Front Office', cost: 6, detail: 'The War Room shows a 4th reward every visit for the rest of the run.' },
+};
+
+export const FRONT_OFFICE_KEYS = Object.keys(FRONT_OFFICE) as FrontOfficeKey[];
+
+// Offer one unowned upgrade per visit, ~45% of the time, so they feel special.
+export function generateFrontOfficeOffer(run: FbRunState, rng: RNG = Math.random): FrontOfficeUpgrade | null {
+  const owned = new Set(run.upgrades ?? []);
+  const available = FRONT_OFFICE_KEYS.filter((k) => !owned.has(k));
+  if (available.length === 0) return null;
+  if (rng() >= 0.45) return null;
+  return FRONT_OFFICE[shuffle(available, rng)[0]];
+}
+
+export function applyFrontOffice(run: FbRunState, key: FrontOfficeKey): FbRunState {
+  if (run.upgrades?.includes(key)) return run;
+  return { ...run, upgrades: [...(run.upgrades ?? []), key] };
+}
+
+// ── Effective rule helpers (honor Front Office upgrades) ─────────────────────
+export function effectiveMaxCoordinators(run: Pick<FbRunState, 'upgrades'>): number {
+  return MAX_COORDINATORS + (run.upgrades?.includes('staff_expansion') ? 1 : 0);
+}
+export function audiblesPerDrive(run: Pick<FbRunState, 'upgrades'>): number {
+  return AUDIBLES_PER_DRIVE + (run.upgrades?.includes('extra_audible') ? 1 : 0);
+}
+export function effectiveInterestCap(run: Pick<FbRunState, 'upgrades'>): number {
+  return INTEREST_CAP + (run.upgrades?.includes('deep_pockets') ? 2 : 0);
+}
+export function rerollDiscount(run: Pick<FbRunState, 'upgrades'>): number {
+  return run.upgrades?.includes('reroll_discount') ? 1 : 0;
+}
+export function warRoomRewardSlots(run: Pick<FbRunState, 'upgrades'>): number {
+  return 3 + (run.upgrades?.includes('extra_reward') ? 1 : 0);
 }

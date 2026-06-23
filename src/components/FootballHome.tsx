@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { FB, btnPrimary, card } from './footballStyles';
 import FootballHelpModal from './FootballHelpModal';
-import { bestGridironHistoryRun, clearGridironRun, loadGridironHistory, loadGridironRun } from '../lib/gridironStorage';
-import { TEAM_PROFILES } from '../lib/footballRogue';
-import { SEASON_GAMES } from '../lib/footballRun';
+import { bestGridironHistoryRun, clearGridironRun, loadGridironDaily, loadGridironHistory, loadGridironRun } from '../lib/gridironStorage';
+import { FB_ENVIRONMENTS, randomEnvironment, TEAM_PROFILES } from '../lib/footballRogue';
+import { dailyTeamForSeed, runRng, SEASON_GAMES } from '../lib/footballRun';
 import { stringSeed } from '../lib/rng';
 
 interface Props {
@@ -12,12 +12,28 @@ interface Props {
 
 export default function FootballHome({ onPlay }: Props) {
   const [showHelp, setShowHelp] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [activeRun, setActiveRun] = useState(() => loadGridironRun());
   const [history] = useState(() => loadGridironHistory());
   const activeTeam = activeRun ? TEAM_PROFILES[activeRun.run.team] : null;
   const bestRun = bestGridironHistoryRun(history);
   const bestTeam = bestRun ? TEAM_PROFILES[bestRun.team] : null;
   const daily = dailyChallengeSeed();
+  const dailyRecord = loadGridironDaily();
+  const todayDaily = dailyRecord?.date === daily.label ? dailyRecord : null;
+  // Today's fixed assignment — same team + weather for everyone playing the daily.
+  const assignTeamKey = dailyTeamForSeed(daily.seed);
+  const assignTeam = TEAM_PROFILES[assignTeamKey];
+  const assignWeather = FB_ENVIRONMENTS[randomEnvironment(runRng({ seed: daily.seed, team: assignTeamKey, gameNumber: 1 }, 'environment'))];
+
+  function copyDaily() {
+    if (!todayDaily || typeof navigator === 'undefined' || !navigator.clipboard) return;
+    const recap = `Gridiron Daily ${todayDaily.date} · ${TEAM_PROFILES[todayDaily.team].shortName} · ${todayDaily.won ? 'Champions 5/5' : `${todayDaily.gamesWon}/${SEASON_GAMES}`} · ${todayDaily.score} · streak ${todayDaily.streak} 🔥`;
+    navigator.clipboard.writeText(recap).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1300);
+    }).catch(() => undefined);
+  }
 
   function startFresh() {
     clearGridironRun();
@@ -62,9 +78,9 @@ export default function FootballHome({ onPlay }: Props) {
         <div style={{ fontSize: 13, color: FB.textDim, lineHeight: 1.55 }}>
           Your cards are football plays. Each drive, assemble the best play you can afford — stack your QB with
           his receivers, pound the rock, or take it away on defense — and watch it score
-          {' '}<span style={{ color: FB.green, fontWeight: 700 }}>Base</span> ×
-          {' '}<span style={{ color: FB.blue, fontWeight: 700 }}>Execution</span> ×
-          {' '}<span style={{ color: FB.gold, fontWeight: 700 }}>Big Play</span>. Clear three rising targets to win.
+          {' '}<span style={{ color: FB.green, fontWeight: 700 }}>B Base</span> ×
+          {' '}<span style={{ color: FB.blue, fontWeight: 700 }}>+EXE</span> ×
+          {' '}<span style={{ color: FB.gold, fontWeight: 700 }}>×BP</span>. Clear three rising targets to win.
         </div>
       </div>
 
@@ -78,7 +94,7 @@ export default function FootballHome({ onPlay }: Props) {
 
       {bestRun && bestTeam && (
         <div style={{ ...card(12), padding: '12px 14px', marginTop: 12, background: 'linear-gradient(160deg,#111a24,#0c1118)' }}>
-          <div style={{ fontSize: 10, color: FB.gold, letterSpacing: 1.2, fontWeight: 900 }}>BEST LOCAL RUN</div>
+          <div style={{ fontSize: 11, color: FB.gold, letterSpacing: 1.2, fontWeight: 900 }}>BEST LOCAL RUN</div>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline', marginTop: 4 }}>
             <div style={{ fontSize: 14, color: FB.text, fontWeight: 900 }}>{bestTeam.displayName}</div>
             <div className="fb-num" style={{ fontSize: 12, color: bestRun.won ? FB.gold : FB.textDim, fontWeight: 900 }}>
@@ -97,7 +113,7 @@ export default function FootballHome({ onPlay }: Props) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 20 }}>
         {activeRun && activeTeam && (
           <div style={{ ...card(12), padding: '12px 14px', borderColor: '#5a4112', background: 'linear-gradient(160deg,#17170d,#0e151d)' }}>
-            <div style={{ fontSize: 10, color: FB.gold, letterSpacing: 1.3, fontWeight: 900 }}>ACTIVE SEASON</div>
+            <div style={{ fontSize: 11, color: FB.gold, letterSpacing: 1.3, fontWeight: 900 }}>ACTIVE SEASON</div>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline', marginTop: 4 }}>
               <div style={{ fontSize: 15, color: FB.text, fontWeight: 900 }}>{activeTeam.displayName}</div>
               <div className="fb-num" style={{ fontSize: 12, color: FB.textDim, fontWeight: 800 }}>Game {activeRun.run.gameNumber}/{SEASON_GAMES}</div>
@@ -111,12 +127,35 @@ export default function FootballHome({ onPlay }: Props) {
         <button onClick={() => onPlay()} style={{ ...btnPrimary, width: '100%', fontSize: 17, padding: '16px 0' }}>
           {activeRun ? `🏈 Resume Season (Game ${activeRun.run.gameNumber}/${SEASON_GAMES})` : '🏈 Kickoff'}
         </button>
-        <button
-          onClick={startDaily}
-          style={{ width: '100%', padding: '13px 0', background: '#101926', border: `1px solid ${FB.blue}`, color: '#9cc6ff', borderRadius: 12, fontSize: 14, fontWeight: 800, cursor: 'pointer' }}
-        >
-          Daily Scrimmage · {daily.label}
-        </button>
+        <div style={{ ...card(12), padding: '12px 14px', borderColor: `${FB.blue}66`, background: 'linear-gradient(160deg,#0e1722,#0b0f16)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ fontSize: 11, color: '#9cc6ff', letterSpacing: 1.3, fontWeight: 900 }}>DAILY SCRIMMAGE · {daily.label}</div>
+            {todayDaily && <span style={{ fontSize: 11, color: FB.gold, fontWeight: 900 }}>🔥 streak {todayDaily.streak}</span>}
+          </div>
+          <div style={{ fontSize: 13, color: FB.text, fontWeight: 800, marginTop: 5 }}>
+            Today: <span style={{ color: FB.text }}>{assignTeam.displayName}</span>
+            <span style={{ color: FB.textDim, fontWeight: 700 }}> · {assignWeather.label} · {assignTeam.difficulty}</span>
+          </div>
+          {todayDaily ? (
+            <>
+              <div style={{ fontSize: 11.5, color: FB.textDim, marginTop: 4 }}>
+                Official attempt locked — {todayDaily.won ? 'Champions' : `${todayDaily.gamesWon}/${SEASON_GAMES}`} · score {todayDaily.score}.
+              </div>
+              <div style={{ display: 'flex', gap: 8, marginTop: 9 }}>
+                <button onClick={copyDaily} style={{ flex: 1, padding: '10px 0', background: FB.inset, border: `1px solid ${FB.borderSoft}`, color: copied ? FB.green : FB.gold, borderRadius: 10, fontSize: 12, fontWeight: 800, cursor: 'pointer' }}>
+                  {copied ? 'Copied recap' : '📋 Copy recap'}
+                </button>
+                <button onClick={startDaily} style={{ flex: 1, padding: '10px 0', background: '#101926', border: `1px solid ${FB.blue}66`, color: '#9cc6ff', borderRadius: 10, fontSize: 12, fontWeight: 800, cursor: 'pointer' }}>
+                  Replay (practice)
+                </button>
+              </div>
+            </>
+          ) : (
+            <button onClick={startDaily} style={{ width: '100%', marginTop: 9, padding: '12px 0', background: '#101926', border: `1px solid ${FB.blue}`, color: '#9cc6ff', borderRadius: 10, fontSize: 14, fontWeight: 800, cursor: 'pointer' }}>
+              Play today’s assignment →
+            </button>
+          )}
+        </div>
         {activeRun && (
           <button
             onClick={startFresh}
@@ -133,7 +172,7 @@ export default function FootballHome({ onPlay }: Props) {
         </button>
       </div>
 
-      <div style={{ fontSize: 10, color: '#2c3645', textAlign: 'center', lineHeight: 1.5, marginTop: 12 }}>
+      <div style={{ fontSize: 11, color: '#425066', textAlign: 'center', lineHeight: 1.5, marginTop: 12 }}>
         Fictional football strategy game. No real teams or players. No real money. No prizes.
       </div>
 
@@ -153,7 +192,7 @@ function Feature({ icon, label, sub }: { icon: string; label: string; sub: strin
       <span style={{ fontSize: 19 }}>{icon}</span>
       <div>
         <div style={{ fontSize: 13, fontWeight: 800, color: FB.text }}>{label}</div>
-        <div style={{ fontSize: 10.5, color: FB.textFaint }}>{sub}</div>
+        <div style={{ fontSize: 11, color: FB.textFaint }}>{sub}</div>
       </div>
     </div>
   );

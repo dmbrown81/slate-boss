@@ -86,13 +86,13 @@ function TeamGridCard({ id, active, onPick }: { id: TeamArchetype; active: boole
       </div>
       <div style={{ padding: '9px 10px 12px' }}>
         <div style={{ fontSize: 14, fontWeight: 900, color: FB.text }}>{t.displayName}</div>
-        <div style={{ fontSize: 10.5, color: ident.primary, fontWeight: 800, marginTop: 2 }}>{ident.playStyle}</div>
+        <div style={{ fontSize: 11, color: ident.primary, fontWeight: 800, marginTop: 2 }}>{ident.playStyle}</div>
         <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: 0.4, color: DIFF_COLOR[t.difficulty], border: `1px solid ${DIFF_COLOR[t.difficulty]}`, borderRadius: 6, padding: '2px 7px' }}>
+          <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.4, color: DIFF_COLOR[t.difficulty], border: `1px solid ${DIFF_COLOR[t.difficulty]}`, borderRadius: 6, padding: '2px 7px' }}>
             {t.difficulty}
           </span>
           {t.firstRunRecommended && (
-            <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: 0.4, color: FB.green, background: FB.greenSoft, border: `1px solid ${FB.green}`, borderRadius: 6, padding: '2px 7px' }}>
+            <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.4, color: FB.green, background: FB.greenSoft, border: `1px solid ${FB.green}`, borderRadius: 6, padding: '2px 7px' }}>
               START HERE
             </span>
           )}
