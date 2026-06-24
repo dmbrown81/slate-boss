@@ -6,6 +6,7 @@ import {
 } from '../lib/footballRogue';
 import { buildIdentity, deckValueSummary, filmToolTargets, rewardFitLabel, rewardImpact, FRONT_OFFICE, SEASON_GAMES, type FbRunState, type Reward, type FilmTool, type FrontOfficeUpgrade } from '../lib/footballRun';
 import { MAX_WAR_ROOM_PURCHASES, SKIP_REWARD, type ShopCreditInfo } from '../lib/gridironEconomy';
+import { rewardTaxonomy, filmToolRarity, frontOfficeRarity, RARITY_META, type FbRarity } from '../lib/gridironTaxonomy';
 import { CoachPortrait } from './coachIdentity';
 import { TEAM_IDENTITY } from './teamIdentity';
 
@@ -264,6 +265,7 @@ function RewardCard({ reward, run, nextBossScheme, affordable, onPick }: {
   const lane = rewardDecisionLane(run, reward, nextBossScheme);
   const laneStyle = LANE_STYLE[lane];
   const fit = rewardFitLabel(run, reward);
+  const tax = rewardTaxonomy(reward);
   const glow = lane === 'Counter' || fit === 'Feeds current plan';
   const callout = lane === 'Counter' ? 'Counters next defense' : fit === 'Feeds current plan' ? 'Best fit' : '';
   return (
@@ -282,6 +284,7 @@ function RewardCard({ reward, run, nextBossScheme, affordable, onPick }: {
         border: `1px solid ${laneStyle.color}66`, borderRadius: 999, padding: '2px 7px',
         boxShadow: glow ? `0 0 10px -2px ${laneStyle.color}` : undefined,
       }}>{laneStyle.glyph} · {lane.toUpperCase()}</span>
+      <RarityChip rarity={tax.rarity} compact />
       {callout && (
         <span style={{ fontSize: 11, fontWeight: 900, color: FB.text, background: FB.inset, border: `1px solid ${FB.borderSoft}`, borderRadius: 999, padding: '2px 7px' }}>
           {callout}
@@ -304,6 +307,7 @@ function RewardSheet({ reward, run, nextBossScheme, affordable, purchaseLimitRea
 }) {
   const lane = rewardDecisionLane(run, reward, nextBossScheme);
   const laneStyle = LANE_STYLE[lane];
+  const tax = rewardTaxonomy(reward);
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(6,9,13,0.66)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
       <div onClick={(e) => e.stopPropagation()} className="fb-rise" style={{ width: '100%', maxWidth: 480, background: FB.panel, borderTop: `3px solid ${laneStyle.color}`, borderRadius: '16px 16px 0 0', padding: '16px 16px 22px' }}>
@@ -312,6 +316,7 @@ function RewardSheet({ reward, run, nextBossScheme, affordable, purchaseLimitRea
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 17, fontWeight: 900, color: FB.text }}>{reward.title}</div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+              <RarityChip rarity={tax.rarity} category={tax.category} />
               <span style={{ fontSize: 11, fontWeight: 900, color: laneStyle.color, background: laneStyle.bg, border: `1px solid ${laneStyle.color}66`, borderRadius: 999, padding: '2px 7px' }}>{laneStyle.glyph} · {lane}</span>
               <span style={{ fontSize: 11, fontWeight: 900, color: KIND_COLOR[reward.kind], background: FB.inset, border: `1px solid ${FB.borderSoft}`, borderRadius: 999, padding: '2px 7px' }}>{rewardFitLabel(run, reward)}</span>
             </div>
@@ -347,6 +352,10 @@ function FilmToolCard({ tool, affordable, onPick }: { tool: FilmTool; affordable
       }}
     >
       <span style={{ fontSize: 24, lineHeight: 1 }}>{tool.emoji}</span>
+      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'center' }}>
+        <RarityChip rarity={filmToolRarity(tool.key)} compact />
+        {tool.risky && <span style={{ fontSize: 11, fontWeight: 900, color: FB.red, background: '#2a1118', border: `1px solid ${FB.red}66`, borderRadius: 999, padding: '1px 6px' }}>TRICK PLAY</span>}
+      </div>
       <div style={{ fontSize: 12, fontWeight: 900, color: FB.text, lineHeight: 1.2 }}>{tool.name}</div>
       <div style={{ fontSize: 11, color: FB.textDim, lineHeight: 1.3 }}>{tool.detail}</div>
       <div style={{ flex: 1 }} />
@@ -367,6 +376,7 @@ function FrontOfficeCard({ offer, affordable, onBuy }: { offer: FrontOfficeUpgra
         <div style={{ fontSize: 11, color: FB.gold, letterSpacing: 1.1, fontWeight: 900 }}>🏢 FRONT OFFICE · run upgrade</div>
         <span className="fb-num" style={{ fontSize: 14, fontWeight: 900, color: FB.gold }}>${offer.cost}</span>
       </div>
+      <div style={{ marginTop: 6 }}><RarityChip rarity={frontOfficeRarity(offer.key)} category="Front Office" /></div>
       <div style={{ fontSize: 14, fontWeight: 900, color: FB.text, marginTop: 4 }}>{offer.emoji} {offer.name}</div>
       <div style={{ fontSize: 11.5, color: FB.textDim, lineHeight: 1.4, marginTop: 2 }}>{offer.detail}</div>
       <button
@@ -461,6 +471,19 @@ function rewardCountersBoss(reward: Reward, bossScheme: FbBossSchemeKey): boolea
     return reward.kind === 'card' || reward.kind === 'trim' || reward.kind === 'playbook';
   }
   return BOSS_COUNTER_IDS[bossScheme]?.includes(reward.id) ?? false;
+}
+
+// Rarity-as-label chip (Common/Uncommon/Rare/Legendary). Descriptive only — it
+// reflects current strength, it does not grant power. `category` rides along so a
+// cold player can name what kind of thing this reward is.
+function RarityChip({ rarity, category, compact }: { rarity: FbRarity; category?: string; compact?: boolean }) {
+  const m = RARITY_META[rarity];
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 900, letterSpacing: 0.4, color: m.color, background: m.bg, border: `1px solid ${m.border}`, borderRadius: 999, padding: compact ? '1px 6px' : '2px 7px' }}>
+      <span style={{ width: 6, height: 6, borderRadius: 999, background: m.color }} />
+      {m.label.toUpperCase()}{category ? ` · ${category}` : ''}
+    </span>
+  );
 }
 
 function Mini({ label, value }: { label: string; value: string }) {

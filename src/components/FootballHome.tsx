@@ -1,23 +1,28 @@
 import { useState } from 'react';
 import { FB, btnPrimary, card } from './footballStyles';
 import FootballHelpModal from './FootballHelpModal';
-import { bestGridironHistoryRun, clearGridironRun, loadGridironDaily, loadGridironHistory, loadGridironRun } from '../lib/gridironStorage';
-import { FB_ENVIRONMENTS, randomEnvironment, TEAM_PROFILES } from '../lib/footballRogue';
+import { bestGridironHistoryRun, bestGridironOvertimeRun, clearGridironRun, loadGridironDaily, loadGridironHistory, loadGridironRun } from '../lib/gridironStorage';
+import { FB_ENVIRONMENTS, randomEnvironment, TEAM_PROFILES, type TeamArchetype } from '../lib/footballRogue';
 import { dailyTeamForSeed, runRng, SEASON_GAMES } from '../lib/footballRun';
+import { parseRunCode } from '../lib/gridironTaxonomy';
 import { stringSeed } from '../lib/rng';
 
 interface Props {
-  onPlay: (seed?: number) => void;
+  onPlay: (seed?: number, team?: TeamArchetype) => void;
 }
 
 export default function FootballHome({ onPlay }: Props) {
   const [showHelp, setShowHelp] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [showCode, setShowCode] = useState(false);
+  const [codeInput, setCodeInput] = useState('');
+  const codeParsed = parseRunCode(codeInput);
   const [activeRun, setActiveRun] = useState(() => loadGridironRun());
   const [history] = useState(() => loadGridironHistory());
   const activeTeam = activeRun ? TEAM_PROFILES[activeRun.run.team] : null;
   const bestRun = bestGridironHistoryRun(history);
   const bestTeam = bestRun ? TEAM_PROFILES[bestRun.team] : null;
+  const bestOvertime = bestGridironOvertimeRun(history);
   const daily = dailyChallengeSeed();
   const dailyRecord = loadGridironDaily();
   const todayDaily = dailyRecord?.date === daily.label ? dailyRecord : null;
@@ -45,6 +50,13 @@ export default function FootballHome({ onPlay }: Props) {
     clearGridironRun();
     setActiveRun(null);
     onPlay(daily.seed);
+  }
+
+  function startCode() {
+    if (!codeParsed) return;
+    clearGridironRun();
+    setActiveRun(null);
+    onPlay(codeParsed.seed, codeParsed.team);
   }
 
   return (
@@ -104,6 +116,11 @@ export default function FootballHome({ onPlay }: Props) {
           <div style={{ fontSize: 11, color: FB.textDim, marginTop: 4 }}>
             {bestRun.identityTitle} · Score {bestRun.score}
           </div>
+          {bestOvertime && (bestOvertime.overtimeRound ?? 0) > 0 && (
+            <div style={{ fontSize: 11, color: FB.gold, marginTop: 6, fontWeight: 800 }}>
+              🔥 Deepest Overtime: Round {bestOvertime.overtimeRound} · {bestOvertime.overtimeScore} pts
+            </div>
+          )}
         </div>
       )}
 
@@ -170,6 +187,41 @@ export default function FootballHome({ onPlay }: Props) {
         >
           How to Play
         </button>
+        {showCode ? (
+          <div style={{ ...card(12), padding: '12px 14px', borderColor: `${FB.gold}55` }}>
+            <div style={{ fontSize: 11, color: FB.gold, letterSpacing: 1.2, fontWeight: 900 }}>PLAY A CODE</div>
+            <div style={{ fontSize: 11.5, color: FB.textDim, marginTop: 3, lineHeight: 1.4 }}>
+              Paste a run code to replay the same team, weather, bosses, and shelves. e.g. <span style={{ color: FB.text, fontWeight: 800 }}>VLT-2K9F4P</span>
+            </div>
+            <input
+              value={codeInput}
+              onChange={(e) => setCodeInput(e.target.value)}
+              placeholder="TEAM-CODE"
+              autoCapitalize="characters"
+              spellCheck={false}
+              style={{ width: '100%', marginTop: 9, padding: '11px 12px', background: FB.inset, border: `1px solid ${codeInput && !codeParsed ? FB.red : FB.border}`, borderRadius: 10, color: FB.text, fontSize: 15, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase', boxSizing: 'border-box' }}
+            />
+            {codeParsed && (
+              <div style={{ fontSize: 11.5, color: FB.green, marginTop: 6, fontWeight: 800 }}>
+                {TEAM_PROFILES[codeParsed.team].displayName} · ready to kick off
+              </div>
+            )}
+            {codeInput && !codeParsed && (
+              <div style={{ fontSize: 11.5, color: FB.red, marginTop: 6 }}>Not a valid code.</div>
+            )}
+            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+              <button onClick={() => { setShowCode(false); setCodeInput(''); }} style={{ flex: 1, padding: '11px 0', background: FB.inset, border: `1px solid ${FB.borderSoft}`, color: FB.textDim, borderRadius: 10, fontSize: 13, fontWeight: 800, cursor: 'pointer' }}>Cancel</button>
+              <button onClick={startCode} disabled={!codeParsed} style={{ flex: 2, padding: '11px 0', background: codeParsed ? 'linear-gradient(180deg,#f7c544,#e6a519)' : '#1a2330', color: codeParsed ? '#1a1206' : FB.textFaint, border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 900, cursor: codeParsed ? 'pointer' : 'not-allowed' }}>Play code →</button>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => setShowCode(true)}
+            style={{ width: '100%', padding: '13px 0', background: '#141b24', border: `1px solid ${FB.border}`, color: FB.textDim, borderRadius: 12, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}
+          >
+            🔑 Play a Code
+          </button>
+        )}
       </div>
 
       <div style={{ fontSize: 11, color: '#425066', textAlign: 'center', lineHeight: 1.5, marginTop: 12 }}>

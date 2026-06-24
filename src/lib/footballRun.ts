@@ -13,10 +13,25 @@ import { mulberry32, stringSeed, type RNG } from './rng';
 
 export const SEASON_GAMES = 5;
 
+// ── Stakes / League Level (local difficulty ladder, off by default) ───────────
+// A minimal, contained prototype: a stake only changes STARTING FUNDS, so it adds
+// pressure without touching scoring, targets, or the balance harness (which runs
+// the default League 1). No permanent meta power — it's a per-run choice.
+export interface StakeProfile { level: number; name: string; detail: string; fundsDelta: number; }
+export const STAKE_PROFILES: StakeProfile[] = [
+  { level: 1, name: 'Pro', detail: 'Standard front-office budget.', fundsDelta: 0 },
+  { level: 2, name: 'All-Pro', detail: 'Start with $2 less — leaner early shops.', fundsDelta: -2 },
+  { level: 3, name: 'Hall of Fame', detail: 'Start with $3 less — every early buy matters.', fundsDelta: -3 },
+];
+export function stakeProfile(level: number): StakeProfile {
+  return STAKE_PROFILES.find((s) => s.level === level) ?? STAKE_PROFILES[0];
+}
+
 export interface FbRunState {
   gameNumber: number;        // 1..SEASON_GAMES — the game you're about to play
   seed: number;              // deterministic season seed for weather / bosses / rewards
   team: TeamArchetype;       // which starting class this run was built from
+  stake: number;             // League Level (1 = Pro / default). Affects starting Funds only.
   deck: FbCard[];
   coordinators: FbCoordinatorKey[];
   playbook: FbPlaybook;
@@ -36,19 +51,20 @@ export function runRng(run: Pick<FbRunState, 'seed' | 'team' | 'gameNumber'>, sc
   return mulberry32(stringSeed(`gridiron:${run.seed}:${run.team}:g${run.gameNumber}:${scope}`));
 }
 
-export function createRun(team: TeamArchetype = 'balanced', seed = createGridironSeed(team)): FbRunState {
+export function createRun(team: TeamArchetype = 'balanced', seed = createGridironSeed(team), stake = 1): FbRunState {
   const profile = TEAM_PROFILES[team];
   return {
     gameNumber: 1,
     seed,
     team,
+    stake,
     deck: buildTeamDeck(team).cards,
     coordinators: [...profile.startingCoordinators],
     playbook: {},
     bombGames: 0,
     keeperGames: 0,
     takeawayGames: 0,
-    funds: STARTING_FUNDS,
+    funds: Math.max(0, STARTING_FUNDS + stakeProfile(stake).fundsDelta),
     upgrades: [],
     status: 'playing',
   };
@@ -77,6 +93,23 @@ export function gameTargets(env: FbEnvironmentKey, gameNumber: number): number[]
   return base.map((t) => Math.round(t * scale));
 }
 
+// ── Overtime (optional post-Championship score-chase) ────────────────────────
+// Overtime is a SEPARATE mode: it only begins after the campaign is already won,
+// so it cannot affect campaign balance (the harness never simulates it). Its
+// targets continue the geometric curve PAST the Championship and ramp each round,
+// so this is where multiplicative builds finally get room to explode. `round` is
+// 1-based. Determinism is preserved: weather/boss/draws for round R derive from a
+// synthetic gameNumber = SEASON_GAMES + R.
+export function overtimeTargets(env: FbEnvironmentKey, round: number): number[] {
+  const base = driveTargets(env);
+  const scale = Math.pow(1.24, SEASON_GAMES - 1) * 1.32 * Math.pow(1.18, round);
+  return base.map((t) => Math.round(t * scale));
+}
+
+export function overtimeGameNumber(round: number): number {
+  return SEASON_GAMES + round;
+}
+
 // ── Rewards ─────────────────────────────────────────────────────────────────
 export type RewardKind = 'card' | 'coordinator' | 'playbook' | 'trim' | 'upgrade' | 'training';
 
@@ -95,8 +128,10 @@ export interface Reward {
 export const REWARD_COST: Record<RewardKind, number> = {
   card: 3, coordinator: 5, playbook: 5, trim: 4, upgrade: 3, training: 3,
 };
-// The season-long compounders are the premium keystones, priced like Franchise QB.
-const RARE_COORDINATORS = new Set<FbCoordinatorKey>(['franchise_qb', 'improviser', 'takeaway_machine']);
+// The season-long compounders + Rare build-arounds are premium keystones ($7);
+// the Legendary build-around is the top shelf ($8).
+const RARE_COORDINATORS = new Set<FbCoordinatorKey>(['franchise_qb', 'improviser', 'takeaway_machine', 'power_sweep']);
+const LEGENDARY_COORDINATORS = new Set<FbCoordinatorKey>(['two_minute_drill']);
 
 const FA_TITLE: Record<FreeAgentKey, { emoji: string; title: string; detail: string }> = {
   deep_wr: { emoji: '🎯', title: 'Sign a Deep Threat', detail: 'Add a $3 WR Deep Catch (88) to your deck.' },
@@ -133,8 +168,8 @@ function cardReward(key: FreeAgentKey): Reward {
 function coordinatorReward(key: FbCoordinatorKey): Reward {
   const c = FB_COORDINATORS[key];
   return {
-    id: `coord-${key}`, kind: 'coordinator', emoji: '🧠', title: `Hire: ${c.name}`, detail: c.description,
-    cost: RARE_COORDINATORS.has(key) ? 7 : REWARD_COST.coordinator,
+    id: `coord-${key}`, kind: 'coordinator', emoji: LEGENDARY_COORDINATORS.has(key) ? '🌟' : '🧠', title: `Hire: ${c.name}`, detail: c.description,
+    cost: LEGENDARY_COORDINATORS.has(key) ? 8 : RARE_COORDINATORS.has(key) ? 7 : REWARD_COST.coordinator,
     apply: (run) => ({ ...run, coordinators: [...run.coordinators, key] }),
   };
 }
@@ -263,9 +298,13 @@ function deckLean(deck: FbCard[]): Lean {
   return d > p && d > r ? 'def' : r > p ? 'run' : 'pass';
 }
 
+// New Phase-6 build-arounds sit LAST in their lane: they only surface once you
+// already own the lane's staples, so they're a commitment payoff (and a rare
+// find), never a reliable crutch. This keeps the "commit > grab pieces" spine and
+// the campaign balance band intact (validated by the harness).
 const LEAN_COORD: Record<Lean, FbCoordinatorKey[]> = {
-  pass: ['franchise_qb', 'air_raid', 'west_coast'],
-  run: ['bell_cow', 'salary_wizard'],
+  pass: ['franchise_qb', 'air_raid', 'west_coast', 'two_minute_drill'],
+  run: ['bell_cow', 'salary_wizard', 'power_sweep'],
   def: ['takeaway_machine', 'pressure_chain', 'ball_hawk'],
   mobile: ['improviser', 'read_option', 'broken_play'],
 };
@@ -362,6 +401,29 @@ export function buildIdentity(run: Pick<FbRunState, 'deck' | 'playbook'>): { tit
   if (lean === 'def') return { title: 'Defensive Starter', detail: 'No Game Plan yet. Level Pick Six or Takeaway if defense becomes your identity.', concept: 'pick_six', level: 0, tag: 'Pick a plan' };
   if (lean === 'mobile') return { title: 'Dual-Threat Starter', detail: 'No Game Plan yet. Level QB Keeper and hire the Read-Option/Improviser staff to make scrambles scale.', concept: 'qb_keeper', level: 0, tag: 'Pick a plan' };
   return { title: 'Air Raid Starter', detail: 'No Game Plan yet. Level Stack TD or Double-Stack Bomb to make QB stacks scale.', concept: 'double_stack_bomb', level: 0, tag: 'Pick a plan' };
+}
+
+// A short, team-flavored title for the whole run — the one sentence a player
+// uses to describe their build ("Volts Keeper Engine", "Ghosts Takeaway Engine",
+// "Stormers Ground Plan"). Derived from team + top Game Plan + how online it is.
+const CONCEPT_WORD: Partial<Record<FbConceptKey, string>> = {
+  double_stack_bomb: 'Bomb', shootout_stack: 'Shootout', stack_td: 'Stack', checkdown: 'Checkdown',
+  ground_pound: 'Ground', designed_run: 'Run', qb_keeper: 'Keeper', field_goal: 'Kicking',
+  pick_six: 'Pick-Six', takeaway: 'Takeaway', sack: 'Pressure',
+};
+const TEAM_LANE_WORD: Record<TeamArchetype, string> = {
+  balanced: 'Pro', air_raid: 'Air Raid', ground_game: 'Ground', mobile_qb: 'Keeper', defensive_pressure: 'Takeaway',
+};
+
+export function generateBuildTitle(run: Pick<FbRunState, 'team' | 'deck' | 'playbook'>): string {
+  const team = TEAM_PROFILES[run.team].displayName;
+  const top = topGamePlan(run.playbook);
+  if (top) {
+    const word = CONCEPT_WORD[top.concept] ?? top.label;
+    const descriptor = top.level >= 2 ? 'Engine' : 'Plan';
+    return `${team} ${word} ${descriptor}`;
+  }
+  return `${team} ${TEAM_LANE_WORD[run.team]} Build`;
 }
 
 export interface CoachDebrief {
@@ -589,8 +651,8 @@ export function rewardFitLabel(run: FbRunState, reward: Reward): string {
   if (reward.kind === 'playbook' && reward.id === `pb-${identity.concept}`) return 'Feeds current plan';
   if (reward.kind === 'playbook') return identity.level ? 'Starts side plan' : 'Choose identity';
   if (reward.kind === 'coordinator') {
-    if (identity.concept?.includes('stack') && ['coord-franchise_qb', 'coord-air_raid', 'coord-west_coast'].includes(reward.id)) return 'Feeds current plan';
-    if (identity.concept === 'ground_pound' && ['coord-bell_cow', 'coord-salary_wizard'].includes(reward.id)) return 'Feeds current plan';
+    if (identity.concept?.includes('stack') && ['coord-franchise_qb', 'coord-air_raid', 'coord-west_coast', 'coord-two_minute_drill'].includes(reward.id)) return 'Feeds current plan';
+    if (identity.concept === 'ground_pound' && ['coord-bell_cow', 'coord-salary_wizard', 'coord-power_sweep'].includes(reward.id)) return 'Feeds current plan';
     if ((identity.concept === 'pick_six' || identity.concept === 'takeaway') && ['coord-ball_hawk', 'coord-pressure_chain', 'coord-takeaway_machine'].includes(reward.id)) return 'Feeds current plan';
     if (identity.concept === 'qb_keeper' && ['coord-read_option', 'coord-improviser', 'coord-broken_play'].includes(reward.id)) return 'Feeds current plan';
     return 'Engine piece';
@@ -650,7 +712,10 @@ export function rewardImpact(run: FbRunState, reward: Reward, bossScheme: FbBoss
 // ── Film Tools ───────────────────────────────────────────────────────────────
 export type FilmToolKey =
   | 'film_cut' | 'clone_tape' | 'bulk_up' | 'contract_restructure' | 'deep_threat'
-  | 'reliable_hands' | 'explosive_pkg' | 'clutch_reps' | 'boss_prep' | 'hot_route_install';
+  | 'reliable_hands' | 'explosive_pkg' | 'clutch_reps' | 'boss_prep' | 'hot_route_install'
+  // Phase-6 wave: 2 safe tools + 2 risky "Trick Plays" (the Spectral analog —
+  // run-warping with a real downside, legible, never mandatory).
+  | 'depth_chart' | 'film_grind' | 'flea_flicker' | 'gadget_gamble';
 
 export interface FilmTool {
   key: FilmToolKey;
@@ -661,6 +726,7 @@ export interface FilmTool {
   targeted: boolean;                     // does it need the player to pick a card?
   eligible: (c: FbCard) => boolean;      // valid targets (ignored when !targeted)
   apply: (run: FbRunState, targetId?: string) => FbRunState;
+  risky?: boolean;                       // a Trick Play — power with a clear downside
 }
 
 let filmCounter = 0;
@@ -735,18 +801,52 @@ export const FILM_TOOLS: Record<FilmToolKey, FilmTool> = {
     detail: 'Give a catch the Hot Route trait — it stacks with ANY quarterback.',
     apply: (run, id) => mutateCard(run, id, (c) => ({ ...c, modifier: 'hot_route' })),
   },
+  // ── Safe additions ──
+  depth_chart: {
+    key: 'depth_chart', emoji: '📋', name: 'Depth Chart', cost: 3, targeted: false, eligible: () => true,
+    detail: 'Sign a $1 Quick Catch (40) — cheap, flexible roster depth.',
+    apply: (run) => ({ ...run, deck: [...run.deck, createFreeAgentCard('value_slot')] }),
+  },
+  film_grind: {
+    key: 'film_grind', emoji: '🎞️', name: 'Film Grind', cost: 4, targeted: false, eligible: () => true,
+    detail: '+16 Base to your 3 cheapest cards — raise the early floor.',
+    apply: (run) => {
+      const cheapIds = new Set([...run.deck].sort((a, b) => a.cost - b.cost || a.value - b.value).slice(0, 3).map((c) => c.id));
+      return { ...run, deck: run.deck.map((c) => (cheapIds.has(c.id) ? { ...c, value: c.value + 16 } : c)) };
+    },
+  },
+  // ── Trick Plays (risky, run-warping — the Spectral analog) ──
+  flea_flicker: {
+    key: 'flea_flicker', emoji: '🃏', name: 'Flea Flicker', cost: 5, targeted: false, eligible: () => true, risky: true,
+    detail: 'TRICK PLAY: clone your highest-value card — but the copy costs +1 Play Budget.',
+    apply: (run) => {
+      const top = [...run.deck].sort((a, b) => b.value - a.value || a.cost - b.cost)[0];
+      if (!top) return run;
+      const copy = { ...cloneFilmCard(top), cost: top.cost + 1 };
+      return { ...run, deck: [...run.deck, copy] };
+    },
+  },
+  gadget_gamble: {
+    key: 'gadget_gamble', emoji: '🎲', name: 'Gadget Gamble', cost: 4, targeted: true, eligible: (c) => c.side !== 'kick', risky: true,
+    detail: 'TRICK PLAY: +70 Base to one card — but it costs +1 Play Budget forever.',
+    apply: (run, id) => mutateCard(run, id, (c) => ({ ...c, value: c.value + 70, cost: c.cost + 1 })),
+  },
 };
 
 export const FILM_TOOL_KEYS = Object.keys(FILM_TOOLS) as FilmToolKey[];
 
-// Two Film Tools per War Room visit, weighted to what the deck can actually use
-// (e.g. don't offer Deep Threat Reps with no Quick Catch to convert).
+// Film Tools per War Room visit (2, or 3 with the Film Room Expansion upgrade),
+// weighted to what the deck can actually use (e.g. don't offer Deep Threat Reps
+// with no Quick Catch to convert).
+export function filmRoomSlots(run: Pick<FbRunState, 'upgrades'>): number {
+  return 2 + (run.upgrades?.includes('film_room_expansion') ? 1 : 0);
+}
 export function generateFilmRoom(run: FbRunState, rng: RNG = Math.random): FilmTool[] {
   const usable = FILM_TOOL_KEYS.filter((k) => {
     const t = FILM_TOOLS[k];
     return !t.targeted || run.deck.some((c) => t.eligible(c));
   });
-  return shuffle(usable, rng).slice(0, 2).map((k) => FILM_TOOLS[k]);
+  return shuffle(usable, rng).slice(0, filmRoomSlots(run)).map((k) => FILM_TOOLS[k]);
 }
 
 export function filmToolTargets(run: FbRunState, tool: FilmTool): FbCard[] {
@@ -756,7 +856,8 @@ export function filmToolTargets(run: FbRunState, tool: FilmTool): FbCard[] {
 
 // ── Front Office Upgrades (run-persistent rule modifiers) ────────────────────
 export type FrontOfficeKey =
-  | 'staff_expansion' | 'extra_audible' | 'reroll_discount' | 'deep_pockets' | 'extra_reward';
+  | 'staff_expansion' | 'extra_audible' | 'reroll_discount' | 'deep_pockets' | 'extra_reward'
+  | 'film_room_expansion';
 
 export interface FrontOfficeUpgrade {
   key: FrontOfficeKey;
@@ -772,6 +873,7 @@ export const FRONT_OFFICE: Record<FrontOfficeKey, FrontOfficeUpgrade> = {
   reroll_discount: { key: 'reroll_discount', emoji: '🔁', name: 'Scouting Network', cost: 5, detail: 'Every War Room reroll costs $1 less (min $1) for the rest of the run.' },
   deep_pockets: { key: 'deep_pockets', emoji: '🏦', name: 'Deep Pockets', cost: 6, detail: 'Raise the interest cap by $2 — banking Funds pays off harder.' },
   extra_reward: { key: 'extra_reward', emoji: '📋', name: 'Bigger Front Office', cost: 6, detail: 'The War Room shows a 4th reward every visit for the rest of the run.' },
+  film_room_expansion: { key: 'film_room_expansion', emoji: '🎬', name: 'Film Room Expansion', cost: 5, detail: 'The Film Room shows a 3rd tool every visit — more deck-shaping options.' },
 };
 
 export const FRONT_OFFICE_KEYS = Object.keys(FRONT_OFFICE) as FrontOfficeKey[];

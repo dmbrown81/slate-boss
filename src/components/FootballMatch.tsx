@@ -30,8 +30,11 @@ export interface MatchProps {
   championship: boolean;
   seed: number;
   audiblesPerDrive?: number;
-  onWon: (summary: { bombLanded: boolean; keeperLanded: boolean; takeawayGame: boolean; score: number }) => void;
-  onLost: (info: { drive: number; score: number }) => void;
+  // When set (1-based), this match is an Overtime score-chase round, not a
+  // campaign game. Display + result copy switch to Overtime; scoring is unchanged.
+  overtimeRound?: number;
+  onWon: (summary: { bombLanded: boolean; keeperLanded: boolean; takeawayGame: boolean; score: number; bestDrive: number }) => void;
+  onLost: (info: { drive: number; score: number; bestDrive: number }) => void;
   onHome: () => void;
 }
 
@@ -49,6 +52,7 @@ interface MatchState {
   qbRunsThisMatch: number;
   defPlaysThisMatch: number;
   cleanConceptsThisMatch: number;
+  bestDriveThisMatch: number;
   bombLanded: boolean;
   keeperLanded: boolean;
   signatureFired: boolean;
@@ -131,6 +135,8 @@ function usePrefersReducedMotion() {
 
 export default function FootballMatch(props: MatchProps) {
   const { team, deck: runDeck, coordinators, playbook, bombGames, keeperGames, takeawayGames, targets, environment, bossScheme, gameNumber, totalGames, championship, seed } = props;
+  const overtimeRound = props.overtimeRound ?? 0;
+  const isOvertime = overtimeRound > 0;
   const audPerDrive = props.audiblesPerDrive ?? AUDIBLES_PER_DRIVE;
   const teamId = TEAM_IDENTITY[team];
   const [matchRng] = useState<RNG>(() => mulberry32(stringSeed(`gridiron-match:${seed}:g${gameNumber}:${environment}:${bossScheme}`)));
@@ -142,6 +148,7 @@ export default function FootballMatch(props: MatchProps) {
       driveIndex: 0, driveScore: 0, totalScore: 0,
       budgetLeft: DRIVE_BUDGET[0], audiblesLeft: audPerDrive,
       stacksThisMatch: 0, groundBonusThisMatch: 0, qbRunsThisMatch: 0, defPlaysThisMatch: 0, cleanConceptsThisMatch: 0,
+      bestDriveThisMatch: 0,
       bombLanded: false, keeperLanded: false, signatureFired: false,
       conceptCountsThisDrive: {}, status: 'playing', lastPlay: null, popKey: 0,
     };
@@ -151,6 +158,9 @@ export default function FootballMatch(props: MatchProps) {
   const [scoreBeat, setScoreBeat] = useState(0);
   const [stamp, setStamp] = useState<PlayStampState | null>(null);
   const [buildOpen, setBuildOpen] = useState(() => gameNumber === 1);
+  // Boss-intro reveal: a short full-screen card naming the defense before the
+  // snap, from Game 2 on. Skippable on tap; it never gates play for long.
+  const [showBossIntro, setShowBossIntro] = useState(() => gameNumber >= 2 && bossScheme !== 'balanced');
   const [liveMessage, setLiveMessage] = useState('');
   const [prefs, setPrefs] = useState<GridironPrefs>(() => loadGridironPrefs());
   const [askCoach, setAskCoach] = useState(false);
@@ -306,7 +316,7 @@ export default function FootballMatch(props: MatchProps) {
       const keeper = m.keeperLanded || result.concept === 'qb_keeper';
       const counts = { ...m.conceptCountsThisDrive, [result.concept]: (m.conceptCountsThisDrive[result.concept] ?? 0) + 1 };
       const signatureFired = m.signatureFired || (result.valid && Boolean(signatureCallout(team, result.concept)));
-      const base = { ...m, stacksThisMatch: stacks, groundBonusThisMatch: ground, qbRunsThisMatch: qbRuns, defPlaysThisMatch: defPlays, cleanConceptsThisMatch: cleanConcepts, bombLanded: bomb, keeperLanded: keeper, signatureFired, lastPlay: result, popKey: m.popKey + 1 };
+      const base = { ...m, stacksThisMatch: stacks, groundBonusThisMatch: ground, qbRunsThisMatch: qbRuns, defPlaysThisMatch: defPlays, cleanConceptsThisMatch: cleanConcepts, bestDriveThisMatch: Math.max(m.bestDriveThisMatch, newScore), bombLanded: bomb, keeperLanded: keeper, signatureFired, lastPlay: result, popKey: m.popKey + 1 };
 
       if (newScore >= target) {
         const nextIndex = m.driveIndex + 1;
@@ -341,8 +351,8 @@ export default function FootballMatch(props: MatchProps) {
       <div aria-live="polite" className="sr-only">{liveMessage}</div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <button onClick={props.onHome} aria-label="Return home" style={{ ...btnGhost, minWidth: 44, minHeight: 44 }}>←</button>
-        <div style={{ fontSize: 11, color: FB.gold, letterSpacing: 1.5, fontWeight: 900 }}>
-          {championship ? '🏆 CHAMPIONSHIP' : `GAME ${gameNumber} / ${totalGames}`}
+        <div style={{ fontSize: 11, color: isOvertime ? '#f0b429' : FB.gold, letterSpacing: 1.5, fontWeight: 900 }}>
+          {isOvertime ? `🔥 OVERTIME · ROUND ${overtimeRound}` : championship ? '🏆 CHAMPIONSHIP' : `GAME ${gameNumber} / ${totalGames}`}
         </div>
         <button onClick={() => setShowHelp(true)} aria-label="Open how to play" style={{ ...btnGhost, minWidth: 44, minHeight: 44 }}>?</button>
       </div>
@@ -493,20 +503,77 @@ export default function FootballMatch(props: MatchProps) {
       )}
 
       {match.status === 'won' && (
-        <ResultPanel won title={championship ? 'Champions!' : `Game ${gameNumber} Won`}
-          detail={championship ? 'You cleared the championship.' : 'All three drives cleared.'}
-          cta={championship ? 'See Results →' : 'Choose Reward →'}
-          onCta={() => props.onWon({ bombLanded: match.bombLanded, keeperLanded: match.keeperLanded, takeawayGame: match.defPlaysThisMatch >= 2, score: match.totalScore })} />
+        <ResultPanel won title={isOvertime ? `Overtime R${overtimeRound} Survived` : championship ? 'Champions!' : `Game ${gameNumber} Won`}
+          detail={isOvertime ? 'You held on. The next round climbs higher.' : championship ? 'You cleared the championship.' : 'All three drives cleared.'}
+          cta={isOvertime ? 'Next Overtime →' : championship ? 'See Results →' : 'Choose Reward →'}
+          onCta={() => props.onWon({ bombLanded: match.bombLanded, keeperLanded: match.keeperLanded, takeawayGame: match.defPlaysThisMatch >= 2, score: match.totalScore, bestDrive: match.bestDriveThisMatch })} />
       )}
       {match.status === 'lost' && (
-        <ResultPanel won={false} title="Drive Stalled"
-          detail={`Ran out of budget on Drive ${match.driveIndex + 1} before the target. The season ends here.`}
-          cta="See Results →" onCta={() => props.onLost({ drive: match.driveIndex + 1, score: match.totalScore })} />
+        <ResultPanel won={false} title={isOvertime ? 'Overtime Ends' : 'Drive Stalled'}
+          detail={isOvertime
+            ? `Ran out of budget on Drive ${match.driveIndex + 1}. You reached Overtime Round ${overtimeRound}.`
+            : `Ran out of budget on Drive ${match.driveIndex + 1} before the target. The season ends here.`}
+          cta="See Results →" onCta={() => props.onLost({ drive: match.driveIndex + 1, score: match.totalScore, bestDrive: match.bestDriveThisMatch })} />
       )}
 
       {stamp && <PlayStamp stamp={stamp} reduced={reducedMotion} onSkip={() => setStamp(null)} />}
 
+      {showBossIntro && (
+        <BossIntroCard
+          boss={boss}
+          accent={teamId.primary}
+          gameNumber={gameNumber}
+          championship={championship}
+          reduced={reducedMotion}
+          onDismiss={() => setShowBossIntro(false)}
+        />
+      )}
+
       {showHelp && <FootballHelpModal onClose={() => setShowHelp(false)} prefs={prefs} onPrefsChange={updatePrefs} />}
+    </div>
+  );
+}
+
+// Boss-intro reveal — names the defensive scheme before the snap and tells the
+// player what it punishes and how to beat it. Presentation only; the scheme math
+// lives in scoreFootballPlay. Tap anywhere (or the button) to start the drive.
+function BossIntroCard({ boss, accent, gameNumber, championship, reduced, onDismiss }: {
+  boss: (typeof FB_BOSS_SCHEMES)[FbBossSchemeKey];
+  accent: string;
+  gameNumber: number;
+  championship: boolean;
+  reduced: boolean;
+  onDismiss: () => void;
+}) {
+  return (
+    <div
+      onClick={onDismiss}
+      style={{ position: 'fixed', inset: 0, zIndex: 65, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 18px', background: 'rgba(6,9,13,0.82)', cursor: 'pointer' }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className={reduced ? undefined : 'fb-rise'}
+        style={{ width: '100%', maxWidth: 420, background: 'linear-gradient(180deg,#1d0f14,#0c1119)', border: `1px solid ${FB.red}`, borderRadius: 18, padding: '22px 20px', textAlign: 'center' }}
+      >
+        <div style={{ fontSize: 11, color: FB.red, letterSpacing: 2, fontWeight: 900 }}>
+          {championship ? '🏆 CHAMPIONSHIP DEFENSE' : `GAME ${gameNumber} · SCOUTING REPORT`}
+        </div>
+        <div style={{ fontSize: 30, fontWeight: 900, color: FB.text, marginTop: 8, lineHeight: 1.05 }}>{boss.label}</div>
+        <div style={{ fontSize: 12.5, color: FB.textDim, fontStyle: 'italic', lineHeight: 1.4, marginTop: 8 }}>“{boss.flavor}”</div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 16, textAlign: 'left' }}>
+          <div style={{ flex: 1, background: '#1d1014', border: `1px solid #4a2530`, borderRadius: 10, padding: '9px 10px' }}>
+            <div style={{ fontSize: 11, color: FB.red, letterSpacing: 0.8, fontWeight: 900 }}>PUNISHES</div>
+            <div style={{ fontSize: 12, color: FB.text, fontWeight: 800, marginTop: 3, lineHeight: 1.25 }}>{boss.punishes}</div>
+          </div>
+          <div style={{ flex: 1, background: '#0c2419', border: `1px solid #1f6b44`, borderRadius: 10, padding: '9px 10px' }}>
+            <div style={{ fontSize: 11, color: FB.green, letterSpacing: 0.8, fontWeight: 900 }}>COUNTER</div>
+            <div style={{ fontSize: 12, color: FB.text, fontWeight: 800, marginTop: 3, lineHeight: 1.25 }}>{boss.hint}</div>
+          </div>
+        </div>
+        <button onClick={onDismiss} style={{ ...btnPrimary, width: '100%', marginTop: 18, background: `linear-gradient(180deg,${accent},${accent}cc)`, color: '#0b0b0b' }}>
+          Take the field →
+        </button>
+      </div>
     </div>
   );
 }

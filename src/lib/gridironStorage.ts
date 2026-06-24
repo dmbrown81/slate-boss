@@ -40,6 +40,10 @@ export interface GridironRunHistoryEntry {
   score: number;
   identityTitle: string;
   debrief: string;
+  // Optional Overtime score-chase results (only present if the player entered OT).
+  overtimeRound?: number;   // furthest Overtime round reached
+  overtimeScore?: number;   // total points scored across Overtime
+  overtimeBestDrive?: number; // single best Overtime drive
 }
 
 export interface GridironDailyRecord {
@@ -80,6 +84,7 @@ function migrate(persisted: GridironPersistedRun): GridironPersistedRun {
   if (typeof run.funds !== 'number') run.funds = STARTING_FUNDS;
   if (typeof run.keeperGames !== 'number') run.keeperGames = 0;
   if (typeof run.takeawayGames !== 'number') run.takeawayGames = 0;
+  if (typeof run.stake !== 'number') run.stake = 1;
   if (!Array.isArray(run.upgrades)) run.upgrades = [];
   return { ...persisted, version: STORAGE_VERSION, run };
 }
@@ -169,6 +174,13 @@ export function bestGridironHistoryRun(history = loadGridironHistory()): Gridiro
     if (a.gamesWon !== b.gamesWon) return b.gamesWon - a.gamesWon;
     return b.score - a.score;
   })[0] ?? null;
+}
+
+// The deepest Overtime push on record — the score-chase leaderboard, local-only.
+export function bestGridironOvertimeRun(history = loadGridironHistory()): GridironRunHistoryEntry | null {
+  return [...history]
+    .filter((e) => (e.overtimeRound ?? 0) > 0)
+    .sort((a, b) => (b.overtimeRound ?? 0) - (a.overtimeRound ?? 0) || (b.overtimeScore ?? 0) - (a.overtimeScore ?? 0))[0] ?? null;
 }
 
 function isDailyRecord(value: unknown): value is GridironDailyRecord {

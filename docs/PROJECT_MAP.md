@@ -56,7 +56,8 @@ flowchart TD
 - `src/lib/footballRogue.ts` - core card/scoring model.
 - `src/lib/footballRun.ts` - run progression and reward catalog.
 - `src/lib/gridironEconomy.ts` - Front Office Funds economy.
-- `src/lib/gridironStorage.ts` - local save/resume + run history (`gridiron_history_v1`).
+- `src/lib/gridironStorage.ts` - local save/resume + run history (`gridiron_history_v1`, now incl. Overtime stats).
+- `src/lib/gridironTaxonomy.ts` - presentation/data layer: rarity-as-label, category, lane, role for rewards/coordinators/tools, plus shareable/replayable run codes (team + seed). No scoring impact.
 - `src/lib/gridironCalibration.ts` - read-only fictional tuning constants.
 - `src/lib/rng.ts` - deterministic random helpers.
 - `src/lib/seedData.ts` - fictional football data used by the Gridiron card model.

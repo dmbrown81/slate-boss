@@ -9,7 +9,8 @@ import {
   randomBossScheme, randomEnvironment, scoreFootballPlay,
   type FbCard,
 } from '../src/lib/footballRogue';
-import { createRun, gameTargets, generateRewards, generateFilmRoom, isChampionship, runRng } from '../src/lib/footballRun';
+import { createRun, gameTargets, generateRewards, generateFilmRoom, isChampionship, runRng, overtimeTargets, overtimeGameNumber } from '../src/lib/footballRun';
+import { formatRunCode } from '../src/lib/gridironTaxonomy';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -74,17 +75,67 @@ const match = renderToString(
 );
 assert(match.includes('DRIVE SCORE'), 'FootballMatch should render the scoreboard.');
 
+// Boss intro reveal renders from Game 2 with a real scheme.
+const bossIntroMatch = renderToString(
+  <FootballMatch
+    team={run.team}
+    deck={run.deck}
+    coordinators={run.coordinators}
+    playbook={run.playbook}
+    bombGames={run.bombGames}
+    keeperGames={run.keeperGames}
+    takeawayGames={run.takeawayGames}
+    targets={gameTargets(env, 2)}
+    environment={env}
+    bossScheme="no_fly_zone"
+    gameNumber={2}
+    totalGames={5}
+    championship={false}
+    seed={run.seed}
+    onWon={noop}
+    onLost={noop}
+    onHome={noop}
+  />,
+);
+assert(bossIntroMatch.includes('SCOUTING REPORT'), 'FootballMatch should reveal the boss scouting report from Game 2.');
+
+// Overtime round renders with Overtime chrome (separate score-chase mode).
+const overtimeMatch = renderToString(
+  <FootballMatch
+    team={run.team}
+    deck={run.deck}
+    coordinators={run.coordinators}
+    playbook={run.playbook}
+    bombGames={run.bombGames}
+    keeperGames={run.keeperGames}
+    takeawayGames={run.takeawayGames}
+    targets={overtimeTargets(env, 2)}
+    environment={env}
+    bossScheme={boss}
+    gameNumber={overtimeGameNumber(2)}
+    totalGames={5}
+    championship={false}
+    seed={run.seed}
+    overtimeRound={2}
+    onWon={noop}
+    onLost={noop}
+    onHome={noop}
+  />,
+);
+assert(overtimeMatch.includes('OVERTIME'), 'FootballMatch should render Overtime chrome when in a score-chase round.');
+
 const summary = renderToString(
   <FootballRunSummary
     won={false}
     gamesWon={2}
     run={{ ...run, status: 'lost' }}
     lostDrive={2}
+    score={0}
     onNewSeason={noop}
     onHome={noop}
   />,
 );
-assert(summary.includes('Seed 424242'), 'FootballRunSummary should render the share seed.');
+assert(summary.includes(formatRunCode('balanced', 424242)), 'FootballRunSummary should render the replayable run code.');
 
 const pass = run.deck.find((c) => c.side === 'pass');
 const catchCard = pass ? run.deck.find((c) => c.side === 'catch' && c.team === pass.team) : undefined;

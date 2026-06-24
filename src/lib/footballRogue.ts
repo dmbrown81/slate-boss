@@ -88,7 +88,11 @@ export type FbCoordinatorKey =
   | 'read_option' | 'improviser' | 'broken_play'
   // Defense lane (Ghosts): the within-game ramp + season compounder it was missing
   // (it previously had only the flat ball_hawk, while passing had air_raid + franchise_qb).
-  | 'pressure_chain' | 'takeaway_machine';
+  | 'pressure_chain' | 'takeaway_machine'
+  // Phase-6 content wave: a Rare ground Big-Play scaler (the ground lane lacked an
+  // in-game multiplier) and a Legendary pass build-around using the RETRIGGER
+  // primitive. Both are reward-only and validated by the balance harness.
+  | 'power_sweep' | 'two_minute_drill';
 
 export interface FbCoordinator {
   key: FbCoordinatorKey;
@@ -142,6 +146,14 @@ export const FB_COORDINATORS: Record<FbCoordinatorKey, FbCoordinator> = {
   takeaway_machine: {
     key: 'takeaway_machine', name: 'Takeaway Machine', channel: 'big_play', scaling: 'season',
     description: '+0.05 Big Play on every play for each earlier game with 2+ takeaways (Sack / Takeaway / Pick Six).',
+  },
+  power_sweep: {
+    key: 'power_sweep', name: 'Power Sweep Coordinator', channel: 'big_play', scaling: 'within_game',
+    description: '+0.12 Big Play on Ground & Pound for every Ground & Pound you have already run this match.',
+  },
+  two_minute_drill: {
+    key: 'two_minute_drill', name: 'Two-Minute Drill', channel: 'big_play', scaling: 'within_game',
+    description: 'Legendary: once you have leveled a stack Game Plan, the FIRST stack play each drive retriggers — its card yards count twice.',
   },
 };
 
@@ -203,6 +215,10 @@ export interface FbBossScheme {
   shortLabel: string;
   description: string;
   hint: string;
+  // Presentation-only story fields (never read by scoring): a one-line
+  // personality for the boss-intro reveal, and a plain "what it punishes" tag.
+  flavor: string;
+  punishes: string;
 }
 
 export const FB_BOSS_SCHEMES: Record<FbBossSchemeKey, FbBossScheme> = {
@@ -212,6 +228,8 @@ export const FB_BOSS_SCHEMES: Record<FbBossSchemeKey, FbBossScheme> = {
     shortLabel: 'Base D',
     description: 'No special counters. Learn your playbook and build a plan.',
     hint: 'Any clean concept can win.',
+    flavor: 'A vanilla front. No tricks — just execute your plan.',
+    punishes: 'Nothing special',
   },
   no_fly_zone: {
     key: 'no_fly_zone',
@@ -219,6 +237,8 @@ export const FB_BOSS_SCHEMES: Record<FbBossSchemeKey, FbBossScheme> = {
     shortLabel: 'No-Fly',
     description: 'Deep stacks lose Big Play, but short passing stays efficient.',
     hint: 'Lean on Stack TD, Checkdown, or the run game.',
+    flavor: 'Two high safeties, everything in front of them. Take the underneath.',
+    punishes: 'Deep double-stacks & shootouts',
   },
   stacked_box: {
     key: 'stacked_box',
@@ -226,6 +246,8 @@ export const FB_BOSS_SCHEMES: Record<FbBossSchemeKey, FbBossScheme> = {
     shortLabel: 'Box',
     description: 'Runs lose Base, but play-action stacks get a small Execution bump.',
     hint: 'Beat it with QB stacks and passing concepts.',
+    flavor: 'Eight in the box, daring you to throw. So throw it.',
+    punishes: 'The run game',
   },
   turnover_drill: {
     key: 'turnover_drill',
@@ -233,6 +255,8 @@ export const FB_BOSS_SCHEMES: Record<FbBossSchemeKey, FbBossScheme> = {
     shortLabel: 'Secure',
     description: 'Defensive splash plays lose Big Play; clean offense gains Execution.',
     hint: 'Do not rely only on Pick Six luck.',
+    flavor: 'They coached ball security all week. Splash plays get smothered.',
+    punishes: 'Defensive splash plays',
   },
   adaptive_dc: {
     key: 'adaptive_dc',
@@ -240,6 +264,8 @@ export const FB_BOSS_SCHEMES: Record<FbBossSchemeKey, FbBossScheme> = {
     shortLabel: 'Adaptive',
     description: 'Repeating a concept gets punished harder than usual.',
     hint: 'Mix your engine with one supporting play.',
+    flavor: 'A film-room genius. Run the same call twice and they jump it.',
+    punishes: 'Repeating one concept',
   },
 };
 
@@ -284,6 +310,38 @@ export interface FbLedgerEntry {
   value: number;
   label: string;
   detail: string;
+}
+
+// ── Effect-kind taxonomy (analysis layer) ───────────────────────────────────
+// A coarse classification of WHAT a scoring contribution does, used by the
+// balance harness ceiling probes and by tooling. It does not change scoring — it
+// is derived from the ledger that scoreFootballPlay already produces.
+//
+//   base        flat Base yards added before multipliers
+//   execution   additive (1 + Execution) bonus
+//   bigplay_mult one-shot Big Play multiplier from a concept/environment/boss
+//   scaler      a Big Play multiplier that GROWS with run/match state (the
+//               compounding coordinators: Franchise QB, Improviser, …)
+//   retrigger   replays a card/effect for extra value (reserved; see Phase-6
+//               legendary content — engine support lives in scoreFootballPlay)
+//
+// IMPORTANT (Big Play aggregation audit): every Big Play source multiplies into a
+// single running `bigPlay` (it starts at 1 and each effect does `bigPlay *= x`).
+// So multiple Big Play multipliers ALREADY compound multiplicatively today — no
+// refactor was needed for sources to stack. The ceiling work is therefore about
+// (a) measuring the resulting distribution and (b) adding new multiplier SOURCES
+// carefully, not about changing how they combine.
+export type FbEffectKind = 'base' | 'execution' | 'bigplay_mult' | 'scaler' | 'retrigger';
+
+export function effectKindOf(entry: FbLedgerEntry): FbEffectKind {
+  if (entry.id === 'retrigger' || entry.kind === 'retrigger' as FbLedgerKind) return 'retrigger';
+  if (entry.channel === 'base') return 'base';
+  if (entry.channel === 'execution') return 'execution';
+  if (entry.channel === 'big_play') {
+    // A scaling coordinator's Big Play contribution grows with state → scaler.
+    return entry.kind === 'coordinator' ? 'scaler' : 'bigplay_mult';
+  }
+  return 'base';
 }
 
 export interface FbPlayResult {
@@ -739,6 +797,32 @@ export function scoreFootballPlay(cards: FbCard[], ctx: FbScoreContext): FbPlayR
     const mult = 1 + 0.05 * takeawayGames;
     bigPlay *= mult;
     ledger.push({ id: 'tm', kind: 'coordinator', stage: 'coordinator', channel: 'big_play', operation: 'multiply', value: mult, label: 'Takeaway Machine', detail: `Big Play ×${round2(mult)} (${takeawayGames} prior takeaway game${takeawayGames === 1 ? '' : 's'}).` });
+  }
+  // Power Sweep Coordinator: ground gets an in-game Big Play scaler (its missing
+  // multiplicative path). groundBonusThisMatch accrues +6 per Ground & Pound, so
+  // ÷6 is the count of prior ground plays this match.
+  if (co.has('power_sweep') && concept === 'ground_pound') {
+    const priorGround = Math.round(ctx.groundBonusThisMatch / 6);
+    if (priorGround > 0) {
+      const mult = round2(1 + 0.12 * priorGround);
+      bigPlay *= mult;
+      ledger.push({ id: 'ps', kind: 'coordinator', stage: 'coordinator', channel: 'big_play', operation: 'multiply', value: mult, label: 'Power Sweep Coordinator', detail: `Big Play ×${mult} (${priorGround} prior Ground & Pound${priorGround === 1 ? '' : 's'}).` });
+    }
+  }
+  // Two-Minute Drill (Legendary): the FIRST stack play each drive RETRIGGERS — its
+  // raw card yards are added a second time. "First this drive" = no concept has
+  // been logged in conceptCountsThisDrive yet. This is the engine's retrigger
+  // primitive (effectKindOf reads id === 'retrigger'). It is a COMMITMENT payoff:
+  // it only fires once you've leveled a stack Game Plan, so it rewards committing
+  // (not merely grabbing the coordinator) — keeping the "commit > grab" spine.
+  const stackCommitted = (ctx.playbook?.stack_td ?? 0) > 0 || (ctx.playbook?.double_stack_bomb ?? 0) > 0;
+  if (co.has('two_minute_drill') && isStack && stackCommitted) {
+    const playsThisDrive = Object.values(ctx.conceptCountsThisDrive).reduce((s, n) => s + (n ?? 0), 0);
+    if (playsThisDrive === 0) {
+      const cardYards = cards.reduce((s, c) => s + c.value, 0);
+      base += cardYards;
+      ledger.push({ id: 'retrigger', kind: 'coordinator', stage: 'coordinator', channel: 'base', operation: 'add', value: cardYards, label: 'Two-Minute Drill', detail: `Retrigger — opening stack's ${cardYards} yards count twice.` });
+    }
   }
 
   // ── Game Plan (leveled concept commitment) ──

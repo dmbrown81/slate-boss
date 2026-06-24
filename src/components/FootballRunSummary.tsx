@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { FB, btnPrimary, btnGhost, card } from './footballStyles';
-import { FB_CONCEPT_LABEL, FB_COORDINATORS, TEAM_PROFILES } from '../lib/footballRogue';
-import { buildCoachDebrief, buildIdentity, buildLossReasons, deckValueSummary, SEASON_GAMES, type FbRunState } from '../lib/footballRun';
+import { FB_CONCEPT_LABEL, FB_COORDINATORS, FB_ENVIRONMENTS, FB_BOSS_SCHEMES, randomEnvironment, randomBossScheme, TEAM_PROFILES } from '../lib/footballRogue';
+import { buildCoachDebrief, buildIdentity, buildLossReasons, generateBuildTitle, isChampionship, runRng, stakeProfile, SEASON_GAMES, type FbRunState } from '../lib/footballRun';
 import { bestGridironHistoryRun, loadGridironHistory, saveGridironDailyResult, saveGridironHistoryEntry, type GridironRunHistoryEntry } from '../lib/gridironStorage';
+import { formatRunCode, rarestOwned, coordinatorTaxonomy, RARITY_META } from '../lib/gridironTaxonomy';
 import { CoachPortrait } from './coachIdentity';
 import { TEAM_IDENTITY } from './teamIdentity';
 
@@ -12,17 +13,30 @@ interface Props {
   run: FbRunState;
   lostDrive: number;
   score: number;
+  bestDrive?: number;
+  overtimeRound?: number;
+  overtimeScore?: number;
+  overtimeBestDrive?: number;
   dailyRun?: { date: string; seed: number; practice: boolean };
   onNewSeason: () => void;
   onHome: () => void;
 }
 
-export default function FootballRunSummary({ won, gamesWon, run, lostDrive, score, dailyRun, onNewSeason, onHome }: Props) {
+export default function FootballRunSummary({ won, gamesWon, run, lostDrive, score, bestDrive = 0, overtimeRound = 0, overtimeScore = 0, overtimeBestDrive = 0, dailyRun, onNewSeason, onHome }: Props) {
   const [copied, setCopied] = useState(false);
-  const deck = deckValueSummary(run.deck);
+  const [codeCopied, setCodeCopied] = useState(false);
+  const runCode = formatRunCode(run.team, run.seed);
+  const rarest = rarestOwned(run.coordinators);
+  const buildTitle = generateBuildTitle(run);
   const identity = buildIdentity(run);
+  // The climactic game's defense + weather, recomputed deterministically from the
+  // seed (same derivation FootballSeason uses), for a one-line story highlight.
+  const finalGameNo = won ? SEASON_GAMES : gamesWon + 1;
+  const finalScope = { seed: run.seed, team: run.team, gameNumber: finalGameNo };
+  const finalEnv = FB_ENVIRONMENTS[randomEnvironment(runRng(finalScope, 'environment'))];
+  const finalBoss = FB_BOSS_SCHEMES[randomBossScheme(finalGameNo, isChampionship(finalGameNo), runRng(finalScope, 'boss'))];
+  const highlight = `${won ? 'Won' : 'Fell'} vs ${finalBoss.label} · ${finalEnv.label}`;
   const debrief = buildCoachDebrief(run, won, gamesWon, lostDrive);
-  const team = TEAM_PROFILES[run.team];
   const coachId = TEAM_IDENTITY[run.team];
   const coachOpener = won
     ? `We ran the table. ${coachId.quote}`
@@ -36,9 +50,19 @@ export default function FootballRunSummary({ won, gamesWon, run, lostDrive, scor
   const bestLabel = previousBest
     ? `${TEAM_PROFILES[previousBest.team].displayName} · ${previousBest.won ? 'Champions' : `${previousBest.gamesWon}/${SEASON_GAMES}`} · ${previousBest.score}`
     : 'First recorded run';
-  const shareText = dailyRun
-    ? `GRIDIRON Daily ${dailyRun.date} · ${team.shortName} · ${won ? 'Champions 5/5' : `${gamesWon}/${SEASON_GAMES}`} · ${score}`
-    : `GRIDIRON · ${team.displayName} · ${won ? 'Champions' : `Lost G${gamesWon + 1}`} · ${identity.title} · Score ${score} · Seed ${run.seed}`;
+  // A complete, PII-free, local share card. Multi-line so it reads as a story:
+  // label, build identity + result, score + best drive, Overtime, rarest find,
+  // and the replayable code (omitted for daily, which is a fixed assignment).
+  const shareLines = [
+    dailyRun ? `🏈 GRIDIRON · Daily ${dailyRun.date}` : '🏈 GRIDIRON',
+    `${buildTitle} — ${won ? `Champions ${SEASON_GAMES}/${SEASON_GAMES}` : `${gamesWon}/${SEASON_GAMES}`}`,
+    `Score ${score}${bestDrive ? ` · Best drive ${bestDrive}` : ''}`,
+  ];
+  if (run.stake > 1) shareLines.push(`League: ${stakeProfile(run.stake).name}`);
+  if (overtimeRound > 0) shareLines.push(`🔥 Overtime: Round ${overtimeRound} · ${overtimeScore} pts`);
+  if (rarest) shareLines.push(`Rarest: ${rarest.label} (${RARITY_META[rarest.rarity].label})`);
+  if (!dailyRun) shareLines.push(`Code ${runCode}`);
+  const shareText = shareLines.join('\n');
   const dailyLabel = dailyRun
     ? dailyRun.practice
       ? `Daily practice · ${dailyRun.date}`
@@ -54,8 +78,9 @@ export default function FootballRunSummary({ won, gamesWon, run, lostDrive, scor
       won,
       gamesWon,
       score,
-      identityTitle: identity.title,
+      identityTitle: buildTitle,
       debrief: debrief.takeaway,
+      ...(overtimeRound > 0 ? { overtimeRound, overtimeScore, overtimeBestDrive } : {}),
     });
     if (dailyRun && !dailyRun.practice) {
       saveGridironDailyResult({
@@ -67,13 +92,21 @@ export default function FootballRunSummary({ won, gamesWon, run, lostDrive, scor
         score,
       });
     }
-  }, [dailyRun, debrief.takeaway, gamesWon, identity.title, run.seed, run.team, score, won]);
+  }, [dailyRun, debrief.takeaway, gamesWon, buildTitle, run.seed, run.team, score, won, overtimeRound, overtimeScore, overtimeBestDrive]);
 
   function copyShare() {
     if (typeof navigator === 'undefined' || !navigator.clipboard) return;
     navigator.clipboard.writeText(shareText).then(() => {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1300);
+    }).catch(() => undefined);
+  }
+
+  function copyCode() {
+    if (typeof navigator === 'undefined' || !navigator.clipboard) return;
+    navigator.clipboard.writeText(runCode).then(() => {
+      setCodeCopied(true);
+      window.setTimeout(() => setCodeCopied(false), 1300);
     }).catch(() => undefined);
   }
 
@@ -101,19 +134,37 @@ export default function FootballRunSummary({ won, gamesWon, run, lostDrive, scor
       <div style={{ ...card(14), padding: '14px', marginTop: 12 }}>
         <div style={{ marginBottom: 12, padding: '10px 11px', background: FB.inset, border: `1px solid ${identity.level >= 2 ? '#5a4112' : FB.borderSoft}`, borderRadius: 10 }}>
           <div style={{ fontSize: 11, color: FB.textFaint, letterSpacing: 1.2, fontWeight: 900 }}>FINAL BUILD</div>
-          <div style={{ fontSize: 17, color: identity.level >= 2 ? FB.gold : FB.text, fontWeight: 900, marginTop: 2 }}>{identity.title}</div>
-          <div style={{ fontSize: 11.5, color: FB.textDim, lineHeight: 1.35, marginTop: 3 }}>{identity.detail}</div>
+          <div style={{ fontSize: 19, color: identity.level >= 2 ? FB.gold : FB.text, fontWeight: 900, marginTop: 2, lineHeight: 1.1 }}>{buildTitle}</div>
+          {run.stake > 1 && <span style={{ display: 'inline-block', marginTop: 5, fontSize: 11, fontWeight: 900, color: FB.gold, background: FB.goldSoft, border: '1px solid #5a4112', borderRadius: 999, padding: '2px 8px' }}>🏅 {stakeProfile(run.stake).name}</span>}
+          <div style={{ fontSize: 11.5, color: FB.textDim, lineHeight: 1.35, marginTop: 6 }}>{identity.detail}</div>
+          <div style={{ fontSize: 11.5, color: won ? FB.green : FB.textDim, fontWeight: 800, marginTop: 6 }}>{highlight}</div>
         </div>
+
+        {overtimeRound > 0 && (
+          <div style={{ marginBottom: 12, padding: '11px 12px', background: 'linear-gradient(160deg,#1f170a,#0e151d)', border: `1px solid #5a4112`, borderRadius: 10 }}>
+            <div style={{ fontSize: 11, color: FB.gold, letterSpacing: 1.2, fontWeight: 900 }}>🔥 OVERTIME CHASE</div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+              <Stat label="Reached" value={`R${overtimeRound}`} accent={FB.gold} />
+              <Stat label="OT score" value={`${overtimeScore}`} accent={FB.gold} />
+              <Stat label="Best drive" value={`${overtimeBestDrive}`} />
+            </div>
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 8 }}>
           <Stat label="Games won" value={`${gamesWon}/${SEASON_GAMES}`} accent={won ? FB.gold : FB.text} />
           <Stat label="Score" value={`${score}`} accent={FB.gold} />
-          <Stat label="Final deck" value={`${deck.size}`} />
+          <Stat label="Best drive" value={`${bestDrive}`} />
           <Stat label="Coordinators" value={`${run.coordinators.length}`} />
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 12 }}>
-          {run.coordinators.map((k) => (
-            <span key={k} style={{ fontSize: 11, fontWeight: 800, color: '#b7a7ff', background: '#140f24', border: '1px solid #2a2440', borderRadius: 7, padding: '4px 8px' }}>{FB_COORDINATORS[k].name}</span>
-          ))}
+          {run.coordinators.map((k) => {
+            const rm = RARITY_META[coordinatorTaxonomy(k).rarity];
+            return (
+              <span key={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 800, color: '#b7a7ff', background: '#140f24', border: '1px solid #2a2440', borderRadius: 7, padding: '4px 8px' }}>
+                <span style={{ width: 6, height: 6, borderRadius: 999, background: rm.color }} />{FB_COORDINATORS[k].name}
+              </span>
+            );
+          })}
           {(Object.entries(run.playbook) as [keyof typeof FB_CONCEPT_LABEL, number][]).filter(([, l]) => l > 0).map(([c, l]) => (
             <span key={c} style={{ fontSize: 11, fontWeight: 800, color: '#5fe0a0', background: '#0c2419', border: '1px solid #1f6b44', borderRadius: 7, padding: '4px 8px' }}>
               {FB_CONCEPT_LABEL[c] ?? c} <span style={{ color: FB.gold }}>Lv{l}</span>
@@ -169,11 +220,29 @@ export default function FootballRunSummary({ won, gamesWon, run, lostDrive, scor
           </div>
         )}
 
+        {!dailyRun && (
+          <div style={{ marginTop: 12, background: '#101720', border: `1px solid ${FB.borderSoft}`, borderRadius: 10, padding: '10px 11px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 11, color: FB.textFaint, letterSpacing: 1.1, fontWeight: 900 }}>RUN CODE</div>
+                <div className="fb-num" style={{ fontSize: 16, color: FB.gold, fontWeight: 900, marginTop: 2, letterSpacing: 1 }}>{runCode}</div>
+              </div>
+              <button onClick={copyCode} style={{ flexShrink: 0, background: FB.inset, border: `1px solid ${FB.borderSoft}`, color: codeCopied ? FB.green : FB.gold, borderRadius: 9, padding: '8px 12px', fontSize: 12, fontWeight: 900, cursor: 'pointer' }}>
+                {codeCopied ? '✓ Copied' : '📋 Copy code'}
+              </button>
+            </div>
+            <div style={{ fontSize: 11, color: FB.textDim, marginTop: 6, lineHeight: 1.35 }}>
+              Replay this exact run (team, weather, bosses, shelves) from Home → Play a Code.
+              {rarest && <> Rarest find: <span style={{ color: RARITY_META[rarest.rarity].color, fontWeight: 800 }}>{rarest.label} ({RARITY_META[rarest.rarity].label})</span>.</>}
+            </div>
+          </div>
+        )}
+
         <button
           onClick={copyShare}
-          style={{ width: '100%', marginTop: 12, background: FB.inset, border: `1px solid ${FB.borderSoft}`, borderRadius: 10, color: copied ? FB.green : FB.gold, fontSize: 11.5, fontWeight: 800, padding: '9px 10px', cursor: 'pointer', textAlign: 'left' }}
+          style={{ ...btnPrimary, width: '100%', marginTop: 12, ...(copied ? { background: FB.greenSoft, color: FB.green, boxShadow: 'none' } : {}) }}
         >
-          {copied ? 'Copied recap to clipboard' : `📋 ${shareText}`}
+          {copied ? '✓ Result copied' : '📋 Copy Result'}
         </button>
       </div>
 

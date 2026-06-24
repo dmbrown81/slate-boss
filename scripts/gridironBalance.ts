@@ -13,6 +13,7 @@ import {
 } from '../src/lib/footballRogue';
 import {
   createRun, gameTargets, generateRewards, isChampionship, SEASON_GAMES,
+  overtimeTargets, overtimeGameNumber,
   type FbRunState, type Reward,
 } from '../src/lib/footballRun';
 import { MAX_WAR_ROOM_PURCHASES, shopCredit } from '../src/lib/gridironEconomy';
@@ -46,7 +47,9 @@ const isDefSplash = (c: FbConceptKey) => c === 'pick_six' || c === 'takeaway' ||
 // to a lane wins, not whether the deck can be played as something else.
 interface GameResult { won: boolean; drive: number; bomb: boolean; keeper: boolean; takeawayGame: boolean; score: number; concepts: Record<string, number>; lossCause?: LossCause; }
 
-function playGame(run: FbRunState, targets: number[], environment: FbEnvironmentKey, bossScheme: FbBossSchemeKey, championship: boolean, rng: RNG, prefer?: Set<FbConceptKey>): GameResult {
+// `driveSink` (optional) collects each CLEARED drive's final score, for the
+// ceiling-distribution probe (⑤). It does not affect play.
+function playGame(run: FbRunState, targets: number[], environment: FbEnvironmentKey, bossScheme: FbBossSchemeKey, championship: boolean, rng: RNG, prefer?: Set<FbConceptKey>, driveSink?: number[]): GameResult {
   let full = shuffle([...run.deck], rng);
   let stacks = 0, ground = 0, qbRuns = 0, defPlays = 0, bomb = false, keeper = false, total = 0;
   const concepts: Record<string, number> = {};
@@ -95,6 +98,7 @@ function playGame(run: FbRunState, targets: number[], environment: FbEnvironment
       const lossCause: LossCause = executed === 0 ? 'dead_draw' : 'underpowered';
       return { won: false, drive: d + 1, bomb, keeper, takeawayGame: defPlays >= 2, score: total, concepts, lossCause };
     }
+    driveSink?.push(score);
     full = shuffle([...deck, ...hand, ...discard], rng);
   }
   return { won: true, drive: 3, bomb, keeper, takeawayGame: defPlays >= 2, score: total, concepts };
@@ -133,6 +137,8 @@ function synergyScore(rw: Reward, run: FbRunState, gameNumber: number): number {
   if (id === 'coord-franchise_qb') return 60 + early * 14 + (passLean ? 25 : 0);
   if (id === 'coord-improviser') return 60 + early * 14 + (mobileLean ? 25 : 0);
   if (id === 'coord-takeaway_machine') return 60 + early * 14 + (defLean ? 25 : 0);
+  if (id === 'coord-two_minute_drill') return 52 + early * 10 + (passLean ? 22 : 0); // Legendary pass build-around
+  if (id === 'coord-power_sweep') return 50 + early * 10 + (runLean ? 24 : 0);       // Rare ground Big-Play scaler
   if (id === 'coord-bell_cow') return 55 + early * 12 + (runLean ? 25 : 0);
   if (id === 'coord-air_raid') return 45 + early * 8 + (passLean ? 20 : 0);
   if (id === 'coord-read_option') return 45 + early * 8 + (mobileLean ? 20 : 0);
@@ -176,8 +182,8 @@ function synergyScore(rw: Reward, run: FbRunState, gameNumber: number): number {
 // lane's keystones regardless of what the deck currently leans, so the gauge
 // measures the lane as an intended OPTIMAL line.
 const LANE_COORD: Record<Lane, string[]> = {
-  pass: ['coord-franchise_qb', 'coord-air_raid', 'coord-west_coast'],
-  ground: ['coord-bell_cow', 'coord-salary_wizard'],
+  pass: ['coord-franchise_qb', 'coord-air_raid', 'coord-west_coast', 'coord-two_minute_drill'],
+  ground: ['coord-bell_cow', 'coord-salary_wizard', 'coord-power_sweep'],
   defense: ['coord-takeaway_machine', 'coord-pressure_chain', 'coord-ball_hawk'],
   mobile: ['coord-improviser', 'coord-read_option', 'coord-broken_play'],
 };
@@ -244,7 +250,7 @@ function runShop(run: FbRunState, policy: RewardPolicy, gameNumber: number, rng:
 }
 
 interface SeasonOut { champion: boolean; gamesWon: number; perGame: number[]; spent: number; lossCause?: LossCause; }
-function playSeason(policy: RewardPolicy, team: TeamArchetype = 'balanced', seasonIndex = 0, lane?: Lane): SeasonOut {
+function playSeason(policy: RewardPolicy, team: TeamArchetype = 'balanced', seasonIndex = 0, lane?: Lane, driveSink?: number[]): SeasonOut {
   const rng = mulberry32(stringSeed(`gridiron-balance:${BALANCE_SEED}:${team}:${policy}:${lane ?? '-'}:${seasonIndex}`));
   let run = createRun(team, Math.floor(rng() * 0x7fffffff));
   const prefer = lane ? new Set(LANE_CONCEPTS[lane]) : undefined;
@@ -253,7 +259,7 @@ function playSeason(policy: RewardPolicy, team: TeamArchetype = 'balanced', seas
   for (let g = 1; g <= SEASON_GAMES; g++) {
     const environment = randomEnvironment(rng);
     const bossScheme = randomBossScheme(g, isChampionship(g), rng);
-    const res = playGame(run, gameTargets(environment, g), environment, bossScheme, isChampionship(g), rng, prefer);
+    const res = playGame(run, gameTargets(environment, g), environment, bossScheme, isChampionship(g), rng, prefer, driveSink);
     if (!res.won) return { champion: false, gamesWon: g - 1, perGame, spent, lossCause: res.lossCause };
     perGame[g - 1] = 1;
     run = {
@@ -371,6 +377,68 @@ const laneVals = lanes.map((l) => laneChamp[l]);
 const laneSpread = Math.max(...laneVals) - Math.min(...laneVals);
 console.log(`\nLANE SPREAD (max − min commit champion): ${laneSpread.toFixed(1)} pts  ${verdict(20 - laneSpread, 10, 4)}  (want ≤ ~10)`);
 console.log(laneSpread <= 12 ? '✅ all four identity lanes are viable optimal lines' : '⚠️ a lane is not a real commit target — deepen it');
+console.log('──────────────────────────────────────────────\n');
+
+// ── (5) CEILING: drive-score distribution + Overtime reach ────────────────────
+// Balatro's drama comes from the gap between a normal score and a spike. We want
+// the CAMPAIGN distribution to stay tight (no single drive trivializing a game),
+// while OVERTIME — a separate post-championship mode — opens a real ceiling.
+function percentile(sortedAsc: number[], p: number): number {
+  if (sortedAsc.length === 0) return 0;
+  const idx = Math.min(sortedAsc.length - 1, Math.max(0, Math.floor(p * sortedAsc.length)));
+  return sortedAsc[idx];
+}
+
+// Replay a synergy season; if it wins the championship, keep playing Overtime
+// rounds (no shop, climbing targets) until it stalls. Returns furthest round and
+// the single biggest drive seen in OT — the visible ceiling.
+function playOvertimeReach(team: TeamArchetype, seasonIndex: number): { champion: boolean; round: number; best: number } {
+  const rng = mulberry32(stringSeed(`gridiron-balance:${BALANCE_SEED}:otreach:${team}:${seasonIndex}`));
+  let run = createRun(team, Math.floor(rng() * 0x7fffffff));
+  for (let g = 1; g <= SEASON_GAMES; g++) {
+    const env = randomEnvironment(rng);
+    const boss = randomBossScheme(g, isChampionship(g), rng);
+    const res = playGame(run, gameTargets(env, g), env, boss, isChampionship(g), rng);
+    if (!res.won) return { champion: false, round: 0, best: 0 };
+    run = { ...run, bombGames: run.bombGames + (res.bomb ? 1 : 0), keeperGames: run.keeperGames + (res.keeper ? 1 : 0), takeawayGames: run.takeawayGames + (res.takeawayGame ? 1 : 0) };
+    if (!isChampionship(g)) { run = { ...run, funds: run.funds + shopCredit(run.funds, g).total }; run = runShop(run, 'synergy', g, rng).run; }
+  }
+  let round = 1, best = 0;
+  while (round <= 60) {
+    const env = randomEnvironment(rng);
+    const boss = randomBossScheme(overtimeGameNumber(round), true, rng);
+    const sink: number[] = [];
+    const res = playGame(run, overtimeTargets(env, round), env, boss, true, rng, undefined, sink);
+    for (const s of sink) if (s > best) best = s;
+    if (!res.won) return { champion: true, round, best };
+    round++;
+  }
+  return { champion: true, round, best };
+}
+
+console.log('\n⑤ CEILING (campaign drive distribution + Overtime reach)');
+const campaignDrives: number[] = [];
+for (const team of TEAM_ARCHETYPES) for (let i = 0; i < N; i++) playSeason('synergy', team, i, undefined, campaignDrives);
+campaignDrives.sort((a, b) => a - b);
+const medDrive = percentile(campaignDrives, 0.5);
+const p99Drive = percentile(campaignDrives, 0.99);
+const driveRatio = p99Drive / Math.max(1, medDrive);
+console.log(`campaign cleared-drive scores: n=${campaignDrives.length}  median=${medDrive}  p99=${p99Drive}  p99/median=${driveRatio.toFixed(2)}×  ${verdict(8 - driveRatio, 5, 3)} (want tight: ≤ ~3×)`);
+
+const OT_N = Math.max(30, Math.floor(N / 8));
+const otReached: number[] = [];
+const otBest: number[] = [];
+for (const team of TEAM_ARCHETYPES) for (let i = 0; i < OT_N; i++) {
+  const r = playOvertimeReach(team, i);
+  if (r.champion) { otReached.push(r.round); otBest.push(r.best); }
+}
+otReached.sort((a, b) => a - b);
+otBest.sort((a, b) => a - b);
+const otMedRound = percentile(otReached, 0.5);
+const otMaxRound = otReached[otReached.length - 1] ?? 0;
+const otCeil = percentile(otBest, 0.99);
+console.log(`overtime reach (${otReached.length} champion builds): median=R${otMedRound}  max=R${otMaxRound}  | OT best-drive median=${percentile(otBest, 0.5)}  p99=${otCeil}`);
+console.log(`OT ceiling vs campaign median drive: ${(otCeil / Math.max(1, medDrive)).toFixed(1)}×  ${verdict(otCeil / Math.max(1, medDrive), 3, 1.8)} (want Overtime to open a real ceiling: ≥ ~3×)`);
 console.log('──────────────────────────────────────────────\n');
 
 if (process.env.GRIDIRON_DEBUG) {

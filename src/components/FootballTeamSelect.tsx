@@ -4,6 +4,7 @@ import {
   type TeamArchetype,
 } from '../lib/footballRogue';
 import { FB, btnPrimary, card, sectionLabel } from './footballStyles';
+import { STAKE_PROFILES, stakeProfile } from '../lib/footballRun';
 import { CoachPortrait } from './coachIdentity';
 import { TEAM_IDENTITY } from './teamIdentity';
 
@@ -13,8 +14,9 @@ const DIFF_COLOR: Record<'Easy' | 'Medium' | 'Hard', string> = {
   Hard: FB.red,
 };
 
-export default function FootballTeamSelect({ onStart, onHome }: { onStart: (team: TeamArchetype) => void; onHome: () => void }) {
+export default function FootballTeamSelect({ onStart, onHome }: { onStart: (team: TeamArchetype, stake: number) => void; onHome: () => void }) {
   const [picked, setPicked] = useState<TeamArchetype>('balanced');
+  const [stake, setStake] = useState(1);
   const p = TEAM_PROFILES[picked];
 
   return (
@@ -57,9 +59,31 @@ export default function FootballTeamSelect({ onStart, onHome }: { onStart: (team
         <Row label="Coordinators" value={p.startingCoordinators.map((k) => FB_COORDINATORS[k].name).join(' · ')} />
       </div>
 
+      {/* League Level (Stakes) — optional difficulty, default Pro */}
+      <div style={{ ...card(12), padding: '12px 14px', marginTop: 12 }}>
+        <div style={sectionLabel}>League Level</div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+          {STAKE_PROFILES.map((s) => (
+            <button
+              key={s.level}
+              onClick={() => setStake(s.level)}
+              style={{
+                flex: 1, padding: '9px 6px', borderRadius: 9, cursor: 'pointer',
+                background: stake === s.level ? FB.goldSoft : FB.inset,
+                border: `1.5px solid ${stake === s.level ? FB.gold : FB.borderSoft}`,
+                color: stake === s.level ? FB.gold : FB.textDim, fontSize: 12, fontWeight: 900,
+              }}
+            >
+              {s.name}
+            </button>
+          ))}
+        </div>
+        <div style={{ fontSize: 11.5, color: FB.textDim, marginTop: 7, lineHeight: 1.4 }}>{stakeProfile(stake).detail}</div>
+      </div>
+
       <div style={{ flex: 1, minHeight: 14 }} />
 
-      <button onClick={() => onStart(picked)} style={{ ...btnPrimary, width: '100%', fontSize: 16, padding: '15px 0', marginTop: 14 }}>
+      <button onClick={() => onStart(picked, stake)} style={{ ...btnPrimary, width: '100%', fontSize: 16, padding: '15px 0', marginTop: 14 }}>
         🏈 Start the season with {p.displayName}
       </button>
     </div>

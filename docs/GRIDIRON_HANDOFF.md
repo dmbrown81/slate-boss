@@ -163,6 +163,8 @@ recoverable from the `archive/classic-dfs-sim` branch and `classic-dfs-sim-2026-
 
 > **Presentation idea on the table (not yet built):** push Gridiron as a landscape/tablet-first app for more screen real estate (coordinators + Game Plans + hand side-by-side). The current layout is mobile-portrait single-column.
 
+**Scaling sprint (Balatro-depth pass — implemented):** run **codes** (team + seed, copy/paste to replay a run); reward **taxonomy** (rarity-as-label Common→Legendary, category, lane, role) with chips in the War Room and recap; **boss intro** reveal cards from Game 2 (name, flavor, what it punishes, counter); auto-generated **build titles** ("Volts Keeper Engine") in recap/share; an opt-in **Overtime** score-chase after the Championship (separate escalating curve, tracks furthest round / best drive / OT score; campaign balance untouched); an **effect-kind taxonomy** (base / execution / bigplay_mult / scaler / retrigger) + harness **ceiling probes** (campaign p99/median drive ≈ 3.2×, Overtime ceiling ≈ 9.7×); richer **Copy Result / Copy Seed** share cards; and a first **content wave** — 2 coordinators (Rare Power Sweep ground scaler, Legendary Two-Minute Drill retrigger build-around), 4 Film Tools incl. 2 risky **Trick Plays**, a Film Room Expansion Front Office upgrade, and a minimal off-by-default **League Level** (Stakes) ladder. Balance held: synergy champion **53.0%**, all five teams viable, lane spread tightened **11.1 → 9.0**. Deferred: dedicated booster packs, full compendium/unlocks.
+
 **Next, in order** (productized alpha, still design-flexible):
 1. **Film Tools** — one-use consumables, one slot, buyable in the War Room.
 2. **Boss intro card** — a short full-screen reveal (name, scheme, hint) before each match from Game 2.
