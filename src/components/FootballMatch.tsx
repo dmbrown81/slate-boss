@@ -170,6 +170,20 @@ export default function FootballMatch(props: MatchProps) {
   const reducedMotion = usePrefersReducedMotion();
   const quickMode = prefs.quickResults && !reducedMotion;
   const displayDriveScore = useCountUp(match.driveScore, reducedMotion, quickMode);
+  // The action bar is fixed at the bottom and its Play Preview grows when cards
+  // are selected. Measure it so the scroll container reserves exactly enough room
+  // to scroll the whole hand clear of it (otherwise the preview covers the last
+  // card groups — Defense / Kick). Falls back to a safe default before measure.
+  const actionBarRef = useRef<HTMLDivElement>(null);
+  const [actionBarHeight, setActionBarHeight] = useState(240);
+  useEffect(() => {
+    const el = actionBarRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(() => setActionBarHeight(el.offsetHeight));
+    ro.observe(el);
+    setActionBarHeight(el.offsetHeight);
+    return () => ro.disconnect();
+  }, [match.status]);
 
   function updatePrefs(patch: Partial<GridironPrefs>) {
     setPrefs((prev) => {
@@ -349,7 +363,7 @@ export default function FootballMatch(props: MatchProps) {
   }
 
   return (
-    <div style={{ minHeight: '100svh', padding: match.status === 'playing' ? '14px 14px 230px' : '14px 14px 26px', display: 'flex', flexDirection: 'column', gap: 11, position: 'relative' }}>
+    <div style={{ minHeight: '100svh', paddingTop: 14, paddingLeft: 14, paddingRight: 14, paddingBottom: match.status === 'playing' ? actionBarHeight + 24 : 26, display: 'flex', flexDirection: 'column', gap: 11, position: 'relative' }}>
       <div aria-live="polite" className="sr-only">{liveMessage}</div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <button onClick={props.onHome} aria-label="Return home" style={{ ...btnGhost, minWidth: 44, minHeight: 44 }}>←</button>
@@ -451,7 +465,7 @@ export default function FootballMatch(props: MatchProps) {
               <button onClick={() => setAskCoach(true)} style={{ ...btnGhost, marginTop: 9, color: teamId.primary, borderColor: `${teamId.primary}66` }}>Ask coach</button>
             </div>
           )}
-          <div className="fb-action-bar" style={{ position: 'fixed', left: '50%', bottom: 0, transform: 'translateX(-50%)', width: 'min(100%, 480px)', zIndex: 40, padding: '10px 14px calc(10px + env(safe-area-inset-bottom))', background: 'linear-gradient(180deg, rgba(9,12,17,0.15), #090c11 18%, #090c11 100%)', borderTop: `1px solid ${FB.borderSoft}`, boxShadow: '0 -16px 32px -24px rgba(0,0,0,0.9)' }}>
+          <div ref={actionBarRef} className="fb-action-bar" style={{ position: 'fixed', left: '50%', bottom: 0, transform: 'translateX(-50%)', width: 'min(100%, 480px)', zIndex: 40, padding: '10px 14px calc(10px + env(safe-area-inset-bottom))', background: 'linear-gradient(180deg, rgba(9,12,17,0.15), #090c11 18%, #090c11 100%)', borderTop: `1px solid ${FB.borderSoft}`, boxShadow: '0 -16px 32px -24px rgba(0,0,0,0.9)' }}>
             {laneCallout && (
               <div className="fb-pop" onClick={() => setLaneCallout(null)} style={{ marginBottom: 8, background: `${teamId.primary}1c`, border: `1px solid ${teamId.primary}`, borderRadius: 11, padding: '8px 11px', color: FB.text, fontSize: 12, fontWeight: 850, lineHeight: 1.3, cursor: 'pointer' }}>
                 {laneCallout}
