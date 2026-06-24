@@ -160,7 +160,9 @@ export default function FootballMatch(props: MatchProps) {
   const [buildOpen, setBuildOpen] = useState(() => gameNumber === 1);
   // Boss-intro reveal: a short full-screen card naming the defense before the
   // snap, from Game 2 on. Skippable on tap; it never gates play for long.
-  const [showBossIntro, setShowBossIntro] = useState(() => gameNumber >= 2 && bossScheme !== 'balanced');
+  // Suppressed in Overtime — the score-chase wants fast iteration, and the boss
+  // is already shown on the scoreboard each round.
+  const [showBossIntro, setShowBossIntro] = useState(() => gameNumber >= 2 && bossScheme !== 'balanced' && overtimeRound === 0);
   const [liveMessage, setLiveMessage] = useState('');
   const [prefs, setPrefs] = useState<GridironPrefs>(() => loadGridironPrefs());
   const [askCoach, setAskCoach] = useState(false);
