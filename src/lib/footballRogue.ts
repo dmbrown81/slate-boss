@@ -361,22 +361,22 @@ export interface FbMatchupEdge { base: number; exec: number; big: number; note: 
 export function presentationEdge(concept: FbConceptKey, p: FbDefensivePresentation): FbMatchupEdge | null {
   switch (concept) {
     case 'ground_pound':
-      if (p.box === 'light') return { base: 1.04, exec: 0, big: 1, note: 'Light box — the rock gashes' };
+      if (p.box === 'light') return { base: 1.08, exec: 0, big: 1, note: 'Light box — the rock gashes' };
       break;
     case 'designed_run':
-      if (p.box === 'light') return { base: 1.03, exec: 0, big: 1, note: 'Light box — clean run lane' };
+      if (p.box === 'light') return { base: 1.06, exec: 0, big: 1, note: 'Light box — clean run lane' };
       break;
     case 'qb_keeper':
-      if (p.box === 'light') return { base: 1, exec: 0.05, big: 1, note: 'Light box — keeper pulls clean' };
+      if (p.box === 'light') return { base: 1, exec: 0.1, big: 1, note: 'Light box — keeper pulls clean' };
       break;
     case 'double_stack_bomb':
-      if (p.shell === 'one-high') return { base: 1, exec: 0, big: 1.04, note: 'Single-high — shot over the top' };
+      if (p.shell === 'one-high') return { base: 1, exec: 0, big: 1.08, note: 'Single-high — shot over the top' };
       break;
     case 'shootout_stack':
-      if (p.shell === 'one-high') return { base: 1, exec: 0, big: 1.03, note: 'Single-high — shot over the top' };
+      if (p.shell === 'one-high') return { base: 1, exec: 0, big: 1.06, note: 'Single-high — shot over the top' };
       break;
     case 'checkdown':
-      if (p.pressure === 'blitz' || p.pressure === 'simulated') return { base: 1, exec: 0.05, big: 1, note: 'Pressure — hot throw underneath' };
+      if (p.pressure === 'blitz' || p.pressure === 'simulated') return { base: 1, exec: 0.1, big: 1, note: 'Pressure — hot throw underneath' };
       break;
   }
   return null;

@@ -25,6 +25,7 @@ import { mulberry32, stringSeed, type RNG } from '../src/lib/rng';
 // dead_draw% means losses feel like bad luck, not bad building — that's unfair,
 // not hard, and we fix it by tuning draw/ratios, not by lowering targets.
 type LossCause = 'dead_draw' | 'underpowered';
+type ReadMode = 'blind' | 'reveal';
 
 // The four identity lanes the meta should support as viable OPTIMAL lines.
 type Lane = 'pass' | 'ground' | 'defense' | 'mobile';
@@ -45,25 +46,26 @@ const isDefSplash = (c: FbConceptKey) => c === 'pick_six' || c === 'takeaway' ||
 // concept it can, only falling back off-lane when nothing in-lane is playable.
 // That is what makes the per-lane gauge honest — it measures whether COMMITTING
 // to a lane wins, not whether the deck can be played as something else.
-interface GameResult { won: boolean; drive: number; bomb: boolean; keeper: boolean; takeawayGame: boolean; score: number; concepts: Record<string, number>; lossCause?: LossCause; }
+interface GameResult { won: boolean; drive: number; bomb: boolean; keeper: boolean; takeawayGame: boolean; score: number; concepts: Record<string, number>; lossCause?: LossCause; readSpent: boolean; }
 
 // `driveSink` (optional) collects each CLEARED drive's final score, for the
 // ceiling-distribution probe (⑤). It does not affect play.
-function playGame(run: FbRunState, targets: number[], environment: FbEnvironmentKey, bossScheme: FbBossSchemeKey, championship: boolean, rng: RNG, prefer?: Set<FbConceptKey>, driveSink?: number[]): GameResult {
+function playGame(run: FbRunState, targets: number[], environment: FbEnvironmentKey, bossScheme: FbBossSchemeKey, championship: boolean, rng: RNG, prefer?: Set<FbConceptKey>, driveSink?: number[], readMode: ReadMode = 'blind'): GameResult {
   let full = shuffle([...run.deck], rng);
   // Disguise: the live look is set once per game from an independent stream, like
-  // the app, so card draws stay comparable when presentation logic changes. Pilots
-  // play blind (they don't read it), making this a conservative lower bound on
-  // what a revealing player gets.
+  // the app, so card draws stay comparable when presentation logic changes.
   const presentation = livePresentation(
     bossScheme,
     mulberry32(stringSeed(`gridiron-balance-look:${run.seed}:${run.team}:g${run.gameNumber}:${bossScheme}`)),
   );
+  const blindPresentation = { shell: 'base', box: 'neutral', pressure: 'four-man', leverage: 'soft' } as const;
+  const evalPresentation = readMode === 'reveal' ? presentation : blindPresentation;
+  const readSpent = readMode === 'reveal' && bossScheme !== 'balanced';
   let stacks = 0, ground = 0, qbRuns = 0, defPlays = 0, bomb = false, keeper = false, total = 0;
   const concepts: Record<string, number> = {};
   for (let d = 0; d < DRIVES_PER_MATCH; d++) {
     let hand = full.slice(0, HAND_SIZE); let deck = full.slice(HAND_SIZE); let discard: FbCard[] = [];
-    let score = 0, budget = DRIVE_BUDGET[d], aud = AUDIBLES_PER_DRIVE, executed = 0;
+    let score = 0, budget = DRIVE_BUDGET[d], aud = AUDIBLES_PER_DRIVE - (readSpent && d === 0 ? 1 : 0), executed = 0;
     const counts: Partial<Record<FbConceptKey, number>> = {}; let guard = 0;
     while (score < targets[d] && guard++ < 60) {
       const combos: number[][] = [];
@@ -73,12 +75,15 @@ function playGame(run: FbRunState, targets: number[], environment: FbEnvironment
       let bestInLane: typeof best = null;
       for (const cmb of combos) {
         const cards = cmb.map((i) => hand[i]); const cost = cards.reduce((s, c) => s + cardCost(c), 0); if (cost > budget) continue;
-        const res = scoreFootballPlay(cards, { coordinators: run.coordinators, environment, bossScheme, presentation, playbook: run.playbook, bombGames: run.bombGames, keeperGames: run.keeperGames, takeawayGames: run.takeawayGames, stacksThisMatch: stacks, groundBonusThisMatch: ground, qbRunsThisMatch: qbRuns, defPlaysThisMatch: defPlays, conceptCountsThisDrive: counts, driveIndex: d, championship });
-        if (!res.valid) continue;
-        const metric = res.total / cost;
-        const cand = { ids: cmb, metric, total: res.total, cost: res.cost, concept: res.concept, qbRun: cards.some((c) => c.action === 'scramble' || c.action === 'qb_sneak') };
+        const evalRes = scoreFootballPlay(cards, { coordinators: run.coordinators, environment, bossScheme, presentation: evalPresentation, playbook: run.playbook, bombGames: run.bombGames, keeperGames: run.keeperGames, takeawayGames: run.takeawayGames, stacksThisMatch: stacks, groundBonusThisMatch: ground, qbRunsThisMatch: qbRuns, defPlaysThisMatch: defPlays, conceptCountsThisDrive: counts, driveIndex: d, championship });
+        if (!evalRes.valid) continue;
+        const actualRes = readMode === 'reveal'
+          ? evalRes
+          : scoreFootballPlay(cards, { coordinators: run.coordinators, environment, bossScheme, presentation, playbook: run.playbook, bombGames: run.bombGames, keeperGames: run.keeperGames, takeawayGames: run.takeawayGames, stacksThisMatch: stacks, groundBonusThisMatch: ground, qbRunsThisMatch: qbRuns, defPlaysThisMatch: defPlays, conceptCountsThisDrive: counts, driveIndex: d, championship });
+        const metric = evalRes.total / cost;
+        const cand = { ids: cmb, metric, total: actualRes.total, cost: actualRes.cost, concept: actualRes.concept, qbRun: cards.some((c) => c.action === 'scramble' || c.action === 'qb_sneak') };
         if (!best || metric > best.metric) best = cand;
-        if (prefer?.has(res.concept) && (!bestInLane || metric > bestInLane.metric)) bestInLane = cand;
+        if (prefer?.has(evalRes.concept) && (!bestInLane || metric > bestInLane.metric)) bestInLane = cand;
       }
       // Stay on identity, but don't refuse a vastly better off-lane play (a real
       // committed player still kicks the field goal / takes the open look). The
@@ -104,12 +109,12 @@ function playGame(run: FbRunState, targets: number[], environment: FbEnvironment
       // short. The greedy pilot always plays its best available concept, so a
       // dead_draw is genuine draw-screw, not stubbornness.
       const lossCause: LossCause = executed === 0 ? 'dead_draw' : 'underpowered';
-      return { won: false, drive: d + 1, bomb, keeper, takeawayGame: defPlays >= 2, score: total, concepts, lossCause };
+      return { won: false, drive: d + 1, bomb, keeper, takeawayGame: defPlays >= 2, score: total, concepts, lossCause, readSpent };
     }
     driveSink?.push(score);
     full = shuffle([...deck, ...hand, ...discard], rng);
   }
-  return { won: true, drive: 3, bomb, keeper, takeawayGame: defPlays >= 2, score: total, concepts };
+  return { won: true, drive: 3, bomb, keeper, takeawayGame: defPlays >= 2, score: total, concepts, readSpent };
 }
 
 // ── Reward policies ──────────────────────────────────────────────────────────
@@ -257,18 +262,20 @@ function runShop(run: FbRunState, policy: RewardPolicy, gameNumber: number, rng:
   return { run: r, spent };
 }
 
-interface SeasonOut { champion: boolean; gamesWon: number; perGame: number[]; spent: number; lossCause?: LossCause; }
-function playSeason(policy: RewardPolicy, team: TeamArchetype = 'balanced', seasonIndex = 0, lane?: Lane, driveSink?: number[]): SeasonOut {
+interface SeasonOut { champion: boolean; gamesWon: number; perGame: number[]; spent: number; lossCause?: LossCause; score: number; reads: number; }
+function playSeason(policy: RewardPolicy, team: TeamArchetype = 'balanced', seasonIndex = 0, lane?: Lane, driveSink?: number[], readMode: ReadMode = 'blind'): SeasonOut {
   const rng = mulberry32(stringSeed(`gridiron-balance:${BALANCE_SEED}:${team}:${policy}:${lane ?? '-'}:${seasonIndex}`));
   let run = createRun(team, Math.floor(rng() * 0x7fffffff));
   const prefer = lane ? new Set(LANE_CONCEPTS[lane]) : undefined;
   const perGame = [0, 0, 0, 0, 0];
-  let spent = 0;
+  let spent = 0, score = 0, reads = 0;
   for (let g = 1; g <= SEASON_GAMES; g++) {
     const environment = randomEnvironment(rng);
     const bossScheme = randomBossScheme(g, isChampionship(g), rng);
-    const res = playGame(run, gameTargets(environment, g), environment, bossScheme, isChampionship(g), rng, prefer, driveSink);
-    if (!res.won) return { champion: false, gamesWon: g - 1, perGame, spent, lossCause: res.lossCause };
+    const res = playGame(run, gameTargets(environment, g), environment, bossScheme, isChampionship(g), rng, prefer, driveSink, readMode);
+    score += res.score;
+    reads += res.readSpent ? 1 : 0;
+    if (!res.won) return { champion: false, gamesWon: g - 1, perGame, spent, lossCause: res.lossCause, score, reads };
     perGame[g - 1] = 1;
     run = {
       ...run,
@@ -283,7 +290,7 @@ function playSeason(policy: RewardPolicy, team: TeamArchetype = 'balanced', seas
       run = shopped.run; spent += shopped.spent;
     }
   }
-  return { champion: true, gamesWon: SEASON_GAMES, perGame, spent };
+  return { champion: true, gamesWon: SEASON_GAMES, perGame, spent, score, reads };
 }
 
 // ── Run ──────────────────────────────────────────────────────────────────────
@@ -310,6 +317,32 @@ const buildGap = Math.max(champ.synergy, champ.naive) - champ.none;
 console.log(`\nBUILD GAP   (best − no-rewards):     ${buildGap.toFixed(1)} pts  ${verdict(buildGap, 30, 18)}`);
 console.log(`REWARD GAP  (synergy − random pick): ${rewardGap.toFixed(1)} pts  ${verdict(rewardGap, 25, 12)}`);
 console.log(buildGap >= 30 && rewardGap >= 12 ? '✅ the roguelike meta-layer is decisive' : '❌ meta-layer too weak');
+
+// ── (1b) READ VALUE: does paying for the look change decisions enough to matter? ─
+// Blind = current hidden-look behavior: choose from a scheme-only / neutral-look
+// estimate, then resolve against the live hidden look. Reveal = spend one audible
+// in boss games to choose with the exact live look.
+console.log('\n①b DEFENSIVE READ VALUE (Ironhawks / synergy rewards)');
+console.log('pilot        | champion | avgGW | avgScore | avgReads');
+console.log('-------------|----------|-------|----------|---------');
+const readDiag: Record<ReadMode, { champion: number; avgGW: number; avgScore: number; avgReads: number }> = {
+  blind: { champion: 0, avgGW: 0, avgScore: 0, avgReads: 0 },
+  reveal: { champion: 0, avgGW: 0, avgScore: 0, avgReads: 0 },
+};
+for (const mode of ['blind', 'reveal'] as ReadMode[]) {
+  let wins = 0, gw = 0, score = 0, reads = 0;
+  for (let i = 0; i < N; i++) {
+    const s = playSeason('synergy', 'balanced', i, undefined, undefined, mode);
+    if (s.champion) wins++;
+    gw += s.gamesWon; score += s.score; reads += s.reads;
+  }
+  readDiag[mode] = { champion: (100 * wins) / N, avgGW: gw / N, avgScore: score / N, avgReads: reads / N };
+  console.log(`${(mode === 'blind' ? 'blind' : 'reveal-aware').padEnd(12)} | ${readDiag[mode].champion.toFixed(1).padStart(6)}%  | ${readDiag[mode].avgGW.toFixed(2)} | ${readDiag[mode].avgScore.toFixed(0).padStart(8)} | ${readDiag[mode].avgReads.toFixed(2).padStart(7)}`);
+}
+const readChampGap = readDiag.reveal.champion - readDiag.blind.champion;
+const readScoreGap = readDiag.reveal.avgScore - readDiag.blind.avgScore;
+console.log(`\nREAD LIFT   (reveal − blind champion): ${readChampGap.toFixed(1)} pts`);
+console.log(`SCORE LIFT  (reveal − blind avgScore): ${readScoreGap >= 0 ? '+' : ''}${readScoreGap.toFixed(0)} pts`);
 
 // ── (2) PER-TEAM VIABILITY: is the meta solved, or are ≥3 lines competitive? ──
 // Each team is piloted by a skilled (synergy) policy committing to its own deck.

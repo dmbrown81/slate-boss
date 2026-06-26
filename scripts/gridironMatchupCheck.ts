@@ -97,6 +97,31 @@ function scoreWith(cards: FbCard[], scheme: FbBossSchemeKey, pres: FbDefensivePr
   return scoreFootballPlay(cards, ctx);
 }
 const sign = (n: number) => (n > 0 ? 'good' : n < 0 ? 'bad' : 'neutral');
+const pct = (n: number, denom: number) => `${n >= 0 ? '+' : ''}${((100 * n) / Math.max(1, denom)).toFixed(1)}%`;
+
+console.log('\nIsolated hidden-look proof (boss scheme held constant):');
+console.log('concept           | scheme   | boss Δ vs base | primary look-only | alt look-only | hidden swing');
+console.log('------------------|----------|----------------|-------------------|---------------|-------------');
+let lookOnlyProofs = 0;
+for (const { hand } of reps) {
+  const base = scoreWith(hand, 'balanced', NEUTRAL);
+  const concept = base.concept;
+  for (const scheme of schemes) {
+    const schemeOnly = scoreWith(hand, scheme, NEUTRAL);
+    const [primary, alt] = presentationsForScheme(scheme);
+    const primaryScore = scoreWith(hand, scheme, primary);
+    const altScore = scoreWith(hand, scheme, alt);
+    const bossDelta = schemeOnly.total - base.total;
+    const primaryLookDelta = primaryScore.total - schemeOnly.total;
+    const altLookDelta = altScore.total - schemeOnly.total;
+    const swing = primaryScore.total - altScore.total;
+    if (primaryLookDelta !== 0 || altLookDelta !== 0 || swing !== 0) {
+      lookOnlyProofs += 1;
+      console.log(`${concept.padEnd(17)} | ${FB_BOSS_SCHEMES[scheme].shortLabel.padEnd(8)} | ${`${bossDelta >= 0 ? '+' : ''}${bossDelta} (${pct(bossDelta, base.total)})`.padEnd(14)} | ${`${primaryLookDelta >= 0 ? '+' : ''}${primaryLookDelta} (${pct(primaryLookDelta, schemeOnly.total)})`.padEnd(17)} | ${`${altLookDelta >= 0 ? '+' : ''}${altLookDelta} (${pct(altLookDelta, schemeOnly.total)})`.padEnd(13)} | ${swing >= 0 ? '+' : ''}${swing} (${pct(swing, altScore.total)})`);
+    }
+  }
+}
+assert('look-only deltas are isolated from boss deltas', lookOnlyProofs > 0, `${lookOnlyProofs} non-zero look-only rows printed`);
 
 console.log('\nDossier ↔ engine consistency (pre-reveal tendency + each revealed look):');
 for (const { hand } of reps) {

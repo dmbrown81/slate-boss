@@ -3,7 +3,7 @@ import {
   buildStarterDeck, scoreFootballPlay, shuffle, cardCost,
   HAND_SIZE, DRIVES_PER_MATCH, AUDIBLES_PER_DRIVE, MAX_PLAY_CARDS, DRIVE_BUDGET,
   FB_BOSS_SCHEMES, FB_COORDINATORS, FB_ENVIRONMENTS, FB_CONCEPT_LABEL, FB_CARD_MODIFIERS, TEAM_PROFILES,
-  livePresentation, SHELL_LABEL, BOX_LABEL, PRESSURE_LABEL,
+  livePresentation, presentationForScheme, SHELL_LABEL, BOX_LABEL, PRESSURE_LABEL,
   type FbBossSchemeKey, type FbCard, type FbCoordinatorKey, type FbEnvironmentKey, type FbPlaybook, type FbPlayResult, type FbConceptKey, type TeamArchetype, type FbDefensivePresentation,
 } from '../lib/footballRogue';
 import { mulberry32, stringSeed, type RNG } from '../lib/rng';
@@ -204,7 +204,7 @@ export default function FootballMatch(props: MatchProps) {
     () => selected.map((id) => match.hand.find((c) => c.id === id)).filter(Boolean) as FbCard[],
     [selected, match.hand],
   );
-  const scoreCtx = useMemo(() => ({
+  const actualScoreCtx = useMemo(() => ({
     coordinators, environment, bossScheme, presentation: livePres, playbook, bombGames, keeperGames, takeawayGames,
     stacksThisMatch: match.stacksThisMatch,
     groundBonusThisMatch: match.groundBonusThisMatch,
@@ -214,7 +214,12 @@ export default function FootballMatch(props: MatchProps) {
     driveIndex: match.driveIndex,
     championship,
   }), [coordinators, environment, bossScheme, livePres, playbook, bombGames, keeperGames, takeawayGames, match.stacksThisMatch, match.groundBonusThisMatch, match.qbRunsThisMatch, match.defPlaysThisMatch, match.conceptCountsThisDrive, match.driveIndex, championship]);
-  const preview = useMemo(() => scoreFootballPlay(selectedCards, scoreCtx), [selectedCards, scoreCtx]);
+  const previewPresentation = lookRevealed ? livePres : presentationForScheme('balanced');
+  const previewScoreCtx = useMemo(() => ({
+    ...actualScoreCtx,
+    presentation: previewPresentation,
+  }), [actualScoreCtx, previewPresentation]);
+  const preview = useMemo(() => scoreFootballPlay(selectedCards, previewScoreCtx), [selectedCards, previewScoreCtx]);
 
   const env = FB_ENVIRONMENTS[environment];
   const boss = FB_BOSS_SCHEMES[bossScheme];
@@ -293,7 +298,7 @@ export default function FootballMatch(props: MatchProps) {
 
   function runPlay() {
     if (match.status !== 'playing' || selectedCards.length === 0 || overBudget) return;
-    const result = scoreFootballPlay(selectedCards, scoreCtx);
+    const result = scoreFootballPlay(selectedCards, actualScoreCtx);
     setScoreBeat(0);
     const projectedDriveScore = match.driveScore + result.total;
     const projectedBudget = match.budgetLeft - result.cost;
@@ -488,7 +493,7 @@ export default function FootballMatch(props: MatchProps) {
                 {laneCallout}
               </div>
             )}
-            <PlayPreview result={preview} count={selectedCards.length} remaining={remaining} target={target} driveScore={match.driveScore} budgetLeft={match.budgetLeft} overBudget={overBudget} coachActive={Boolean(coach)} lastPlay={match.lastPlay} scoreBeat={visibleScoreBeat} showQuality={gameNumber === 1} showMath={mathVisible} onToggleMath={gameNumber >= 2 ? () => updatePrefs({ showMath: !prefs.showMath }) : undefined} bossScheme={bossScheme} revealedPresentation={lookRevealed ? livePres : undefined} />
+            <PlayPreview result={preview} count={selectedCards.length} remaining={remaining} target={target} driveScore={match.driveScore} budgetLeft={match.budgetLeft} overBudget={overBudget} coachActive={Boolean(coach)} lastPlay={match.lastPlay} scoreBeat={visibleScoreBeat} showQuality={gameNumber === 1} showMath={mathVisible} onToggleMath={gameNumber >= 2 ? () => updatePrefs({ showMath: !prefs.showMath }) : undefined} bossScheme={bossScheme} hiddenLook={!lookRevealed && bossScheme !== 'balanced'} revealedPresentation={lookRevealed ? livePres : undefined} />
             <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
               <button onClick={audible} disabled={selectedCards.length === 0 || match.audiblesLeft <= 0}
                 aria-label={`Audible ${selectedCards.length} selected card${selectedCards.length === 1 ? '' : 's'}. ${match.audiblesLeft} audibles left.`}
@@ -862,6 +867,7 @@ function PlayPreview({
   showMath,
   onToggleMath,
   bossScheme,
+  hiddenLook,
   revealedPresentation,
 }: {
   result: FbPlayResult;
@@ -878,6 +884,7 @@ function PlayPreview({
   showMath: boolean;
   onToggleMath?: () => void;
   bossScheme: FbBossSchemeKey;
+  hiddenLook: boolean;
   revealedPresentation?: FbDefensivePresentation;
 }) {
   const [dossierOpen, setDossierOpen] = useState(false);
@@ -925,6 +932,11 @@ function PlayPreview({
               {onToggleMath && (
                 <button onClick={onToggleMath} aria-label="Show the scoring math" style={{ background: 'transparent', border: 'none', color: FB.gold, fontSize: 11, fontWeight: 900, cursor: 'pointer' }}>Show math ▸</button>
               )}
+            </div>
+          )}
+          {hiddenLook && (
+            <div style={{ marginBottom: 7, background: '#151313', border: `1px solid ${FB.gold}55`, borderRadius: 8, padding: '6px 8px', color: FB.gold, fontSize: 11.5, fontWeight: 850 }}>
+              Hidden look — preview uses scheme-only estimate. Read to see exact matchup.
             </div>
           )}
           <div style={{ display: 'flex', gap: 6, marginBottom: result.ledger.length > 2 ? 8 : 0 }}>
