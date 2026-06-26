@@ -98,6 +98,11 @@ const bossIntroMatch = renderToString(
   />,
 );
 assert(bossIntroMatch.includes('SCOUTING REPORT'), 'FootballMatch should reveal the boss scouting report from Game 2.');
+assert(bossIntroMatch.includes('DISGUISED'), 'FootballMatch should hide the boss-game pre-snap look before a read.');
+assert(bossIntroMatch.includes('? shell'), 'FootballMatch should hide the shell before a read.');
+assert(bossIntroMatch.includes('? box'), 'FootballMatch should hide the box before a read.');
+assert(bossIntroMatch.includes('? rush'), 'FootballMatch should hide the pressure before a read.');
+assert(bossIntroMatch.includes('Read · 1 aud'), 'FootballMatch should offer a one-audible defensive read.');
 
 // Overtime round renders with Overtime chrome (separate score-chase mode).
 const overtimeMatch = renderToString(

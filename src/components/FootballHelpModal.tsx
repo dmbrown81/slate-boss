@@ -120,7 +120,8 @@ export default function FootballHelpModal({ onClose, prefs, onPrefsChange }: Pro
 
         <Block title="Audibles">
           {AUDIBLES_PER_DRIVE} per drive. Select the cards you don't want and audible to throw them back and
-          redraw — no budget spent. Use them to dig for the pieces of a stack.
+          redraw — no budget spent. In boss games, a defensive Read also spends one audible to reveal the
+          disguised pre-snap look. Use them to dig for your concept or buy the information before a big call.
         </Block>
 
         <Block title="Play concepts">
@@ -219,7 +220,8 @@ export default function FootballHelpModal({ onClose, prefs, onPrefsChange }: Pro
 
         <Block title="Boss defenses">
           Later games add an opposing scheme that counters a style of play. You can see it on the scoreboard
-          before calling a play. Bosses do not make a build useless, but they force a supporting plan.
+          before calling a play. Bosses disguise the exact shell, box and rush until you spend a Read. Bosses
+          do not make a build useless, but they force a supporting plan.
           <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 8 }}>
             {(Object.keys(FB_BOSS_SCHEMES) as FbBossSchemeKey[]).map((k) => (
               <div key={k} style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>

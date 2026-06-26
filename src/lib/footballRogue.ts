@@ -278,11 +278,116 @@ export function randomBossScheme(gameNumber: number, championship = false, rng: 
   return pool[Math.floor(rng() * pool.length)];
 }
 
+// ── Defensive presentation (the pre-snap look you read) ──────────────────────
+// The first slice of "reading football changes the score". Each boss scheme maps
+// to concrete pre-snap LOOKS across four axes; the matchup edge (in
+// scoreFootballPlay) keys on these axes, not on the scheme name — so the player
+// is reacting to the alignment, the way a real quarterback does.
+//
+//   shell     deep-safety structure: how the ball over the top is defended
+//   box       defenders in the run fit: who wins the numbers game up front
+//   pressure  rush intent: four-man rush, an extra blitzer, or a disguise
+//   leverage  how corners play the receivers (presentation-only for now)
+export type FbShell = 'base' | 'one-high' | 'two-high' | 'zero';
+export type FbBox = 'light' | 'neutral' | 'loaded';
+export type FbPressure = 'four-man' | 'blitz' | 'simulated';
+export type FbLeverage = 'soft' | 'press' | 'inside' | 'outside';
+
+export interface FbDefensivePresentation {
+  shell: FbShell;
+  box: FbBox;
+  pressure: FbPressure;
+  leverage: FbLeverage;
+}
+
+export const SHELL_LABEL: Record<FbShell, string> = {
+  base: 'Balanced shell', 'one-high': 'Single-high', 'two-high': 'Two-high', zero: 'Cover 0',
+};
+export const BOX_LABEL: Record<FbBox, string> = {
+  light: 'Light box', neutral: 'Even box', loaded: 'Loaded box',
+};
+export const PRESSURE_LABEL: Record<FbPressure, string> = {
+  'four-man': 'Four-man rush', blitz: 'Blitz', simulated: 'Simulated pressure',
+};
+
+// Boss scheme → pre-snap look. `balanced` sits on the neutral bucket of every
+// axis the matchup edge reads (base shell / even box / four-man), so a base
+// defense applies NO matchup edge — Game 1 stays exactly as tuned.
+export const PRESENTATION_BY_SCHEME: Record<FbBossSchemeKey, FbDefensivePresentation> = {
+  balanced:       { shell: 'base',     box: 'neutral', pressure: 'four-man',  leverage: 'soft' },
+  no_fly_zone:    { shell: 'two-high', box: 'light',   pressure: 'four-man',  leverage: 'soft' },
+  stacked_box:    { shell: 'one-high', box: 'loaded',  pressure: 'four-man',  leverage: 'press' },
+  turnover_drill: { shell: 'two-high', box: 'neutral', pressure: 'simulated', leverage: 'inside' },
+  adaptive_dc:    { shell: 'one-high', box: 'neutral', pressure: 'blitz',     leverage: 'press' },
+};
+
+export function presentationForScheme(scheme: FbBossSchemeKey): FbDefensivePresentation {
+  return PRESENTATION_BY_SCHEME[scheme] ?? PRESENTATION_BY_SCHEME.balanced;
+}
+
+// ── Disguise: two possible looks per boss, hidden until revealed ──────────────
+// Each boss can show one of two pre-snap looks, chosen by seed per game. The ALT
+// look always REMOVES a favorable matchup edge relative to the primary look (it
+// shifts off the axis presentationEdge rewards) — it NEVER adds one. So hiding the
+// look can only cost the player an edge they hoped for; disguise adds a read, not
+// raw power (and tends to OFFSET the matchup-edge lift rather than compound it).
+// `balanced` does not disguise — the base defense is an honest teaching look.
+export const PRESENTATION_ALT_BY_SCHEME: Record<FbBossSchemeKey, FbDefensivePresentation> = {
+  balanced:       { shell: 'base',     box: 'neutral', pressure: 'four-man', leverage: 'soft' },
+  no_fly_zone:    { shell: 'two-high', box: 'neutral', pressure: 'four-man', leverage: 'soft' },   // box not light → no run edge
+  stacked_box:    { shell: 'two-high', box: 'loaded',  pressure: 'four-man', leverage: 'press' },  // two-high → no deep-stack edge
+  turnover_drill: { shell: 'two-high', box: 'neutral', pressure: 'four-man', leverage: 'inside' }, // four-man → no checkdown edge
+  adaptive_dc:    { shell: 'two-high', box: 'neutral', pressure: 'four-man', leverage: 'press' },  // two-high + four-man → no edge
+};
+
+export function presentationsForScheme(scheme: FbBossSchemeKey): [FbDefensivePresentation, FbDefensivePresentation] {
+  return [PRESENTATION_BY_SCHEME[scheme] ?? PRESENTATION_BY_SCHEME.balanced, PRESENTATION_ALT_BY_SCHEME[scheme] ?? PRESENTATION_BY_SCHEME.balanced];
+}
+
+// The actual look in play this game (deterministic from whatever rng you feed it).
+export function livePresentation(scheme: FbBossSchemeKey, rng: RNG = Math.random): FbDefensivePresentation {
+  const [primary, alt] = presentationsForScheme(scheme);
+  return rng() < 0.5 ? primary : alt;
+}
+
+// The matchup matrix — FAVORABLE-look bonuses only. When the defense's pre-snap
+// look is wrong for the concept you called, the same hand scores better. The
+// "weak vs" side (a hand scoring worse vs a counter look) already lives in the
+// boss-scheme block below and stays untouched, so this addition is purely
+// additive to the validated engine. Numbers are deliberately conservative and
+// tuned against the balance harness. Returns null when there is no edge.
+export interface FbMatchupEdge { base: number; exec: number; big: number; note: string; }
+
+export function presentationEdge(concept: FbConceptKey, p: FbDefensivePresentation): FbMatchupEdge | null {
+  switch (concept) {
+    case 'ground_pound':
+      if (p.box === 'light') return { base: 1.04, exec: 0, big: 1, note: 'Light box — the rock gashes' };
+      break;
+    case 'designed_run':
+      if (p.box === 'light') return { base: 1.03, exec: 0, big: 1, note: 'Light box — clean run lane' };
+      break;
+    case 'qb_keeper':
+      if (p.box === 'light') return { base: 1, exec: 0.05, big: 1, note: 'Light box — keeper pulls clean' };
+      break;
+    case 'double_stack_bomb':
+      if (p.shell === 'one-high') return { base: 1, exec: 0, big: 1.04, note: 'Single-high — shot over the top' };
+      break;
+    case 'shootout_stack':
+      if (p.shell === 'one-high') return { base: 1, exec: 0, big: 1.03, note: 'Single-high — shot over the top' };
+      break;
+    case 'checkdown':
+      if (p.pressure === 'blitz' || p.pressure === 'simulated') return { base: 1, exec: 0.05, big: 1, note: 'Pressure — hot throw underneath' };
+      break;
+  }
+  return null;
+}
+
 // ── Scoring context + result ────────────────────────────────────────────────
 export interface FbScoreContext {
   coordinators: FbCoordinatorKey[];
   environment: FbEnvironmentKey;
   bossScheme?: FbBossSchemeKey;
+  presentation?: FbDefensivePresentation;        // pre-snap look (defaults to the scheme's mapping)
   stacksThisMatch: number;                       // for Air Raid scaling
   groundBonusThisMatch: number;                  // accumulated Bell Cow base
   qbRunsThisMatch?: number;                       // QB runs already broken (Read-Option ramp)
@@ -296,7 +401,7 @@ export interface FbScoreContext {
   championship?: boolean;                        // championship game (Clutch trait)
 }
 
-export type FbLedgerKind = 'base' | 'execution' | 'big_play' | 'coordinator' | 'environment' | 'boss' | 'spam' | 'final';
+export type FbLedgerKind = 'base' | 'execution' | 'big_play' | 'coordinator' | 'environment' | 'boss' | 'matchup' | 'spam' | 'final';
 export type FbScoreStage = 'cards' | 'concept' | 'coordinator' | 'playbook' | 'environment' | 'boss' | 'adjustment' | 'final';
 export type FbScoreChannel = 'base' | 'execution' | 'big_play' | 'cost' | 'budget' | 'draw';
 export type FbScoreOperation = 'add' | 'multiply' | 'discount' | 'penalty' | 'set';
@@ -905,6 +1010,20 @@ export function scoreFootballPlay(cards: FbCard[], ctx: FbScoreContext): FbPlayR
     } else if (concept !== 'busted_play' && kicks.length === 0) {
       execution += 0.1;
       ledger.push({ id: 'boss', kind: 'boss', stage: 'boss', channel: 'execution', operation: 'add', value: 0.1, label: FB_BOSS_SCHEMES.turnover_drill.label, detail: 'Clean offense — Execution +0.10.' });
+    }
+  }
+
+  // ── Matchup edge (favorable pre-snap look) ──
+  // The new gameplay hook: the same hand scores BETTER when the defense's look is
+  // wrong for it. Reads the presentation (defaults to the scheme's mapping). The
+  // "weak vs" side is the boss block above; this is the additive "strong vs" side.
+  if (concept !== 'busted_play') {
+    const pres = ctx.presentation ?? presentationForScheme(scheme);
+    const edge = presentationEdge(concept, pres);
+    if (edge) {
+      if (edge.base !== 1) { base *= edge.base; ledger.push({ id: 'matchup', kind: 'matchup', stage: 'boss', channel: 'base', operation: 'multiply', value: edge.base, label: 'Pre-Snap Edge', detail: `${edge.note} — Base ×${edge.base}.` }); }
+      if (edge.exec) { execution += edge.exec; ledger.push({ id: 'matchup', kind: 'matchup', stage: 'boss', channel: 'execution', operation: 'add', value: edge.exec, label: 'Pre-Snap Edge', detail: `${edge.note} — Execution +${edge.exec}.` }); }
+      if (edge.big !== 1) { bigPlay *= edge.big; ledger.push({ id: 'matchup', kind: 'matchup', stage: 'boss', channel: 'big_play', operation: 'multiply', value: edge.big, label: 'Pre-Snap Edge', detail: `${edge.note} — Big Play ×${edge.big}.` }); }
     }
   }
 

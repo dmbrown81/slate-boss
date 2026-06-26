@@ -3,7 +3,8 @@ import {
   buildStarterDeck, scoreFootballPlay, shuffle, cardCost,
   HAND_SIZE, DRIVES_PER_MATCH, AUDIBLES_PER_DRIVE, MAX_PLAY_CARDS, DRIVE_BUDGET,
   FB_BOSS_SCHEMES, FB_COORDINATORS, FB_ENVIRONMENTS, FB_CONCEPT_LABEL, FB_CARD_MODIFIERS, TEAM_PROFILES,
-  type FbBossSchemeKey, type FbCard, type FbCoordinatorKey, type FbEnvironmentKey, type FbPlaybook, type FbPlayResult, type FbConceptKey, type TeamArchetype,
+  livePresentation, SHELL_LABEL, BOX_LABEL, PRESSURE_LABEL,
+  type FbBossSchemeKey, type FbCard, type FbCoordinatorKey, type FbEnvironmentKey, type FbPlaybook, type FbPlayResult, type FbConceptKey, type TeamArchetype, type FbDefensivePresentation,
 } from '../lib/footballRogue';
 import { mulberry32, stringSeed, type RNG } from '../lib/rng';
 import { buildIdentity } from '../lib/footballRun';
@@ -13,6 +14,7 @@ import { TEAM_IDENTITY } from './teamIdentity';
 import FootballHelpModal from './FootballHelpModal';
 import { haptic } from '../lib/feedback';
 import { loadGridironPrefs, saveGridironPrefs, type GridironPrefs } from '../lib/gridironStorage';
+import { conceptDossier, conceptMatchup, cardConcept } from '../lib/gridironPlaybook';
 
 export interface MatchProps {
   team: TeamArchetype;
@@ -140,6 +142,11 @@ export default function FootballMatch(props: MatchProps) {
   const audPerDrive = props.audiblesPerDrive ?? AUDIBLES_PER_DRIVE;
   const teamId = TEAM_IDENTITY[team];
   const [matchRng] = useState<RNG>(() => mulberry32(stringSeed(`gridiron-match:${seed}:g${gameNumber}:${environment}:${bossScheme}`)));
+  // Disguise: the actual look is fixed for the game from an INDEPENDENT seed stream
+  // (so card draws stay byte-identical and run codes still reproduce). Scoring always
+  // uses the real look; the player only sees it once they spend a read to reveal it.
+  const [livePres] = useState<FbDefensivePresentation>(() => livePresentation(bossScheme, mulberry32(stringSeed(`gridiron-look:${seed}:g${gameNumber}:${bossScheme}`))));
+  const [lookRevealed, setLookRevealed] = useState(bossScheme === 'balanced');
 
   const [match, setMatch] = useState<MatchState>(() => {
     const full = shuffle(runDeck.length ? runDeck : buildStarterDeck().cards, matchRng);
@@ -198,7 +205,7 @@ export default function FootballMatch(props: MatchProps) {
     [selected, match.hand],
   );
   const scoreCtx = useMemo(() => ({
-    coordinators, environment, bossScheme, playbook, bombGames, keeperGames, takeawayGames,
+    coordinators, environment, bossScheme, presentation: livePres, playbook, bombGames, keeperGames, takeawayGames,
     stacksThisMatch: match.stacksThisMatch,
     groundBonusThisMatch: match.groundBonusThisMatch,
     qbRunsThisMatch: match.qbRunsThisMatch,
@@ -206,7 +213,7 @@ export default function FootballMatch(props: MatchProps) {
     conceptCountsThisDrive: match.conceptCountsThisDrive,
     driveIndex: match.driveIndex,
     championship,
-  }), [coordinators, environment, bossScheme, playbook, bombGames, keeperGames, takeawayGames, match.stacksThisMatch, match.groundBonusThisMatch, match.qbRunsThisMatch, match.defPlaysThisMatch, match.conceptCountsThisDrive, match.driveIndex, championship]);
+  }), [coordinators, environment, bossScheme, livePres, playbook, bombGames, keeperGames, takeawayGames, match.stacksThisMatch, match.groundBonusThisMatch, match.qbRunsThisMatch, match.defPlaysThisMatch, match.conceptCountsThisDrive, match.driveIndex, championship]);
   const preview = useMemo(() => scoreFootballPlay(selectedCards, scoreCtx), [selectedCards, scoreCtx]);
 
   const env = FB_ENVIRONMENTS[environment];
@@ -350,6 +357,15 @@ export default function FootballMatch(props: MatchProps) {
     setSelected([]);
   }
 
+  // Spend one audible to read the disguised look for the rest of the game — the
+  // info-vs-flexibility tradeoff that makes reading the defense a real decision.
+  function revealLook() {
+    if (match.status !== 'playing' || lookRevealed || match.audiblesLeft <= 0) return;
+    setMatch((m) => ({ ...m, audiblesLeft: m.audiblesLeft - 1 }));
+    setLookRevealed(true);
+    haptic('tap', prefs.hapticsEnabled);
+  }
+
   function audible() {
     if (match.status !== 'playing' || selectedCards.length === 0 || match.audiblesLeft <= 0) return;
     setMatch((m) => {
@@ -455,6 +471,7 @@ export default function FootballMatch(props: MatchProps) {
 
       {match.status === 'playing' && (
         <>
+          <PreSnapLook presentation={livePres} scheme={bossScheme} bossLabel={boss.shortLabel} revealed={lookRevealed} canReveal={match.audiblesLeft > 0} onReveal={revealLook} />
           {coach && <CoachCall coach={coach} eyebrow={coachEyebrow} onDismiss={gameNumber >= 2 ? () => setAskCoach(false) : undefined} />}
           {showG2Intro && (
             <div style={{ background: '#101926', border: `1px solid ${teamId.primary}66`, borderLeft: `3px solid ${teamId.primary}`, borderRadius: 12, padding: '11px 12px' }}>
@@ -471,7 +488,7 @@ export default function FootballMatch(props: MatchProps) {
                 {laneCallout}
               </div>
             )}
-            <PlayPreview result={preview} count={selectedCards.length} remaining={remaining} target={target} driveScore={match.driveScore} budgetLeft={match.budgetLeft} overBudget={overBudget} coachActive={Boolean(coach)} lastPlay={match.lastPlay} scoreBeat={visibleScoreBeat} showQuality={gameNumber === 1} showMath={mathVisible} onToggleMath={gameNumber >= 2 ? () => updatePrefs({ showMath: !prefs.showMath }) : undefined} />
+            <PlayPreview result={preview} count={selectedCards.length} remaining={remaining} target={target} driveScore={match.driveScore} budgetLeft={match.budgetLeft} overBudget={overBudget} coachActive={Boolean(coach)} lastPlay={match.lastPlay} scoreBeat={visibleScoreBeat} showQuality={gameNumber === 1} showMath={mathVisible} onToggleMath={gameNumber >= 2 ? () => updatePrefs({ showMath: !prefs.showMath }) : undefined} bossScheme={bossScheme} revealedPresentation={lookRevealed ? livePres : undefined} />
             <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
               <button onClick={audible} disabled={selectedCards.length === 0 || match.audiblesLeft <= 0}
                 aria-label={`Audible ${selectedCards.length} selected card${selectedCards.length === 1 ? '' : 's'}. ${match.audiblesLeft} audibles left.`}
@@ -742,9 +759,10 @@ function CardView({ card, active, highlighted, affordable, onClick }: { card: Fb
   const eff = cardCost(card);
   const discounted = eff < card.cost;
   const trait = card.modifier ? FB_CARD_MODIFIERS[card.modifier] : null;
+  const fb = cardConcept(card);
   const costText = `${affordable || active ? '$' : '🔒 $'}${eff}${discounted ? ' ↓' : ''}`;
   return (
-    <button onClick={onClick} aria-label={`${active ? 'Deselect' : 'Select'} ${card.label}, ${card.position}, ${card.value} value, cost ${eff}${discounted ? ', discounted' : ''}${affordable || active ? '' : ', unaffordable with current budget'}`} className={highlighted && !active ? 'fb-glow' : undefined} style={{
+    <button onClick={onClick} aria-label={`${active ? 'Deselect' : 'Select'} ${card.label} (${fb.family} · ${fb.route}), ${card.position}, ${card.value} value, cost ${eff}${discounted ? ', discounted' : ''}${affordable || active ? '' : ', unaffordable with current budget'}`} className={highlighted && !active ? 'fb-glow' : undefined} style={{
       background: active ? c.grad : FB.panelSoft,
       border: `1.5px solid ${active || highlighted ? c.border : trait ? `${trait.color}55` : FB.borderSoft}`,
       borderRadius: 11, padding: '8px 6px 7px', cursor: 'pointer', textAlign: 'left',
@@ -755,10 +773,13 @@ function CardView({ card, active, highlighted, affordable, onClick }: { card: Fb
     }}>
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: 11, fontWeight: 900, color: c.text, background: c.chip, border: `1px solid ${c.border}55`, borderRadius: 4, padding: '1px 4px' }}>{card.position}</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+            <span style={{ fontSize: 11, fontWeight: 900, color: c.text, background: c.chip, border: `1px solid ${c.border}55`, borderRadius: 4, padding: '1px 4px' }}>{card.position}</span>
+            <span style={{ fontSize: 9, fontWeight: 900, color: FB.textFaint, border: `1px solid ${FB.borderSoft}`, borderRadius: 4, padding: '1px 3px', letterSpacing: 0.5 }}>{fb.family.toUpperCase()}</span>
+          </span>
           <span className="fb-num" style={{ fontSize: 11, fontWeight: 900, color: discounted ? FB.green : affordable || active ? FB.gold : FB.red, background: discounted ? FB.greenSoft : affordable || active ? FB.goldSoft : '#2a141a', border: `1px solid ${discounted ? '#1f6b44' : affordable || active ? '#5a4112' : '#4a2530'}`, borderRadius: 4, padding: '1px 5px' }}>{costText}</span>
         </div>
-        <div style={{ fontSize: 11, fontWeight: 800, color: c.text, marginTop: 5, lineHeight: 1.05 }}>{card.label}</div>
+        <div style={{ fontSize: 11, fontWeight: 800, color: c.text, marginTop: 5, lineHeight: 1.05, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{fb.route}</div>
         <div className="fb-num" style={{ fontSize: 16, fontWeight: 900, color: FB.text, marginTop: 1 }}>{card.value}</div>
       </div>
       {trait ? (
@@ -767,6 +788,39 @@ function CardView({ card, active, highlighted, affordable, onClick }: { card: Fb
         <div style={{ fontSize: 11, color: FB.textFaint, lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.playerName} · {card.team}</div>
       )}
     </button>
+  );
+}
+
+// The pre-snap look: read the defense's alignment, not just its name. The defense
+// disguises its true look — until you spend an audible to read it, the axes show as
+// "?" and the salient tells stay hidden. That read is the skill test: pay for the
+// info, or call your concept blind.
+function PreSnapLook({ presentation, scheme, bossLabel, revealed, canReveal, onReveal }: { presentation: FbDefensivePresentation; scheme: FbBossSchemeKey; bossLabel: string; revealed: boolean; canReveal: boolean; onReveal: () => void }) {
+  const chips: { text: string; salient: boolean }[] = revealed
+    ? [
+        { text: SHELL_LABEL[presentation.shell], salient: presentation.shell !== 'base' },
+        { text: BOX_LABEL[presentation.box], salient: presentation.box !== 'neutral' },
+        { text: PRESSURE_LABEL[presentation.pressure], salient: presentation.pressure !== 'four-man' },
+      ]
+    : [
+        { text: '? shell', salient: false },
+        { text: '? box', salient: false },
+        { text: '? rush', salient: false },
+      ];
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#0a1016', border: `1px solid ${revealed ? FB.borderSoft : '#3a2f12'}`, borderRadius: 11, padding: '7px 10px' }}>
+      <span style={{ fontSize: 10, fontWeight: 900, letterSpacing: 1, color: FB.textFaint, whiteSpace: 'nowrap' }}>{revealed ? 'PRE-SNAP LOOK' : 'DISGUISED'}</span>
+      <span style={{ display: 'flex', flexWrap: 'wrap', gap: 5, flex: 1 }}>
+        {chips.map((chip) => (
+          <span key={chip.text} style={{ fontSize: 11, fontWeight: 900, color: chip.salient ? FB.gold : FB.textDim, background: chip.salient ? FB.goldSoft : FB.inset, border: `1px solid ${chip.salient ? '#5a4112' : FB.borderSoft}`, borderRadius: 5, padding: '2px 6px', fontStyle: revealed ? 'normal' : 'italic' }}>{chip.text}</span>
+        ))}
+      </span>
+      {revealed ? (
+        <span style={{ fontSize: 10.5, fontWeight: 800, color: scheme === 'balanced' ? FB.textFaint : FB.red, whiteSpace: 'nowrap' }}>{bossLabel}</span>
+      ) : (
+        <button onClick={onReveal} disabled={!canReveal} aria-label="Read the defense — spend one audible to reveal the disguised look" style={{ fontSize: 10.5, fontWeight: 900, color: canReveal ? FB.gold : FB.textFaint, background: 'transparent', border: `1px solid ${canReveal ? '#5a4112' : FB.borderSoft}`, borderRadius: 6, padding: '3px 7px', cursor: canReveal ? 'pointer' : 'default', whiteSpace: 'nowrap', opacity: canReveal ? 1 : 0.5 }}>🎧 Read · 1 aud</button>
+      )}
+    </div>
   );
 }
 
@@ -807,6 +861,8 @@ function PlayPreview({
   showQuality,
   showMath,
   onToggleMath,
+  bossScheme,
+  revealedPresentation,
 }: {
   result: FbPlayResult;
   count: number;
@@ -821,7 +877,10 @@ function PlayPreview({
   showQuality: boolean;
   showMath: boolean;
   onToggleMath?: () => void;
+  bossScheme: FbBossSchemeKey;
+  revealedPresentation?: FbDefensivePresentation;
 }) {
+  const [dossierOpen, setDossierOpen] = useState(false);
   const live = count > 0;
   const good = result.valid && !overBudget;
   const subtext = live ? result.flavor : coachActive ? '' : 'Tap cards to call a play.';
@@ -875,12 +934,55 @@ function PlayPreview({
           </div>
           {result.ledger.length > 2 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-              {result.ledger.filter((e) => ['execution', 'big_play', 'coordinator', 'environment', 'boss', 'spam'].includes(e.kind)).map((e) => (
-                <span key={e.id} style={{ fontSize: 11, fontWeight: 800, color: e.kind === 'coordinator' ? '#b7a7ff' : e.kind === 'spam' || e.kind === 'boss' ? FB.red : e.kind === 'environment' ? '#9cc6ff' : e.kind === 'big_play' ? FB.gold : FB.blue, background: FB.inset, border: `1px solid ${FB.borderSoft}`, borderRadius: 6, padding: '3px 7px' }}>{ledgerGlyph(e.kind)} {e.label}</span>
+              {result.ledger.filter((e) => ['execution', 'big_play', 'coordinator', 'environment', 'boss', 'matchup', 'spam'].includes(e.kind)).map((e) => (
+                <span key={e.id} style={{ fontSize: 11, fontWeight: 800, color: e.kind === 'coordinator' ? '#b7a7ff' : e.kind === 'spam' || e.kind === 'boss' ? FB.red : e.kind === 'matchup' ? FB.green : e.kind === 'environment' ? '#9cc6ff' : e.kind === 'big_play' ? FB.gold : FB.blue, background: FB.inset, border: `1px solid ${FB.borderSoft}`, borderRadius: 6, padding: '3px 7px' }}>{ledgerGlyph(e.kind)} {e.label}</span>
               ))}
             </div>
           )}
+          <ConceptDossierPanel concept={result.concept} bossScheme={bossScheme} revealedPresentation={revealedPresentation} open={dossierOpen} onToggle={() => setDossierOpen((o) => !o)} />
         </>
+      )}
+    </div>
+  );
+}
+
+// The teaching layer: the authentic football identity of the concept you're
+// assembling, how it grades against THIS week's defense (locked to the engine's
+// real scheme modifiers), and the four learn-by-playing beats. This is the hook —
+// the football equivalent of Balatro's run-info teaching you why a flush beats a
+// pair while you play.
+function ConceptDossierPanel({ concept, bossScheme, revealedPresentation, open, onToggle }: { concept: FbConceptKey; bossScheme: FbBossSchemeKey; revealedPresentation?: FbDefensivePresentation; open: boolean; onToggle: () => void }) {
+  const d = conceptDossier(concept);
+  const mv = conceptMatchup(concept, bossScheme, revealedPresentation);
+  const mvColor = mv.tone === 'good' ? FB.green : mv.tone === 'bad' ? FB.red : FB.textDim;
+  const rows: { label: string; text: string; color: string }[] = [
+    { label: 'Beats', text: d.beats, color: FB.green },
+    { label: 'Loses to', text: d.losesTo, color: FB.red },
+    { label: 'Scale it', text: d.scaleTip, color: FB.gold },
+  ];
+  return (
+    <div style={{ marginTop: 8 }}>
+      <button
+        onClick={onToggle}
+        aria-expanded={open}
+        aria-label={`${open ? 'Hide' : 'Show'} the dossier for ${d.realName}`}
+        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, background: FB.inset, border: `1px solid ${FB.borderSoft}`, borderRadius: 9, padding: '6px 9px', cursor: 'pointer', textAlign: 'left' }}
+      >
+        <span style={{ fontSize: 10, fontWeight: 900, letterSpacing: 0.4, color: FB.textFaint, textTransform: 'uppercase' }}>{d.family}</span>
+        <span style={{ flex: 1, minWidth: 0, fontSize: 11.5, fontWeight: 800, color: FB.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.realName}</span>
+        <span style={{ fontSize: 10.5, fontWeight: 900, color: mvColor, whiteSpace: 'nowrap' }}>{mv.tone === 'good' ? '▲ ' : mv.tone === 'bad' ? '▼ ' : ''}{mv.label}</span>
+        <span style={{ fontSize: 11, fontWeight: 900, color: FB.gold }}>{open ? '▾' : 'Why ▸'}</span>
+      </button>
+      {open && (
+        <div style={{ marginTop: 6, background: '#081018', border: `1px solid ${FB.borderSoft}`, borderRadius: 9, padding: '8px 9px' }}>
+          <div style={{ fontSize: 11.5, color: FB.textDim, lineHeight: 1.45, marginBottom: 7 }}>{d.whatItIs}</div>
+          {rows.map((row) => (
+            <div key={row.label} style={{ display: 'flex', gap: 7, marginTop: 5 }}>
+              <span style={{ flexShrink: 0, width: 58, fontSize: 10.5, fontWeight: 900, letterSpacing: 0.3, color: row.color, textTransform: 'uppercase', paddingTop: 1 }}>{row.label}</span>
+              <span style={{ flex: 1, fontSize: 11.5, color: FB.text, lineHeight: 1.4 }}>{row.text}</span>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
@@ -1096,6 +1198,7 @@ function ledgerGlyph(kind: string): string {
   if (kind === 'coordinator') return '★';
   if (kind === 'environment') return '◇';
   if (kind === 'boss' || kind === 'spam') return '!';
+  if (kind === 'matchup') return '▲';
   return '•';
 }
 

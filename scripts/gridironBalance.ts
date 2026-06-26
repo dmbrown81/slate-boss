@@ -6,7 +6,7 @@
 // balance-affecting change.
 
 import {
-  scoreFootballPlay, shuffle, cardCost, randomBossScheme, randomEnvironment,
+  scoreFootballPlay, shuffle, cardCost, randomBossScheme, randomEnvironment, livePresentation,
   DRIVE_BUDGET, DRIVES_PER_MATCH, HAND_SIZE, AUDIBLES_PER_DRIVE,
   TEAM_ARCHETYPES, TEAM_PROFILES,
   type FbBossSchemeKey, type FbCard, type FbConceptKey, type FbEnvironmentKey, type TeamArchetype,
@@ -51,6 +51,14 @@ interface GameResult { won: boolean; drive: number; bomb: boolean; keeper: boole
 // ceiling-distribution probe (⑤). It does not affect play.
 function playGame(run: FbRunState, targets: number[], environment: FbEnvironmentKey, bossScheme: FbBossSchemeKey, championship: boolean, rng: RNG, prefer?: Set<FbConceptKey>, driveSink?: number[]): GameResult {
   let full = shuffle([...run.deck], rng);
+  // Disguise: the live look is set once per game from an independent stream, like
+  // the app, so card draws stay comparable when presentation logic changes. Pilots
+  // play blind (they don't read it), making this a conservative lower bound on
+  // what a revealing player gets.
+  const presentation = livePresentation(
+    bossScheme,
+    mulberry32(stringSeed(`gridiron-balance-look:${run.seed}:${run.team}:g${run.gameNumber}:${bossScheme}`)),
+  );
   let stacks = 0, ground = 0, qbRuns = 0, defPlays = 0, bomb = false, keeper = false, total = 0;
   const concepts: Record<string, number> = {};
   for (let d = 0; d < DRIVES_PER_MATCH; d++) {
@@ -65,7 +73,7 @@ function playGame(run: FbRunState, targets: number[], environment: FbEnvironment
       let bestInLane: typeof best = null;
       for (const cmb of combos) {
         const cards = cmb.map((i) => hand[i]); const cost = cards.reduce((s, c) => s + cardCost(c), 0); if (cost > budget) continue;
-        const res = scoreFootballPlay(cards, { coordinators: run.coordinators, environment, bossScheme, playbook: run.playbook, bombGames: run.bombGames, keeperGames: run.keeperGames, takeawayGames: run.takeawayGames, stacksThisMatch: stacks, groundBonusThisMatch: ground, qbRunsThisMatch: qbRuns, defPlaysThisMatch: defPlays, conceptCountsThisDrive: counts, driveIndex: d, championship });
+        const res = scoreFootballPlay(cards, { coordinators: run.coordinators, environment, bossScheme, presentation, playbook: run.playbook, bombGames: run.bombGames, keeperGames: run.keeperGames, takeawayGames: run.takeawayGames, stacksThisMatch: stacks, groundBonusThisMatch: ground, qbRunsThisMatch: qbRuns, defPlaysThisMatch: defPlays, conceptCountsThisDrive: counts, driveIndex: d, championship });
         if (!res.valid) continue;
         const metric = res.total / cost;
         const cand = { ids: cmb, metric, total: res.total, cost: res.cost, concept: res.concept, qbRun: cards.some((c) => c.action === 'scramble' || c.action === 'qb_sneak') };
