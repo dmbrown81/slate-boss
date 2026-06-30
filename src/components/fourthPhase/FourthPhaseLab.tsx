@@ -1,6 +1,7 @@
 import { useMemo, useState, type CSSProperties, type DragEvent } from 'react';
 import { mulberry32, stringSeed } from '../../lib/rng';
 import { FB, btnGhost, btnPrimary, card, sectionLabel } from '../footballStyles';
+import { HowToPlay, SituationsPanel } from './FourthPhaseGuide';
 import {
   BASE_METER,
   BASE_METER_CAP,
@@ -176,6 +177,17 @@ export default function FourthPhaseLab({ onHome }: Props) {
   const progress = Math.min(1, state.driveScore / target);
   const meterFill = Math.min(1, (state.meter - BASE_METER) / Math.max(0.1, state.meterCap - BASE_METER));
   const runCode = fourthPhaseRunCode(state.seed, state.team);
+  const teamProfile = FOURTH_PHASE_TEAMS[state.team];
+  const playsLeft = Math.max(0, FOURTH_PHASE_MAX_PLAYS_PER_DRIVE - state.playsThisDrive);
+  const firstVisit = useMemo(() => {
+    try {
+      if (localStorage.getItem('fp-seen-guide')) return false;
+      localStorage.setItem('fp-seen-guide', '1');
+      return true;
+    } catch {
+      return true;
+    }
+  }, []);
 
   function restart(team: FourthPhaseTeamKey) {
     setState(createInitialState(team));
@@ -428,6 +440,12 @@ export default function FourthPhaseLab({ onHome }: Props) {
         ))}
       </div>
 
+      <div style={{ fontSize: 11, color: FB.textDim, margin: '0 2px 10px', lineHeight: 1.4 }}>
+        <span style={{ color: FB.text, fontWeight: 900 }}>{teamProfile.name}</span> · {teamProfile.identity}
+      </div>
+
+      <HowToPlay defaultOpen={firstVisit} />
+
       <section style={{ ...card(8), ...meterStyle(state.meter, state.meterCap), padding: 14, overflow: 'hidden', position: 'relative', background: 'linear-gradient(180deg,#101622,#080b11)' }}>
         <div className="fb-yard" style={{ position: 'absolute', inset: 0, opacity: 0.38 }} />
         <div style={{ position: 'relative' }}>
@@ -442,7 +460,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 7, color: FB.textDim, fontSize: 11, fontWeight: 800 }}>
             <span>cap {formatMeter(state.meterCap)}</span>
-            <span>cash BigPlay from selected order</span>
+            <span>Crowd charges it · scoring plays cash it</span>
           </div>
         </div>
       </section>
@@ -452,6 +470,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
           <div>
             <div style={sectionLabel}>Drive {state.driveIndex + 1} of {FOURTH_PHASE_DRIVES}</div>
             <div style={{ fontSize: 20, fontWeight: 950, color: FB.text, lineHeight: 1.1 }}>{state.driveScore} / {target}</div>
+            <div style={{ fontSize: 10.5, color: FB.textFaint, marginTop: 2 }}>{targetRemaining} to go · {playsLeft} plays left</div>
           </div>
           <div style={{ textAlign: 'right' }}>
             <div style={sectionLabel}>{FOURTH_PHASE_BOSSES[activeBoss].name}</div>
@@ -542,6 +561,8 @@ export default function FourthPhaseLab({ onHome }: Props) {
           <button onClick={() => restart(state.team)} style={{ ...btnPrimary, width: '100%', marginTop: 12 }}>Run it back</button>
         </section>
       )}
+
+      <SituationsPanel activeKey={preview?.situation.key} defaultOpen={firstVisit} />
 
       <section style={{ marginTop: 10 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
