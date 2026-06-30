@@ -41,9 +41,11 @@ The build-and-cash loop works. A `crowd -> offense` House Call scoring higher
 than `offense -> crowd` is immediately legible, and Complementary Football plus
 The Genius produces the right "I broke the game" spike.
 
-The War Room is still skeletal. Joker drafting creates a measurable gap, but it
-is not yet a rich build meta. The next tuning pass should make draft choices
-produce more divergent lines rather than mostly raising already-strong pilots.
+The War Room is still light, but the first joker-depth pass made drafting more
+decisive. The catalog now has 29 jokers across order payoffs, team-lean payoffs,
+boss-drive counters, utility/fuel pieces, and capped scalers. Drafting now flips
+enough runs to clear the reward-WIN-gap advisory while staying inside the
+too-easy ceiling band.
 
 ## Harness Snapshot
 
@@ -63,20 +65,19 @@ not a floor, so targets that are too soft now fail rather than pass at ~97%.
 - Callsmith must still be verified separately with its own gates; Fourth Phase
   does not inherit Callsmith's balance.
 
-Latest full sample (`npm run balance:fourthphase -- 3000`, targets retuned for
-real failure pressure):
+Latest full sample (`npm run balance:fourthphase -- 3000`, after the joker-depth
+pass on 2026-06-30):
 
-- Synergy pilot: 80.3% clear rate, median score 1556, p90 1897, p99 2343.
-- Random pilot: 5.2% clear rate, median score 651.
+- Synergy pilot: 84.2% clear rate, median score 1570, p90 1893, p99 2252.
+- Random pilot: 5.1% clear rate, median score 657.
 - No-draft pilot: 78.9% clear rate, median score 1532.
-- Build gap: +75.1 win-rate points versus random (hard gate, passes).
-- Per-team viability: all six teams cleared at least 73.4% (Smashmouth lowest).
-- Meter ceiling tightness: 15.7% of synergy plays ended near cap; p99 peak
-  meter was `x7.60`.
-- Reward WIN gap (advisory, not a gate): only +1.4 win points versus no-draft
-  (+24 median score). Flagged `🟡` because the joker catalog is still thin, so
-  drafting mostly raises an already-strong pilot rather than flipping losses to
-  wins. This is the next content/tuning pass, not a scoring bug.
+- Build gap: +79.1 win-rate points versus random (hard gate, passes).
+- Per-team viability: all six teams cleared at least 78.6% (Smashmouth lowest).
+- Meter ceiling tightness: 22.6% of synergy plays ended near cap; p99 peak
+  meter was `x8.35`.
+- Reward WIN gap (advisory, not a gate): now OK at +5.3 win points versus
+  no-draft (+38 median score). Drafting is still not the full long-term meta,
+  but it now changes outcomes instead of only polishing already-winning pilots.
 
 Latest Callsmith preservation sample (`npm run balance:gridiron -- 3000`):
 
@@ -119,10 +120,10 @@ football depth yet.
 
 Because of that, the next work is depth, in rough priority:
 
-1. Joker catalog — the reward-win-gap advisory `🟡` is the headline gap; drafting
-   needs to flip losses to wins, not just raise an already-strong pilot.
-2. Field-position / downs model (the staged Fork 1) for football texture.
-3. Consumables, richer War Room economy, and the unlock spine (staged Fork 2).
+1. Field-position / downs model (the staged Fork 1) for football texture.
+2. Consumables, richer War Room economy, and the unlock spine (staged Fork 2).
+3. Continued joker polish from real playtest reads: the catalog is no longer
+   thin, but individual effects still need fun/readability review in the UI.
 
 Callsmith remains fully recoverable from git history if a feature there is worth
 porting.

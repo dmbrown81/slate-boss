@@ -147,16 +147,48 @@ const JOKER_BASE_VALUE: Record<FourthPhaseJokerId, number> = {
   bandwagon: 30,
   decibelRecord: 44,
   hurryUp: 34,
+  leadBlocker: 40,
+  doubleMove: 44,
+  hiddenYards: 38,
+  studentSection: 35,
+  filmStudy: 48,
+  redZonePackage: 50,
+  walkOnProgram: 34,
+  checkdownMerchant: 22,
+  bendDontBreak: 24,
+  coordinatorTree: 50,
+  closer: 60,
+  pressBoxAngle: 48,
+  returnAce: 36,
+  homeRunThreat: 52,
+  scriptedSeries: 42,
+  blackoutCurtain: 40,
+  phaseCollector: 54,
 };
 
 function jokerValue(joker: FourthPhaseJokerState, team: FourthPhaseTeamKey, bossDriveSoon: boolean): number {
   let value = JOKER_BASE_VALUE[joker.id];
+  if (team === 'balanced' && (joker.id === 'coordinatorTree' || joker.id === 'phaseCollector')) value += 20;
+  if (team === 'balanced' && joker.id === 'filmStudy') value += 14;
   if (team === 'loudHouse' && (joker.id === 'twelfthMan' || joker.id === 'decibelRecord')) value += 22;
-  if (team === 'specialTeamsChaos' && joker.id === 'fieldGeneral') value += 22;
+  if (team === 'loudHouse' && (joker.id === 'studentSection' || joker.id === 'blackoutCurtain')) value += 18;
+  if (team === 'loudHouse' && joker.id === 'homeRunThreat') value += 14;
+  if (team === 'specialTeamsChaos' && (joker.id === 'fieldGeneral' || joker.id === 'returnAce')) value += 22;
+  if (team === 'specialTeamsChaos' && joker.id === 'hiddenYards') value += 18;
   if (team === 'blackAndBlue' && (joker.id === 'pickSixSpecialist' || joker.id === 'silentCount')) value += 18;
+  if (team === 'blackAndBlue' && (joker.id === 'pressBoxAngle' || joker.id === 'bendDontBreak')) value += 16;
+  if (team === 'blackAndBlue' && joker.id === 'leadBlocker') value += 10;
   if (team === 'airRaid' && (joker.id === 'hurryUp' || joker.id === 'twoMinuteDrill')) value += 18;
+  if (team === 'airRaid' && (joker.id === 'doubleMove' || joker.id === 'homeRunThreat')) value += 18;
   if (team === 'smashmouth' && (joker.id === 'silentCount' || joker.id === 'homeCooking')) value += 16;
+  if (team === 'smashmouth' && joker.id === 'walkOnProgram') value += 20;
+  if (team === 'smashmouth' && joker.id === 'leadBlocker') value += 16;
+  if (team === 'smashmouth' && joker.id === 'checkdownMerchant') value += 12;
   if (bossDriveSoon && joker.id === 'roadWarriors') value += 30;
+  if (bossDriveSoon && joker.id === 'closer') value += 24;
+  if (bossDriveSoon && joker.id === 'pressBoxAngle') value += 16;
+  if (bossDriveSoon && joker.id === 'redZonePackage') value += 10;
+  if (bossDriveSoon && joker.id === 'scriptedSeries') value += 8;
   if (jokerDefinition(joker).rarity === 'legendary') value += 6;
   return value;
 }

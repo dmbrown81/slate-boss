@@ -213,7 +213,8 @@ export function scoreFourthPhasePlay(cards: readonly FourthPhaseCard[], partialC
 
   let didCash = false;
   let meterAfterCash = score.meter;
-  for (const card of cards) {
+  for (let cardIndex = 0; cardIndex < cards.length; cardIndex += 1) {
+    const card = cards[cardIndex];
     cardTraitScore(card, score, context);
     if (card.phase === 'crowd') {
       applyCharge(cards, situation, context, score, crowdChargeForRank(card.rank), 'crowdCard', card.roleName);
@@ -222,10 +223,10 @@ export function scoreFourthPhasePlay(cards: readonly FourthPhaseCard[], partialC
     }
 
     for (const joker of jokerDefs(context.jokers)) {
-      joker.hooks.onCardScored?.(hookContext(cards, situation, context, score, { card, phase: card.phase }));
+      joker.hooks.onCardScored?.(hookContext(cards, situation, context, score, { card, phase: card.phase, cardIndex }));
     }
     for (const joker of jokerDefs(context.jokers)) {
-      joker.hooks.onPhaseScored?.(hookContext(cards, situation, context, score, { card, phase: card.phase }));
+      joker.hooks.onPhaseScored?.(hookContext(cards, situation, context, score, { card, phase: card.phase, cardIndex }));
     }
 
     if (!didCash && situation.cashesMeter && card.phase === 'offense') {

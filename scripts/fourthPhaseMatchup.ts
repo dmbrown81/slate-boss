@@ -86,6 +86,40 @@ const complementaryGenius = scoreFourthPhasePlay([card('crowd-A'), card('offense
 });
 assert('The Genius doubles all-four-phase score', complementaryGenius.points >= complementaryPlain.points * 1.9, `${complementaryGenius.points} vs ${complementaryPlain.points}`);
 
+const leadBlockerOrdered = scoreFourthPhasePlay([card('defense-J'), card('defense-Q'), card('offense-K')], {
+  meter: BASE_METER,
+  meterCap: BASE_METER_CAP,
+  jokers: [{ id: 'leadBlocker' }],
+});
+const leadBlockerReversed = scoreFourthPhasePlay([card('offense-K'), card('defense-J'), card('defense-Q')], {
+  meter: BASE_METER,
+  meterCap: BASE_METER_CAP,
+  jokers: [{ id: 'leadBlocker' }],
+});
+assert('Lead Blocker rewards card order', leadBlockerOrdered.points > leadBlockerReversed.points, `${leadBlockerOrdered.points} > ${leadBlockerReversed.points}`);
+
+const doubleMove = scoreFourthPhasePlay([card('crowd-A'), card('offense-K')], {
+  meter: BASE_METER,
+  meterCap: BASE_METER_CAP,
+  jokers: [{ id: 'doubleMove' }],
+});
+assert('Double Move boosts Crowd-before-Offense cash', doubleMove.points > chargeBeforeCash.points, `${doubleMove.points} > ${chargeBeforeCash.points}`);
+
+const closerPlain = scoreFourthPhasePlay([card('crowd-A'), card('offense-K')], {
+  meter: BASE_METER,
+  meterCap: BASE_METER_CAP,
+  driveIndex: 2,
+  boss: 'turnoverDrill',
+});
+const closerBoosted = scoreFourthPhasePlay([card('crowd-A'), card('offense-K')], {
+  meter: BASE_METER,
+  meterCap: BASE_METER_CAP,
+  driveIndex: 2,
+  boss: 'turnoverDrill',
+  jokers: [{ id: 'closer' }],
+});
+assert('Closer lifts boss-drive scoring', closerBoosted.points > closerPlain.points, `${closerBoosted.points} > ${closerPlain.points}`);
+
 // Contract: the three displayed terms must reconcile to displayed points (tolerance covers term rounding).
 const reconciled = Math.round(complementaryGenius.yards * (1 + complementaryGenius.execution) * complementaryGenius.bigPlay);
 assert(
@@ -122,10 +156,18 @@ const roadDecibel = scoreFourthPhasePlay([card('crowd-A'), card('crowd-K'), card
 });
 assert('Road Game cap holds even with Decibel Record', roadDecibel.meterAfter <= 2.0001, `meter x${roadDecibel.meterAfter.toFixed(2)}`);
 
+const roadCollector = scoreFourthPhasePlay([card('crowd-A'), card('offense-Q'), card('defense-J'), card('specialTeams-10'), card('offense-K')], {
+  meter: 1.8,
+  meterCap: BASE_METER_CAP,
+  boss: 'roadGame',
+  jokers: [{ id: 'phaseCollector' }],
+});
+assert('Road Game cap holds with Phase Collector', roadCollector.meterCap <= 2.0001, `cap x${roadCollector.meterCap.toFixed(2)}`);
+
 console.log('');
 if (failures > 0) {
   console.error(`Fourth Phase matchup FAILED: ${failures} assertion(s) broken.`);
   process.exit(1);
 }
 
-console.log('Fourth Phase matchup passed: situations, equation, meter order, jokers, and boss pivots hold.');
+console.log('Fourth Phase matchup passed: situations, equation, meter order, expanded jokers, and boss pivots hold.');

@@ -92,7 +92,24 @@ export type FourthPhaseJokerId =
   | 'roadWarriors'
   | 'bandwagon'
   | 'decibelRecord'
-  | 'hurryUp';
+  | 'hurryUp'
+  | 'leadBlocker'
+  | 'doubleMove'
+  | 'hiddenYards'
+  | 'studentSection'
+  | 'filmStudy'
+  | 'redZonePackage'
+  | 'walkOnProgram'
+  | 'checkdownMerchant'
+  | 'bendDontBreak'
+  | 'coordinatorTree'
+  | 'closer'
+  | 'pressBoxAngle'
+  | 'returnAce'
+  | 'homeRunThreat'
+  | 'scriptedSeries'
+  | 'blackoutCurtain'
+  | 'phaseCollector';
 
 export interface FourthPhaseJokerState {
   id: FourthPhaseJokerId;
