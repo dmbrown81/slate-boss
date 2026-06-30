@@ -212,6 +212,7 @@ export function scoreFourthPhasePlay(cards: readonly FourthPhaseCard[], partialC
   }
 
   let didCash = false;
+  let cashesAtCardIndex: number | null = null;
   let meterAfterCash = score.meter;
   for (let cardIndex = 0; cardIndex < cards.length; cardIndex += 1) {
     const card = cards[cardIndex];
@@ -232,6 +233,7 @@ export function scoreFourthPhasePlay(cards: readonly FourthPhaseCard[], partialC
     if (!didCash && situation.cashesMeter && card.phase === 'offense') {
       score.bigPlay *= score.meter;
       didCash = true;
+      cashesAtCardIndex = cardIndex;
       meterAfterCash = score.meter;
       ledger(score, { channel: 'bigPlay', label: 'Crowd cash-in', value: `x${score.meter.toFixed(2)}`, detail: `${card.roleName} breaks it open.` });
     }
@@ -291,6 +293,7 @@ export function scoreFourthPhasePlay(cards: readonly FourthPhaseCard[], partialC
     meterCap: score.meterCap,
     meterCharged: Number(score.meterCharged.toFixed(3)),
     didCash,
+    cashesAtCardIndex,
     fuel: score.fuel,
     bust: situation.bust,
     isFinalPlay,

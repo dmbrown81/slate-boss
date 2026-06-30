@@ -167,6 +167,8 @@ export interface FourthPhaseScoreResult {
   meterCap: number;
   meterCharged: number;
   didCash: boolean;
+  /** Index into the played-cards array of the card that cashes the meter, or null if no cash. */
+  cashesAtCardIndex: number | null;
   fuel: SituationFuel;
   bust: boolean;
   isFinalPlay: boolean;

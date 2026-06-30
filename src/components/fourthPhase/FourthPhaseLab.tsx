@@ -30,6 +30,7 @@ import {
   type FourthPhaseBossKey,
   type FourthPhaseCard,
   type FourthPhaseJokerState,
+  type FourthPhaseScoreContext,
   type FourthPhaseScoreResult,
   type FourthPhaseTeamKey,
   type SituationKey,
@@ -46,6 +47,7 @@ interface CashInSnapshot {
   situation: string;
   bigPlay: number;
   meter: number;
+  reason: string;
 }
 
 interface DragBind {
@@ -77,8 +79,35 @@ interface LabState {
   repeatedSituations: Partial<Record<SituationKey, number>>;
   drawNonce: number;
   phase: LabPhase;
+  bestPlay: number;
+  pendingDraft?: FourthPhaseJokerState;
   lastPlay?: FourthPhaseScoreResult;
   cashIn?: CashInSnapshot;
+}
+
+// Decide whether a play earns the cash-in celebration, and why. Replaces the old
+// bare `points >= 120` magic number with reasons that scale to the drive and the run.
+function evaluateCashIn(
+  result: FourthPhaseScoreResult,
+  target: number,
+  prevBest: number,
+): { show: boolean; reason: string } {
+  if (result.situation.key === 'complementaryFootball') {
+    return { show: true, reason: 'Complementary Football — all four phases' };
+  }
+  if (result.points >= target) {
+    return { show: true, reason: 'Drive crusher — cleared the target in one play' };
+  }
+  if (result.points > prevBest && result.points >= 80) {
+    return { show: true, reason: `New run best — ${result.points}` };
+  }
+  if (result.didCash && result.bigPlay >= 2.5) {
+    return { show: true, reason: `Meter cash x${result.bigPlay.toFixed(2)}` };
+  }
+  if (result.points >= Math.max(60, Math.round(target * 0.3))) {
+    return { show: true, reason: 'Big play' };
+  }
+  return { show: false, reason: '' };
 }
 
 const teamKeys = Object.keys(FOURTH_PHASE_TEAMS) as FourthPhaseTeamKey[];
@@ -127,6 +156,7 @@ function createInitialState(team: FourthPhaseTeamKey): LabState {
     repeatedSituations: {},
     drawNonce: 1,
     phase: 'play',
+    bestPlay: 0,
   };
 }
 
@@ -136,6 +166,25 @@ function dragReorder<T>(items: readonly T[], fromIndex: number, toIndex: number)
   const [moved] = copy.splice(fromIndex, 1);
   copy.splice(toIndex, 0, moved);
   return copy;
+}
+
+// Single source of truth for the scoring context. Preview and execution MUST build
+// the context the same way, or the previewed score can diverge from what a play
+// actually scores — the worst failure for a transparent-math game.
+function buildPlayContext(state: LabState): FourthPhaseScoreContext {
+  const target = state.targets[state.driveIndex];
+  return {
+    meter: state.meter,
+    meterCap: state.meterCap,
+    jokers: state.jokers,
+    discardsLeft: state.discardsLeft,
+    cardsPlayedThisDrive: state.playsThisDrive,
+    driveIndex: state.driveIndex,
+    targetRemaining: Math.max(0, target - state.driveScore),
+    wins: state.driveIndex,
+    boss: activeBossForDrive(state, state.driveIndex),
+    repeatedSituations: state.repeatedSituations,
+  };
 }
 
 function meterStyle(meter: number, cap: number): CSSProperties {
@@ -151,6 +200,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
   const [state, setState] = useState<LabState>(() => createInitialState('balanced'));
   const [dragCard, setDragCard] = useState<string | null>(null);
   const [dragJoker, setDragJoker] = useState<string | null>(null);
+  const [ledgerExpanded, setLedgerExpanded] = useState(false);
 
   const activeBoss = activeBossForDrive(state, state.driveIndex);
   const target = state.targets[state.driveIndex];
@@ -160,20 +210,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
     () => state.selectedIds.map((id) => handById.get(id)).filter((card): card is FourthPhaseCard => Boolean(card)),
     [handById, state.selectedIds],
   );
-  const preview = selectedCards.length
-    ? scoreFourthPhasePlay(selectedCards, {
-      meter: state.meter,
-      meterCap: state.meterCap,
-      jokers: state.jokers,
-      discardsLeft: state.discardsLeft,
-      cardsPlayedThisDrive: state.playsThisDrive,
-      driveIndex: state.driveIndex,
-      targetRemaining,
-      wins: state.driveIndex,
-      boss: activeBoss,
-      repeatedSituations: state.repeatedSituations,
-    })
-    : null;
+  const preview = selectedCards.length ? scoreFourthPhasePlay(selectedCards, buildPlayContext(state)) : null;
   const progress = Math.min(1, state.driveScore / target);
   const meterFill = Math.min(1, (state.meter - BASE_METER) / Math.max(0.1, state.meterCap - BASE_METER));
   const runCode = fourthPhaseRunCode(state.seed, state.team);
@@ -266,18 +303,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
       const selected = current.selectedIds
         .map((id) => current.hand.find((card) => card.id === id))
         .filter((card): card is FourthPhaseCard => Boolean(card));
-      const result = scoreFourthPhasePlay(selected, {
-        meter: current.meter,
-        meterCap: current.meterCap,
-        jokers: current.jokers,
-        discardsLeft: current.discardsLeft,
-        cardsPlayedThisDrive: current.playsThisDrive,
-        driveIndex: current.driveIndex,
-        targetRemaining: Math.max(0, current.targets[current.driveIndex] - current.driveScore),
-        wins: current.driveIndex,
-        boss: activeBossForDrive(current, current.driveIndex),
-        repeatedSituations: current.repeatedSituations,
-      });
+      const result = scoreFourthPhasePlay(selected, buildPlayContext(current));
       const hand = current.hand.filter((card) => !ids.has(card.id));
       const discardPile = [...current.discardPile, ...selected];
       const refill = refillHand(current, hand, discardPile, result.fuel.draw);
@@ -286,8 +312,15 @@ export default function FourthPhaseLab({ onHome }: Props) {
         ...current.repeatedSituations,
         [result.situation.key]: (current.repeatedSituations[result.situation.key] ?? 0) + 1,
       };
-      const cashIn = result.didCash || result.points >= 120
-        ? { points: result.points, situation: result.situation.label, bigPlay: result.bigPlay, meter: result.meterAfterCash }
+      const cashEval = evaluateCashIn(result, current.targets[current.driveIndex], current.bestPlay);
+      const cashIn = cashEval.show
+        ? {
+          points: result.points,
+          situation: result.situation.label,
+          bigPlay: result.bigPlay,
+          meter: result.meterAfterCash,
+          reason: cashEval.reason,
+        }
         : current.cashIn;
       const baseUpdate: LabState = {
         ...current,
@@ -299,6 +332,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
         meterCap: result.meterCap,
         money: Math.max(0, current.money + result.fuel.money),
         repeatedSituations,
+        bestPlay: Math.max(current.bestPlay, result.points),
         lastPlay: result,
         cashIn,
       };
@@ -372,6 +406,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
         repeatedSituations: {},
         drawNonce: current.drawNonce + 1,
         phase: 'play',
+        pendingDraft: undefined,
         lastPlay: undefined,
         cashIn: undefined,
       };
@@ -380,10 +415,23 @@ export default function FourthPhaseLab({ onHome }: Props) {
 
   function draftJoker(joker: FourthPhaseJokerState) {
     if (state.phase !== 'warRoom' || state.money < WAR_ROOM_COST) return;
-    const nextJokers = state.jokers.length < FOURTH_PHASE_JOKER_LIMIT
-      ? [...state.jokers, joker]
-      : [...state.jokers.slice(0, FOURTH_PHASE_JOKER_LIMIT - 1), joker];
+    // At the slot cap, never silently drop a joker — joker order is mechanically
+    // meaningful, so make the player choose which one to release.
+    if (state.jokers.length >= FOURTH_PHASE_JOKER_LIMIT) {
+      setState((current) => ({ ...current, pendingDraft: joker }));
+      return;
+    }
+    startNextDrive([...state.jokers, joker], state.money - WAR_ROOM_COST);
+  }
+
+  function confirmReplaceJoker(index: number) {
+    if (state.phase !== 'warRoom' || !state.pendingDraft || state.money < WAR_ROOM_COST) return;
+    const nextJokers = state.jokers.map((joker, i) => (i === index ? state.pendingDraft! : joker));
     startNextDrive(nextJokers, state.money - WAR_ROOM_COST);
+  }
+
+  function cancelReplaceJoker() {
+    setState((current) => ({ ...current, pendingDraft: undefined }));
   }
 
   function skipWarRoom() {
@@ -537,7 +585,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
 
       {state.cashIn && (
         <section style={{ ...card(8), padding: 13, marginTop: 10, borderColor: '#f4c24f', background: 'linear-gradient(135deg,#2a1d08,#12151d)' }}>
-          <div style={{ ...sectionLabel, color: FB.gold }}>Cash-In Screen</div>
+          <div style={{ ...sectionLabel, color: FB.gold }}>{state.cashIn.reason}</div>
           <div className="fb-num" style={{ fontSize: 44, color: FB.gold, fontWeight: 950, lineHeight: 0.95, marginTop: 4 }}>{state.cashIn.points}</div>
           <div style={{ fontSize: 12, color: FB.text, fontWeight: 800, marginTop: 5 }}>
             {state.cashIn.situation} · BigPlay x{state.cashIn.bigPlay.toFixed(2)} · meter {formatMeter(state.cashIn.meter)}
@@ -547,7 +595,16 @@ export default function FourthPhaseLab({ onHome }: Props) {
       )}
 
       {state.phase === 'warRoom' && (
-        <WarRoom money={state.money} draft={state.draft} onDraft={draftJoker} onSkip={skipWarRoom} />
+        <WarRoom
+          money={state.money}
+          draft={state.draft}
+          jokers={state.jokers}
+          pendingDraft={state.pendingDraft}
+          onDraft={draftJoker}
+          onReplace={confirmReplaceJoker}
+          onCancelReplace={cancelReplaceJoker}
+          onSkip={skipWarRoom}
+        />
       )}
 
       {(state.phase === 'won' || state.phase === 'lost') && (
@@ -574,12 +631,16 @@ export default function FourthPhaseLab({ onHome }: Props) {
             <div style={{ ...emptyWide }}>Select up to five cards</div>
           ) : selectedCards.map((card, index) => (
             <div key={card.id} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <MiniCard
-                card={card}
-                selected
-                dragProps={dragProps(card.id, setDragCard, reorderSelected)}
-                onClick={() => toggleCard(card)}
-              />
+              <div style={{ position: 'relative' }}>
+                <span style={orderBadge}>{index + 1}</span>
+                {preview?.cashesAtCardIndex === index && <span style={cashBadge}>CASHES</span>}
+                <MiniCard
+                  card={card}
+                  selected
+                  dragProps={dragProps(card.id, setDragCard, reorderSelected)}
+                  onClick={() => toggleCard(card)}
+                />
+              </div>
               <div style={{ display: 'flex', gap: 4 }}>
                 <button
                   aria-label={`Move ${cardDisplayName(card)} earlier`}
@@ -632,9 +693,19 @@ export default function FourthPhaseLab({ onHome }: Props) {
 
       {state.lastPlay && (
         <section style={{ ...card(8), padding: 12, marginTop: 10 }}>
-          <div style={sectionLabel}>Live Ledger</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={sectionLabel}>Live Ledger</div>
+            {state.lastPlay.ledger.length > 7 && (
+              <button
+                onClick={() => setLedgerExpanded((value) => !value)}
+                style={{ ...btnGhost, minHeight: 0, padding: '4px 10px', fontSize: 10.5 }}
+              >
+                {ledgerExpanded ? 'Show less' : `Show full math (${state.lastPlay.ledger.length})`}
+              </button>
+            )}
+          </div>
           <div style={{ display: 'grid', gap: 6, marginTop: 8 }}>
-            {state.lastPlay.ledger.slice(0, 7).map((entry, index) => (
+            {(ledgerExpanded ? state.lastPlay.ledger : state.lastPlay.ledger.slice(0, 7)).map((entry, index) => (
               <div key={`${entry.label}-${index}`} style={{ display: 'grid', gridTemplateColumns: '92px 76px 1fr', gap: 6, fontSize: 11, color: FB.textDim }}>
                 <span style={{ color: entry.channel === 'joker' ? '#cbbdff' : entry.channel === 'boss' ? FB.red : FB.textFaint, fontWeight: 900 }}>{entry.label}</span>
                 <span className="fb-num" style={{ color: FB.text, fontWeight: 900 }}>{entry.value}</span>
@@ -669,6 +740,39 @@ const emptySlot: CSSProperties = {
   color: FB.textFaint,
   fontSize: 10,
   fontWeight: 800,
+};
+
+const orderBadge: CSSProperties = {
+  position: 'absolute',
+  top: -6,
+  left: -6,
+  zIndex: 2,
+  minWidth: 18,
+  height: 18,
+  borderRadius: 9,
+  background: FB.gold,
+  color: '#1a1206',
+  fontSize: 11,
+  fontWeight: 950,
+  display: 'grid',
+  placeItems: 'center',
+  padding: '0 4px',
+  boxShadow: '0 1px 4px rgba(0,0,0,0.5)',
+};
+
+const cashBadge: CSSProperties = {
+  position: 'absolute',
+  top: -6,
+  right: -4,
+  zIndex: 2,
+  borderRadius: 5,
+  background: '#34c771',
+  color: '#04130c',
+  fontSize: 8.5,
+  fontWeight: 950,
+  letterSpacing: 0.5,
+  padding: '2px 4px',
+  boxShadow: '0 1px 4px rgba(0,0,0,0.5)',
 };
 
 const reorderBtn: CSSProperties = {
@@ -773,14 +877,58 @@ function MiniCard({
 function WarRoom({
   money,
   draft,
+  jokers,
+  pendingDraft,
   onDraft,
+  onReplace,
+  onCancelReplace,
   onSkip,
 }: {
   money: number;
   draft: FourthPhaseJokerState[];
+  jokers: FourthPhaseJokerState[];
+  pendingDraft?: FourthPhaseJokerState;
   onDraft: (joker: FourthPhaseJokerState) => void;
+  onReplace: (index: number) => void;
+  onCancelReplace: () => void;
   onSkip: () => void;
 }) {
+  if (pendingDraft) {
+    const incoming = jokerDefinition(pendingDraft);
+    return (
+      <section style={{ ...card(8), padding: 12, marginTop: 10, borderColor: FB.gold, background: 'linear-gradient(180deg,#15160d,#0d1118)' }}>
+        <div style={{ ...sectionLabel, color: FB.gold }}>Sideline is full — release one for {incoming.name}</div>
+        <div style={{ fontSize: 10.5, color: FB.textFaint, marginTop: 3 }}>Order matters: the new joker takes the slot you pick.</div>
+        <div style={{ display: 'grid', gap: 6, marginTop: 10 }}>
+          {jokers.map((joker, index) => {
+            const def = jokerDefinition(joker);
+            return (
+              <button
+                key={joker.id}
+                onClick={() => onReplace(index)}
+                style={{
+                  borderRadius: 8,
+                  border: `1px solid ${FB.red}`,
+                  background: '#101722',
+                  color: FB.text,
+                  padding: 10,
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+                  <span style={{ fontSize: 13, fontWeight: 950 }}>Slot {index + 1} · {def.name}</span>
+                  <span style={{ fontSize: 11, color: FB.red, fontWeight: 950 }}>release</span>
+                </div>
+                <div style={{ fontSize: 11, color: FB.textDim, marginTop: 3 }}>{def.effect}</div>
+              </button>
+            );
+          })}
+        </div>
+        <button onClick={onCancelReplace} style={{ ...btnGhost, width: '100%', marginTop: 10 }}>Keep my lineup (cancel)</button>
+      </section>
+    );
+  }
   return (
     <section style={{ ...card(8), padding: 12, marginTop: 10, borderColor: FB.gold, background: 'linear-gradient(180deg,#15160d,#0d1118)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
