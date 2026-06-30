@@ -84,7 +84,7 @@ const complementaryGenius = scoreFourthPhasePlay([card('crowd-A'), card('offense
   meterCap: BASE_METER_CAP,
   jokers: [{ id: 'theGenius' }],
 });
-assert('The Genius doubles all-four-phase score', complementaryGenius.points >= complementaryPlain.points * 1.9, `${complementaryGenius.points} vs ${complementaryPlain.points}`);
+assert('The Genius lifts all-four-phase score', complementaryGenius.points >= complementaryPlain.points * 1.45, `${complementaryGenius.points} vs ${complementaryPlain.points}`);
 
 const leadBlockerOrdered = scoreFourthPhasePlay([card('defense-J'), card('defense-Q'), card('offense-K')], {
   meter: BASE_METER,
@@ -163,6 +163,20 @@ const roadCollector = scoreFourthPhasePlay([card('crowd-A'), card('offense-Q'), 
   jokers: [{ id: 'phaseCollector' }],
 });
 assert('Road Game cap holds with Phase Collector', roadCollector.meterCap <= 2.0001, `cap x${roadCollector.meterCap.toFixed(2)}`);
+
+console.log('\nDeterminism and cash-index (Phase 0 parity gate):');
+// Preview and execution call scoreFourthPhasePlay through one shared context builder
+// in the UI; this guards the other half: identical inputs must yield identical output.
+const parityCards = [card('crowd-A'), card('offense-K')];
+const parityCtx = { meter: BASE_METER, meterCap: BASE_METER_CAP, jokers: [{ id: 'twelfthMan' as const }], boss: 'none' as const };
+const runA = scoreFourthPhasePlay(parityCards, parityCtx);
+const runB = scoreFourthPhasePlay(parityCards, parityCtx);
+assert('scoring is deterministic for identical input', JSON.stringify(runA) === JSON.stringify(runB), 'two runs match byte-for-byte');
+
+const cashIndexHouseCall = scoreFourthPhasePlay([card('crowd-A'), card('offense-K')], { meter: BASE_METER, meterCap: BASE_METER_CAP });
+assert('cashesAtCardIndex marks the cashing Offense card', cashIndexHouseCall.cashesAtCardIndex === 1, `index ${cashIndexHouseCall.cashesAtCardIndex}`);
+const cashIndexNone = scoreFourthPhasePlay([card('offense-2')], { meter: BASE_METER, meterCap: BASE_METER_CAP });
+assert('cashesAtCardIndex is null when no cash', cashIndexNone.cashesAtCardIndex === null, `index ${cashIndexNone.cashesAtCardIndex}`);
 
 console.log('');
 if (failures > 0) {

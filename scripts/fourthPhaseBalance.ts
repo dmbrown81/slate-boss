@@ -11,11 +11,13 @@ import {
   FOURTH_PHASE_JOKER_LIMIT,
   FOURTH_PHASE_MAX_PLAYS_PER_DRIVE,
   FOURTH_PHASE_TEAMS,
+  FOURTH_PHASE_WAR_ROOM_BUY_LIMIT,
+  FOURTH_PHASE_WAR_ROOM_REROLL_COST,
   activeBossForDrive,
   applyFourthPhaseDrawStart,
   createFourthPhaseRun,
-  draftFourthPhaseJokers,
   drawFourthPhaseCards,
+  generateFourthPhaseWarRoomOffers,
   jokerDefinition,
   meterTightness,
   scoreFourthPhasePlay,
@@ -23,8 +25,10 @@ import {
   type FourthPhaseCard,
   type FourthPhaseJokerId,
   type FourthPhaseJokerState,
+  type FourthPhasePracticeBook,
   type FourthPhaseScoreResult,
   type FourthPhaseTeamKey,
+  type FourthPhaseWarRoomOffer,
   type Phase,
   type SituationKey,
 } from '../src/lib/fourthPhase';
@@ -60,7 +64,6 @@ interface Candidate {
 
 const sampleCount = Number(process.argv[2] ?? 300);
 const teamKeys = Object.keys(FOURTH_PHASE_TEAMS) as FourthPhaseTeamKey[];
-const WAR_ROOM_COST = 4;
 
 function percentile(values: readonly number[], p: number): number {
   if (!values.length) return 0;
@@ -193,27 +196,121 @@ function jokerValue(joker: FourthPhaseJokerState, team: FourthPhaseTeamKey, boss
   return value;
 }
 
-function draftJoker(
+const PRACTICE_BASE_VALUE: Record<SituationKey, number> = {
+  checkdown: 18,
+  drive: 48,
+  stand: 34,
+  fieldFlip: 52,
+  blackout: 42,
+  momentumShift: 50,
+  houseCall: 58,
+  pickSix: 44,
+  complementaryFootball: 56,
+  bustedPlay: 0,
+};
+
+function practiceValue(situation: SituationKey, practice: FourthPhasePracticeBook, team: FourthPhaseTeamKey, bossDriveSoon: boolean): number {
+  let value = PRACTICE_BASE_VALUE[situation] - (practice[situation] ?? 0) * 8;
+  if (team === 'loudHouse' && (situation === 'houseCall' || situation === 'blackout')) value += 22;
+  if (team === 'specialTeamsChaos' && situation === 'fieldFlip') value += 26;
+  if (team === 'blackAndBlue' && (situation === 'pickSix' || situation === 'stand')) value += 18;
+  if (team === 'balanced' && (situation === 'complementaryFootball' || situation === 'momentumShift')) value += 18;
+  if (team === 'airRaid' && situation === 'houseCall') value += 16;
+  if (team === 'smashmouth' && (situation === 'drive' || situation === 'fieldFlip')) value += 14;
+  if (bossDriveSoon && ['houseCall', 'drive', 'fieldFlip', 'complementaryFootball'].includes(situation)) value += 10;
+  return value;
+}
+
+function offerValue(offer: FourthPhaseWarRoomOffer, team: FourthPhaseTeamKey, bossDriveSoon: boolean, practice: FourthPhasePracticeBook): number {
+  if (offer.kind === 'joker' && offer.joker) return jokerValue(offer.joker, team, bossDriveSoon);
+  if (offer.kind === 'practice' && offer.situation) return practiceValue(offer.situation, practice, team, bossDriveSoon);
+  return 0;
+}
+
+function addJoker(jokers: FourthPhaseJokerState[], picked: FourthPhaseJokerState, team: FourthPhaseTeamKey, bossDriveSoon: boolean): FourthPhaseJokerState[] {
+  if (jokers.length < FOURTH_PHASE_JOKER_LIMIT) return [...jokers, picked];
+  const values = jokers.map((joker) => jokerValue(joker, team, bossDriveSoon));
+  const weakestValue = Math.min(...values);
+  const weakestIndex = values.indexOf(weakestValue);
+  if (jokerValue(picked, team, bossDriveSoon) <= weakestValue + 4) return jokers;
+  return jokers.map((joker, index) => (index === weakestIndex ? picked : joker));
+}
+
+function applyOffer(
+  offer: FourthPhaseWarRoomOffer,
   jokers: FourthPhaseJokerState[],
+  practice: FourthPhasePracticeBook,
+  team: FourthPhaseTeamKey,
+  bossDriveSoon: boolean,
+): { jokers: FourthPhaseJokerState[]; practice: FourthPhasePracticeBook } {
+  if (offer.kind === 'joker' && offer.joker) {
+    return { jokers: addJoker(jokers, offer.joker, team, bossDriveSoon), practice };
+  }
+  if (offer.kind === 'practice' && offer.situation) {
+    return {
+      jokers,
+      practice: { ...practice, [offer.situation]: Math.min(3, (practice[offer.situation] ?? 0) + 1) },
+    };
+  }
+  return { jokers, practice };
+}
+
+function runWarRoom(
+  jokers: FourthPhaseJokerState[],
+  practice: FourthPhasePracticeBook,
   money: number,
   seed: number,
   driveIndex: number,
   team: FourthPhaseTeamKey,
+  boss: ReturnType<typeof activeBossForDrive>,
   policy: Policy,
   rng: RNG,
-): { jokers: FourthPhaseJokerState[]; money: number } {
-  const draft = draftFourthPhaseJokers(jokers, seed, driveIndex);
-  if (policy === 'none') return { jokers, money: money + 3 };
-  if (policy === 'random') {
-    if (money < WAR_ROOM_COST || rng() < 0.35) return { jokers, money: money + 3 };
-    const picked = draft[Math.floor(rng() * draft.length)];
-    const next = jokers.length < FOURTH_PHASE_JOKER_LIMIT ? [...jokers, picked] : [...jokers.slice(1), picked];
-    return { jokers: next, money: money - WAR_ROOM_COST };
+): { jokers: FourthPhaseJokerState[]; practice: FourthPhasePracticeBook; money: number } {
+  if (policy === 'none') return { jokers, practice, money: money + 3 };
+  let nextJokers = jokers;
+  let nextPractice = practice;
+  let nextMoney = money;
+  let buys = 0;
+  let rerolls = 0;
+  const bossDriveSoon = driveIndex >= 1 || boss !== 'none';
+  let offers = generateFourthPhaseWarRoomOffers(nextJokers, seed, driveIndex, team, boss, rerolls, nextPractice);
+
+  while (buys < FOURTH_PHASE_WAR_ROOM_BUY_LIMIT) {
+    const affordable = offers.filter((offer) => offer.cost <= nextMoney);
+    if (!affordable.length) break;
+
+    if (policy === 'random') {
+      if (rng() < (buys === 0 ? 0.28 : 0.48)) break;
+      const offer = affordable[Math.floor(rng() * affordable.length)];
+      const applied = applyOffer(offer, nextJokers, nextPractice, team, bossDriveSoon);
+      nextJokers = applied.jokers;
+      nextPractice = applied.practice;
+      nextMoney -= offer.cost;
+      offers = offers.filter((candidate) => candidate.id !== offer.id);
+      buys += 1;
+      continue;
+    }
+
+    const ranked = [...affordable].sort((a, b) => offerValue(b, team, bossDriveSoon, nextPractice) - offerValue(a, team, bossDriveSoon, nextPractice));
+    const best = ranked[0];
+    const bestValue = offerValue(best, team, bossDriveSoon, nextPractice);
+    if (bestValue < 42 && rerolls < 1 && nextMoney >= FOURTH_PHASE_WAR_ROOM_REROLL_COST + Math.min(...offers.map((offer) => offer.cost))) {
+      nextMoney -= FOURTH_PHASE_WAR_ROOM_REROLL_COST;
+      rerolls += 1;
+      offers = generateFourthPhaseWarRoomOffers(nextJokers, seed, driveIndex, team, boss, rerolls, nextPractice);
+      continue;
+    }
+    if (bestValue < 30) break;
+    const applied = applyOffer(best, nextJokers, nextPractice, team, bossDriveSoon);
+    nextJokers = applied.jokers;
+    nextPractice = applied.practice;
+    nextMoney -= best.cost;
+    offers = offers.filter((candidate) => candidate.id !== best.id);
+    buys += 1;
   }
-  if (money < WAR_ROOM_COST) return { jokers, money: money + 3 };
-  const picked = [...draft].sort((a, b) => jokerValue(b, team, driveIndex >= 1) - jokerValue(a, team, driveIndex >= 1))[0];
-  const next = jokers.length < FOURTH_PHASE_JOKER_LIMIT ? [...jokers, picked] : [...jokers.slice(0, FOURTH_PHASE_JOKER_LIMIT - 1), picked];
-  return { jokers: next, money: money - WAR_ROOM_COST };
+
+  if (buys === 0) nextMoney += 3;
+  return { jokers: nextJokers, practice: nextPractice, money: nextMoney };
 }
 
 function simulateGame(team: FourthPhaseTeamKey, seed: number, policy: Policy): SimResult {
@@ -226,6 +323,7 @@ function simulateGame(team: FourthPhaseTeamKey, seed: number, policy: Policy): S
   drawPile = handState.drawPile;
   discardPile = handState.discardPile;
   let jokers = [...run.jokers];
+  let practice = { ...run.practice };
   let money = run.money;
   let meter = run.meter.meter;
   let meterCap = run.meter.meterCap;
@@ -245,7 +343,7 @@ function simulateGame(team: FourthPhaseTeamKey, seed: number, policy: Policy): S
       hand = handState.hand;
       drawPile = handState.drawPile;
       discardPile = handState.discardPile;
-      const drawMeter = applyFourthPhaseDrawStart({ meter: BASE_METER, meterCap: Math.max(BASE_METER_CAP, meterCap) }, { jokers, wins: driveIndex, boss });
+      const drawMeter = applyFourthPhaseDrawStart({ meter: BASE_METER, meterCap: Math.max(BASE_METER_CAP, meterCap) }, { jokers, practice, wins: driveIndex, boss });
       meter = drawMeter.meter;
       meterCap = drawMeter.meterCap;
     }
@@ -263,6 +361,7 @@ function simulateGame(team: FourthPhaseTeamKey, seed: number, policy: Policy): S
         meter,
         meterCap,
         jokers,
+        practice,
         discardsLeft,
         cardsPlayedThisDrive,
         driveIndex,
@@ -311,8 +410,9 @@ function simulateGame(team: FourthPhaseTeamKey, seed: number, policy: Policy): S
 
     money += 5 + driveIndex * 2;
     if (driveIndex < run.targets.length - 1) {
-      const drafted = draftJoker(jokers, money, seed, driveIndex, team, policy, rng);
+      const drafted = runWarRoom(jokers, practice, money, seed, driveIndex, team, activeBossForDrive(run, driveIndex + 1), policy, rng);
       jokers = drafted.jokers;
+      practice = drafted.practice;
       money = drafted.money;
     }
   }
@@ -358,26 +458,30 @@ const peakMeterP99 = percentile(byPolicy.synergy.map((result) => result.peakMete
 
 console.log('\nTeam viability (synergy pilot):');
 let minTeamWin = 1;
+let maxTeamWin = 0;
+const teamWinRates: Partial<Record<FourthPhaseTeamKey, number>> = {};
 for (const team of teamKeys) {
   const teamResults = byPolicy.synergy.filter((result) => result.team === team);
   const winRate = teamResults.filter((result) => result.won).length / teamResults.length;
+  teamWinRates[team] = winRate;
   minTeamWin = Math.min(minTeamWin, winRate);
+  maxTeamWin = Math.max(maxTeamWin, winRate);
   console.log(`  ${FOURTH_PHASE_TEAMS[team].shortName.padEnd(12)} win=${(winRate * 100).toFixed(1)}% median=${median(teamResults.map((result) => result.score)).toFixed(0)} money=${median(teamResults.map((result) => result.endingMoney)).toFixed(0)}`);
 }
+const teamSpread = maxTeamWin - minTeamWin;
+const loudHouseWin = teamWinRates.loudHouse ?? 0;
 
-// Advisory, not a hard gate: a low reward WIN gap reflects thin joker content (drafts mostly raise an
-// already-strong pilot rather than flipping losses to wins). Tracked here honestly until the joker
-// catalog deepens; it should not mask a green build the way a soft gate would.
-const rewardAdvisory = rewardWinGap >= 0.05 ? 'OK ' : '🟡 ';
-console.log('\nAdvisory:');
-console.log(`  ${rewardAdvisory}reward WIN gap -- +${(rewardWinGap * 100).toFixed(1)} win pts (+${rewardScoreGap.toFixed(0)} median score) vs no-draft`);
+console.log('\nDraft impact:');
+console.log(`  reward WIN gap -- +${(rewardWinGap * 100).toFixed(1)} win pts (+${rewardScoreGap.toFixed(0)} median score) vs no-draft`);
 
 console.log('\nGates:');
 const gates = [
-  // Band, not a floor: <45% is too punishing, >88% means targets are too soft to pressure a build.
-  { label: 'synergy win in 45-88%', pass: synergyWin >= 0.45 && synergyWin <= 0.88, detail: `${(synergyWin * 100).toFixed(1)}%` },
+  { label: 'synergy win in 75-85%', pass: synergyWin >= 0.75 && synergyWin <= 0.85, detail: `${(synergyWin * 100).toFixed(1)}%` },
+  { label: 'no-draft win in 55-65%', pass: noneWin >= 0.55 && noneWin <= 0.65, detail: `${(noneWin * 100).toFixed(1)}%` },
+  { label: 'draft gap >= 15 pts', pass: rewardWinGap >= 0.15, detail: `+${(rewardWinGap * 100).toFixed(1)} pts vs no-draft` },
   { label: 'build gap >= 8 pts', pass: buildGap >= 0.08, detail: `${(buildGap * 100).toFixed(1)} pts vs random` },
-  { label: 'per-team viability >= 30%', pass: minTeamWin >= 0.3, detail: `${(minTeamWin * 100).toFixed(1)}%` },
+  { label: 'per-team spread <= 6 pts', pass: teamSpread <= 0.06, detail: `${(teamSpread * 100).toFixed(1)} pts` },
+  { label: 'Loud House not bottom team', pass: loudHouseWin > minTeamWin, detail: `Loud House ${(loudHouseWin * 100).toFixed(1)}%, floor ${(minTeamWin * 100).toFixed(1)}%` },
   { label: 'meter ceiling tightness <= 35%', pass: tightRate <= 0.35, detail: `${(tightRate * 100).toFixed(1)}%, p99 peak x${peakMeterP99.toFixed(2)}` },
 ];
 
@@ -394,4 +498,4 @@ if (failures > 0) {
   process.exit(1);
 }
 
-console.log('Fourth Phase balance passed its prototype gates.');
+console.log('Fourth Phase balance passed its target gates.');

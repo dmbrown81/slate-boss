@@ -158,12 +158,13 @@ export const FOURTH_PHASE_JOKERS: Record<FourthPhaseJokerId, FourthPhaseJokerDef
     id: 'theGenius',
     name: 'The Genius',
     rarity: 'rare',
-    effect: 'All-four-phase plays score x2.',
+    effect: 'Complementary Football gains +0.08 Execution and +1.00 BigPlay.',
     hooks: {
       onPlayFinal: ({ score, situation }) => {
         if (situation.key !== 'complementaryFootball') return;
-        score.bigPlay *= 2;
-        addLedger(score, 'The Genius', 'x2 BigPlay', 'Complementary Football doubled.');
+        score.execution += 0.08;
+        score.bigPlay += 1;
+        addLedger(score, 'The Genius', '+0.08 Exec, +1.00 BP', 'Complementary Football has the perfect call.');
       },
     },
   },
@@ -324,13 +325,14 @@ export const FOURTH_PHASE_JOKERS: Record<FourthPhaseJokerId, FourthPhaseJokerDef
     id: 'redZonePackage',
     name: 'Red Zone Package',
     rarity: 'core',
-    effect: 'When the target is within 180 points, non-utility plays gain +0.18 Execution and +0.22 BigPlay.',
+    effect: 'When the target is within 180 points, non-utility plays gain +8 Yards, +0.10 Execution, and +0.34 BigPlay.',
     hooks: {
       onPlayFinal: ({ context, score, situation }) => {
         if (situation.bust || situation.utility || (context.targetRemaining ?? Infinity) > 180) return;
-        score.execution += 0.18;
-        score.bigPlay += 0.22;
-        addLedger(score, 'Red Zone Package', '+0.18 Exec, +0.22 BP', 'The finishing menu is open.');
+        score.yards += 8;
+        score.execution += 0.1;
+        score.bigPlay += 0.34;
+        addLedger(score, 'Red Zone Package', '+8 Yards, +0.10 Exec, +0.34 BP', 'The finishing menu is open.');
       },
     },
   },
@@ -384,14 +386,17 @@ export const FOURTH_PHASE_JOKERS: Record<FourthPhaseJokerId, FourthPhaseJokerDef
     id: 'coordinatorTree',
     name: 'Coordinator Tree',
     rarity: 'rare',
-    effect: 'Plays with 3+ phases gain +0.18 Execution; all four phases gain +0.23 instead.',
+    effect: 'Plays with 3+ phases gain Yards and a smaller Execution lift; all four phases add BigPlay.',
     hooks: {
       onPlayFinal: ({ cards, score, situation }) => {
         const variety = phaseVariety(cards);
         if (situation.bust || variety < 3) return;
-        const bonus = variety >= 4 ? 0.23 : 0.18;
-        score.execution += bonus;
-        addLedger(score, 'Coordinator Tree', `+${bonus.toFixed(2)} Exec`, `${variety} phases linked.`);
+        const yards = variety >= 4 ? 8 : 5;
+        const execution = variety >= 4 ? 0.08 : 0.1;
+        score.yards += yards;
+        score.execution += execution;
+        if (variety >= 4) score.bigPlay += 0.12;
+        addLedger(score, 'Coordinator Tree', `+${yards} Yards, +${execution.toFixed(2)} Exec${variety >= 4 ? ', +0.12 BP' : ''}`, `${variety} phases linked.`);
       },
     },
   },
@@ -399,13 +404,14 @@ export const FOURTH_PHASE_JOKERS: Record<FourthPhaseJokerId, FourthPhaseJokerDef
     id: 'closer',
     name: 'Closer',
     rarity: 'rare',
-    effect: 'On the boss drive, non-bust plays gain +0.30 Execution and +0.32 BigPlay.',
+    effect: 'On the boss drive, non-bust plays gain +10 Yards, +0.10 Execution, and +0.45 BigPlay.',
     hooks: {
       onPlayFinal: ({ context, score, situation }) => {
         if (context.driveIndex < 2 || situation.bust) return;
-        score.execution += 0.3;
-        score.bigPlay += 0.32;
-        addLedger(score, 'Closer', '+0.30 Exec, +0.32 BP', 'Fourth quarter package.');
+        score.yards += 10;
+        score.execution += 0.1;
+        score.bigPlay += 0.45;
+        addLedger(score, 'Closer', '+10 Yards, +0.10 Exec, +0.45 BP', 'Fourth quarter package.');
       },
     },
   },
@@ -413,12 +419,13 @@ export const FOURTH_PHASE_JOKERS: Record<FourthPhaseJokerId, FourthPhaseJokerDef
     id: 'pressBoxAngle',
     name: 'Press Box Angle',
     rarity: 'rare',
-    effect: 'Against a boss, the first copy of each situation gains +0.22 Execution.',
+    effect: 'Against a boss, the first copy of each situation gains +8 Yards and +0.12 Execution.',
     hooks: {
       onSituationDetected: (ctx) => {
         if (ctx.context.boss === 'none' || ctx.situation.bust || !isFirstUseOfSituation(ctx)) return;
-        ctx.score.execution += 0.22;
-        addLedger(ctx.score, 'Press Box Angle', '+0.22 Exec', `${ctx.situation.label} had the right call.`);
+        ctx.score.yards += 8;
+        ctx.score.execution += 0.12;
+        addLedger(ctx.score, 'Press Box Angle', '+8 Yards, +0.12 Exec', `${ctx.situation.label} had the right call.`);
       },
     },
   },

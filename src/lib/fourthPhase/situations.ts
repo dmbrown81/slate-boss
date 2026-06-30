@@ -119,6 +119,19 @@ export function recognizeFourthPhaseSituation(cards: readonly FourthPhaseCard[])
     });
   }
 
+  // House Call is a cashing situation and must outrank Pick Six: a hand that brought
+  // a Crowd card alongside Offense is here to cash the meter, even if it also has
+  // 2+ Defense. (A defense-heavy hand with no Crowd still falls through to Pick Six.)
+  if (counts.offense >= 1 && counts.crowd >= 1) {
+    return result('houseCall', 86, counts, {
+      yardsSeed: offense + 6,
+      executionSeed: 0.12,
+      meterBonus: counts.crowd >= 2 ? 0.15 : 0,
+      cashesMeter: true,
+      notes: ['Offense cashes whatever the stadium has built.'],
+    });
+  }
+
   if (counts.defense >= 2 && counts.offense >= 1) {
     return result('pickSix', 85, counts, {
       yardsSeed: Math.round(offense * 0.75 + defense * 0.9) + 12,
@@ -126,16 +139,6 @@ export function recognizeFourthPhaseSituation(cards: readonly FourthPhaseCard[])
       meterBonus: 0.35,
       bigPlaySeed: 1.15,
       notes: ['Defensive pressure turns into instant field position.'],
-    });
-  }
-
-  if (counts.offense >= 1 && counts.crowd >= 1) {
-    return result('houseCall', 80, counts, {
-      yardsSeed: offense + 6,
-      executionSeed: 0.12,
-      meterBonus: counts.crowd >= 2 ? 0.15 : 0,
-      cashesMeter: true,
-      notes: ['Offense cashes whatever the stadium has built.'],
     });
   }
 
