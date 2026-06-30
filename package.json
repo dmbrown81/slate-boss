@@ -17,7 +17,9 @@
     "cap:open:android": "cap open android",
     "balance:gridiron": "tsx scripts/gridironBalance.ts",
     "matchup:gridiron": "tsx scripts/gridironMatchupCheck.ts",
-    "smoke:gridiron": "tsx --tsconfig tsconfig.app.json scripts/gridironSmoke.tsx"
+    "smoke:gridiron": "tsx --tsconfig tsconfig.app.json scripts/gridironSmoke.tsx",
+    "matchup:fourthphase": "tsx scripts/fourthPhaseMatchup.ts",
+    "balance:fourthphase": "tsx scripts/fourthPhaseBalance.ts"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.1",

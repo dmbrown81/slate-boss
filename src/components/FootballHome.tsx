@@ -9,9 +9,10 @@ import { stringSeed } from '../lib/rng';
 
 interface Props {
   onPlay: (seed?: number, team?: TeamArchetype) => void;
+  onFourthPhase: () => void;
 }
 
-export default function FootballHome({ onPlay }: Props) {
+export default function FootballHome({ onPlay, onFourthPhase }: Props) {
   const [showHelp, setShowHelp] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showCode, setShowCode] = useState(false);
@@ -143,6 +144,12 @@ export default function FootballHome({ onPlay }: Props) {
 
         <button onClick={() => onPlay()} style={{ ...btnPrimary, width: '100%', fontSize: 17, padding: '16px 0' }}>
           {activeRun ? `🏈 Resume Season (Game ${activeRun.run.gameNumber}/${SEASON_GAMES})` : '🏈 Kickoff'}
+        </button>
+        <button
+          onClick={onFourthPhase}
+          style={{ width: '100%', padding: '13px 0', background: '#171226', border: '1px solid #6d5fd1', color: '#d9d2ff', borderRadius: 12, fontSize: 14, fontWeight: 900, cursor: 'pointer' }}
+        >
+          Fourth Phase (Lab)
         </button>
         <div style={{ ...card(12), padding: '12px 14px', borderColor: `${FB.blue}66`, background: 'linear-gradient(160deg,#0e1722,#0b0f16)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
