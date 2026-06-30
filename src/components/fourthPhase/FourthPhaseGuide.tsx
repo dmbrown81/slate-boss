@@ -33,8 +33,8 @@ interface SituationGuide {
 const SITUATION_GUIDE: readonly SituationGuide[] = [
   { key: 'complementaryFootball', name: 'Complementary Football', trigger: 'All four phases present', payoff: 'Apex — boosts every term and cashes the meter', kind: 'apex' },
   { key: 'momentumShift', name: 'Momentum Shift', trigger: '2+ Offense and 2+ Defense', payoff: 'Solid score with a high floor', kind: 'score' },
-  { key: 'pickSix', name: 'Pick Six', trigger: '2+ Defense and 1+ Offense', payoff: 'Burst score and charges the meter', kind: 'score' },
   { key: 'houseCall', name: 'House Call', trigger: 'Offense + Crowd together', payoff: 'Cashes the Crowd Meter into a score', kind: 'score' },
+  { key: 'pickSix', name: 'Pick Six', trigger: '2+ Defense and 1+ Offense (no Crowd)', payoff: 'Burst score and charges the meter', kind: 'score' },
   { key: 'blackout', name: 'The Blackout', trigger: '3+ Crowd', payoff: 'No score — charges the meter hard', kind: 'charge' },
   { key: 'fieldFlip', name: 'Field Flip', trigger: '2+ Special Teams', payoff: 'No score — draws, money, discounts', kind: 'fuel' },
   { key: 'stand', name: 'The Stand', trigger: '3+ Defense', payoff: 'Low score, very high Execution', kind: 'score' },

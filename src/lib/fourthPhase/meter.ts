@@ -6,6 +6,10 @@ export const ABSOLUTE_METER_CAP = 12;
 export const SUSTAINED_TICK = 0.1;
 export const DEFAULT_BLEED_RATE = 0.25;
 export const LOW_SCORE_BLEED_THRESHOLD = 18;
+// Holding a charged meter is no longer free: a scoring play that ignores a hot
+// meter (instead of cashing it) bleeds this fraction of the charge above x1.0.
+// This is what makes "cash now vs keep building" a real decision.
+export const HOLD_BLEED_RATE = 0.12;
 
 export function crowdChargeForRank(rank: Rank): number {
   if (rank === 'A') return 1;

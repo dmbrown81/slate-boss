@@ -1,6 +1,7 @@
 import {
   BASE_METER,
   BASE_METER_CAP,
+  HOLD_BLEED_RATE,
   LOW_SCORE_BLEED_THRESHOLD,
   SUSTAINED_TICK,
   applyMeterBleed,
@@ -24,6 +25,7 @@ const EMPTY_CONTEXT: FourthPhaseScoreContext = {
   meter: BASE_METER,
   meterCap: BASE_METER_CAP,
   jokers: [],
+  practice: {},
   discardsLeft: 2,
   cardsPlayedThisDrive: 0,
   driveIndex: 0,
@@ -143,6 +145,40 @@ function applyBossBeforeScore(score: MutableFourthPhaseScore, context: FourthPha
   ledger(score, { channel: 'boss', label: 'Road Game', value: 'cap x2.0', detail: 'Meter ceiling forced low.' });
 }
 
+function applyPracticeBonus(score: MutableFourthPhaseScore, situation: SituationResult, context: FourthPhaseScoreContext) {
+  const level = Math.min(3, context.practice[situation.key] ?? 0);
+  if (level <= 0 || situation.bust) return;
+  if (situation.utility) {
+    score.fuel.draw += situation.key === 'fieldFlip' ? level : 0;
+    score.fuel.money += situation.key === 'fieldFlip' ? level * 2 : 0;
+    if (situation.key === 'blackout') {
+      const before = score.meter;
+      score.meter = applyMeterCharge(score.meter, level * 0.15, score.meterCap);
+      score.meterCharged += Math.max(0, score.meter - before);
+    }
+    ledger(score, {
+      channel: 'system',
+      label: 'Practice Drill',
+      value: `level ${level}`,
+      detail: situation.key === 'fieldFlip' ? 'Special Teams fuel package.' : 'Crowd charge package.',
+    });
+    return;
+  }
+
+  const yardsBonus = level * 5;
+  const executionBonus = level * 0.03;
+  const bigPlayBonus = situation.cashesMeter ? level * 0.12 : level * 0.05;
+  score.yards += yardsBonus;
+  score.execution += executionBonus;
+  score.bigPlay += bigPlayBonus;
+  ledger(score, {
+    channel: 'system',
+    label: 'Practice Drill',
+    value: `+${yardsBonus} Yards, +${executionBonus.toFixed(2)} Exec, +${bigPlayBonus.toFixed(2)} BP`,
+    detail: `${situation.label} level ${level}.`,
+  });
+}
+
 function applyBossAfterCards(score: MutableFourthPhaseScore, situation: SituationResult, cards: readonly FourthPhaseCard[], context: FourthPhaseScoreContext) {
   if (context.boss === 'stackedBox' && situation.counts.offense > 0) {
     score.yards *= 0.5;
@@ -206,6 +242,7 @@ export function scoreFourthPhasePlay(cards: readonly FourthPhaseCard[], partialC
   ledger(score, { channel: 'system', label: situation.label, value: 'detected', detail: situation.notes.join(' ') });
   ledger(score, { channel: 'yards', label: 'Yards seed', value: `${score.yards}`, detail: 'Base payload.' });
   ledger(score, { channel: 'execution', label: 'Execution seed', value: `+${score.execution.toFixed(2)}`, detail: 'Reliability floor.' });
+  applyPracticeBonus(score, situation, context);
 
   for (const joker of jokerDefs(context.jokers)) {
     joker.hooks.onSituationDetected?.(hookContext(cards, situation, context, score));
@@ -266,11 +303,19 @@ export function scoreFourthPhasePlay(cards: readonly FourthPhaseCard[], partialC
   const points = pointsFrom(score);
   const isFinalPlay = (context.targetRemaining ?? Infinity) <= points;
 
+  // Meter the play actually built, before the passive sustained tick. Used to tell a
+  // "charging" play apart from one that walked in hot and ignored the meter.
+  const meterBuilt = score.meter;
   if (!situation.bust) {
     applyCharge(cards, situation, context, score, SUSTAINED_TICK, 'sustained', 'Sustained tick');
   }
   const lowScoringAttempt = !situation.utility && points < LOW_SCORE_BLEED_THRESHOLD;
   const shouldBleed = score.alwaysBleed || situation.bust || lowScoringAttempt;
+  const heldHotMeter =
+    !didCash &&
+    !situation.utility &&
+    context.meter > BASE_METER + 0.01 &&
+    meterBuilt <= context.meter + 0.001;
   if (shouldBleed && !score.preventBleed) {
     const before = score.meter;
     score.meter = applyMeterBleed(score.meter, score.meterBleedRate);
@@ -278,6 +323,18 @@ export function scoreFourthPhasePlay(cards: readonly FourthPhaseCard[], partialC
       channel: 'meter',
       label: situation.bust ? 'Bust bleed' : score.alwaysBleed ? 'Forced bleed' : 'Low-score bleed',
       value: `x${before.toFixed(2)} to x${score.meter.toFixed(2)}`,
+    });
+  } else if (heldHotMeter && !score.preventBleed) {
+    // Walked in with a charged meter and scored a play that neither cashed nor built
+    // it — holding costs a little. Charging plays and cashing plays are exempt, so
+    // this only bites when you ignore a hot meter.
+    const before = score.meter;
+    score.meter = applyMeterBleed(score.meter, HOLD_BLEED_RATE);
+    ledger(score, {
+      channel: 'meter',
+      label: 'Hold cost',
+      value: `x${before.toFixed(2)} to x${score.meter.toFixed(2)}`,
+      detail: 'Hot meter left uncashed.',
     });
   }
 

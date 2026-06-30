@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties, type DragEvent } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties, type DragEvent } from 'react';
 import { mulberry32, stringSeed } from '../../lib/rng';
 import { FB, btnGhost, btnPrimary, card, sectionLabel } from '../footballStyles';
 import { HowToPlay, SituationsPanel } from './FourthPhaseGuide';
@@ -13,6 +13,8 @@ import {
   FOURTH_PHASE_MAX_PLAYS_PER_DRIVE,
   FOURTH_PHASE_PLAY_LIMIT,
   FOURTH_PHASE_TEAMS,
+  FOURTH_PHASE_WAR_ROOM_BUY_LIMIT,
+  FOURTH_PHASE_WAR_ROOM_REROLL_COST,
   PHASE_COLOR,
   PHASE_LABEL,
   PHASE_SHORT,
@@ -20,19 +22,22 @@ import {
   applyFourthPhaseDrawStart,
   cardDisplayName,
   createFourthPhaseRun,
-  draftFourthPhaseJokers,
   drawFourthPhaseCards,
   formatMeter,
   fourthPhaseRunCode,
+  generateFourthPhaseWarRoomOffers,
   jokerDefinition,
+  parseFourthPhaseRunCode,
   scoreFourthPhasePlay,
   shuffleFourthPhase,
   type FourthPhaseBossKey,
   type FourthPhaseCard,
   type FourthPhaseJokerState,
+  type FourthPhasePracticeBook,
   type FourthPhaseScoreContext,
   type FourthPhaseScoreResult,
   type FourthPhaseTeamKey,
+  type FourthPhaseWarRoomOffer,
   type SituationKey,
 } from '../../lib/fourthPhase';
 
@@ -48,6 +53,32 @@ interface CashInSnapshot {
   bigPlay: number;
   meter: number;
   reason: string;
+}
+
+interface FourthPhaseRunMeta {
+  dailyLabel?: string;
+  dailyPractice?: boolean;
+}
+
+interface FourthPhaseRunRecord {
+  id: string;
+  date: string;
+  seed: number;
+  team: FourthPhaseTeamKey;
+  score: number;
+  won: boolean;
+  bestPlay: number;
+  runCode: string;
+  dailyLabel?: string;
+}
+
+interface FourthPhaseDailyRecord {
+  date: string;
+  seed: number;
+  team: FourthPhaseTeamKey;
+  score: number;
+  won: boolean;
+  streak: number;
 }
 
 interface DragBind {
@@ -68,7 +99,8 @@ interface LabState {
   hand: FourthPhaseCard[];
   selectedIds: string[];
   jokers: FourthPhaseJokerState[];
-  draft: FourthPhaseJokerState[];
+  practice: FourthPhasePracticeBook;
+  draft: FourthPhaseWarRoomOffer[];
   money: number;
   driveIndex: number;
   driveScore: number;
@@ -79,10 +111,16 @@ interface LabState {
   repeatedSituations: Partial<Record<SituationKey, number>>;
   drawNonce: number;
   phase: LabPhase;
+  runScore: number;
   bestPlay: number;
-  pendingDraft?: FourthPhaseJokerState;
+  buysThisWarRoom: number;
+  rerollsThisWarRoom: number;
+  pendingDraft?: FourthPhaseWarRoomOffer;
   lastPlay?: FourthPhaseScoreResult;
   cashIn?: CashInSnapshot;
+  dailyLabel?: string;
+  dailyPractice?: boolean;
+  completion?: FourthPhaseRunRecord;
 }
 
 // Decide whether a play earns the cash-in celebration, and why. Replaces the old
@@ -111,7 +149,89 @@ function evaluateCashIn(
 }
 
 const teamKeys = Object.keys(FOURTH_PHASE_TEAMS) as FourthPhaseTeamKey[];
-const WAR_ROOM_COST = 4;
+const FP_HISTORY_KEY = 'fourth_phase_history_v1';
+const FP_DAILY_KEY = 'fourth_phase_daily_v1';
+
+function readJson<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) as T : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeJson<T>(key: string, value: T) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    /* ignore */
+  }
+}
+
+function loadFourthPhaseHistory(): FourthPhaseRunRecord[] {
+  const history = readJson<FourthPhaseRunRecord[]>(FP_HISTORY_KEY, []);
+  return Array.isArray(history) ? history.slice(0, 10) : [];
+}
+
+function bestFourthPhaseRun(history = loadFourthPhaseHistory()): FourthPhaseRunRecord | null {
+  return [...history].sort((a, b) => b.score - a.score || Number(b.won) - Number(a.won))[0] ?? null;
+}
+
+function loadFourthPhaseDaily(): FourthPhaseDailyRecord | null {
+  return readJson<FourthPhaseDailyRecord | null>(FP_DAILY_KEY, null);
+}
+
+function utcDateLabel(date = new Date()): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function previousUtcDateLabel(label: string): string {
+  const date = new Date(`${label}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() - 1);
+  return utcDateLabel(date);
+}
+
+function fourthPhaseDailySeed(label = utcDateLabel()): { label: string; seed: number; team: FourthPhaseTeamKey } {
+  const seed = stringSeed(`fourth-phase-daily:${label}`);
+  return { label, seed, team: teamKeys[Math.abs(seed) % teamKeys.length] };
+}
+
+function saveFourthPhaseCompletion(record: FourthPhaseRunRecord, dailyPractice?: boolean) {
+  const history = [record, ...loadFourthPhaseHistory().filter((entry) => entry.id !== record.id)].slice(0, 10);
+  writeJson(FP_HISTORY_KEY, history);
+  if (!record.dailyLabel || dailyPractice) return;
+  const previous = loadFourthPhaseDaily();
+  const streak = previous?.date === previousUtcDateLabel(record.dailyLabel) ? previous.streak + 1 : 1;
+  writeJson<FourthPhaseDailyRecord>(FP_DAILY_KEY, {
+    date: record.dailyLabel,
+    seed: record.seed,
+    team: record.team,
+    score: record.score,
+    won: record.won,
+    streak,
+  });
+}
+
+// Played first-run tutorial. Teaches the one trick by making the player do it,
+// instead of asking them to read a panel. Advances on real plays (see useEffect).
+const TUTORIAL_STEPS = [
+  {
+    title: 'Welcome — one trick wins games',
+    body: 'Scroll to your Hand at the bottom, tap any blue OFF (Offense) card, then hit Run Play. That is a Checkdown: safe yards.',
+    cta: null,
+  },
+  {
+    title: 'Now the real trick',
+    body: 'Tap a purple CRD (Crowd) card FIRST, then a blue OFF card — in that left-to-right order — and Run Play. Crowd charges the meter; Offense cashes it.',
+    cta: null,
+  },
+  {
+    title: 'That is the whole game',
+    body: 'See the CASHES badge and the big BigPlay multiplier? The same two cards in the other order score about half. Charge, then cash, in the right order.',
+    cta: 'Got it — play on',
+  },
+] as const;
 
 function scriptedOpening(deck: FourthPhaseCard[]): FourthPhaseCard[] {
   const desired = [
@@ -130,8 +250,11 @@ function scriptedOpening(deck: FourthPhaseCard[]): FourthPhaseCard[] {
   return [...opening, ...deck.filter((card) => !used.has(card.id))];
 }
 
-function createInitialState(team: FourthPhaseTeamKey): LabState {
-  const seed = stringSeed(`fourth-phase-lab:${team}:${Date.now()}`);
+function createInitialState(
+  team: FourthPhaseTeamKey,
+  seed = stringSeed(`fourth-phase-lab:${team}:${Date.now()}`),
+  meta: FourthPhaseRunMeta = {},
+): LabState {
   const run = createFourthPhaseRun(team, seed);
   const orderedDeck = scriptedOpening(run.deck);
   const draw = drawFourthPhaseCards(orderedDeck, [], FOURTH_PHASE_HAND_SIZE, mulberry32(stringSeed(`${seed}:opening`)));
@@ -145,6 +268,7 @@ function createInitialState(team: FourthPhaseTeamKey): LabState {
     hand: draw.drawn,
     selectedIds: [],
     jokers: run.jokers,
+    practice: run.practice,
     draft: [],
     money: run.money,
     driveIndex: 0,
@@ -156,7 +280,27 @@ function createInitialState(team: FourthPhaseTeamKey): LabState {
     repeatedSituations: {},
     drawNonce: 1,
     phase: 'play',
+    runScore: 0,
     bestPlay: 0,
+    buysThisWarRoom: 0,
+    rerollsThisWarRoom: 0,
+    dailyLabel: meta.dailyLabel,
+    dailyPractice: meta.dailyPractice,
+  };
+}
+
+function makeRunRecord(state: LabState, score: number, won: boolean, bestPlay: number): FourthPhaseRunRecord {
+  const runCode = fourthPhaseRunCode(state.seed, state.team);
+  return {
+    id: `${runCode}:${Date.now()}`,
+    date: new Date().toISOString(),
+    seed: state.seed,
+    team: state.team,
+    score,
+    won,
+    bestPlay,
+    runCode,
+    dailyLabel: state.dailyLabel,
   };
 }
 
@@ -177,6 +321,7 @@ function buildPlayContext(state: LabState): FourthPhaseScoreContext {
     meter: state.meter,
     meterCap: state.meterCap,
     jokers: state.jokers,
+    practice: state.practice,
     discardsLeft: state.discardsLeft,
     cardsPlayedThisDrive: state.playsThisDrive,
     driveIndex: state.driveIndex,
@@ -198,10 +343,55 @@ function meterStyle(meter: number, cap: number): CSSProperties {
 
 export default function FourthPhaseLab({ onHome }: Props) {
   const [state, setState] = useState<LabState>(() => createInitialState('balanced'));
+  const [importCode, setImportCode] = useState('');
+  const [importError, setImportError] = useState('');
+  const [shareCopied, setShareCopied] = useState(false);
   const [dragCard, setDragCard] = useState<string | null>(null);
   const [dragJoker, setDragJoker] = useState<string | null>(null);
   const [ledgerExpanded, setLedgerExpanded] = useState(false);
+  const [tutorialStep, setTutorialStep] = useState<number>(() => {
+    try {
+      return localStorage.getItem('fp-tutorial-done') ? -1 : 0;
+    } catch {
+      return 0;
+    }
+  });
 
+  // Advance the tutorial as the player actually performs each step. Driven by the
+  // play handler (executePlay) rather than an effect.
+  function advanceTutorial(playWillCash: boolean) {
+    if (tutorialStep === 0) setTutorialStep(1);
+    else if (tutorialStep === 1 && playWillCash) setTutorialStep(2);
+  }
+
+  function finishTutorial() {
+    try {
+      localStorage.setItem('fp-tutorial-done', '1');
+    } catch {
+      /* ignore */
+    }
+    setTutorialStep(-1);
+  }
+
+  useEffect(() => {
+    if (!state.completion) return;
+    saveFourthPhaseCompletion(state.completion, state.dailyPractice);
+  }, [state.completion, state.dailyPractice]);
+
+  const daily = fourthPhaseDailySeed();
+  const storedDailyRecord = loadFourthPhaseDaily();
+  const dailyRecord = state.completion?.dailyLabel === daily.label && !state.dailyPractice
+    ? {
+      date: daily.label,
+      seed: state.completion.seed,
+      team: state.completion.team,
+      score: state.completion.score,
+      won: state.completion.won,
+      streak: storedDailyRecord?.date === previousUtcDateLabel(daily.label) ? storedDailyRecord.streak + 1 : storedDailyRecord?.date === daily.label ? storedDailyRecord.streak : 1,
+    }
+    : storedDailyRecord;
+  const localBest = useMemo(() => bestFourthPhaseRun(state.completion ? [state.completion, ...loadFourthPhaseHistory()] : undefined), [state.completion]);
+  const todayDailyDone = dailyRecord?.date === daily.label;
   const activeBoss = activeBossForDrive(state, state.driveIndex);
   const target = state.targets[state.driveIndex];
   const targetRemaining = Math.max(0, target - state.driveScore);
@@ -216,18 +406,47 @@ export default function FourthPhaseLab({ onHome }: Props) {
   const runCode = fourthPhaseRunCode(state.seed, state.team);
   const teamProfile = FOURTH_PHASE_TEAMS[state.team];
   const playsLeft = Math.max(0, FOURTH_PHASE_MAX_PLAYS_PER_DRIVE - state.playsThisDrive);
-  const firstVisit = useMemo(() => {
-    try {
-      if (localStorage.getItem('fp-seen-guide')) return false;
-      localStorage.setItem('fp-seen-guide', '1');
-      return true;
-    } catch {
-      return true;
-    }
-  }, []);
 
   function restart(team: FourthPhaseTeamKey) {
     setState(createInitialState(team));
+    setImportError('');
+    setShareCopied(false);
+  }
+
+  function startDailyRun() {
+    const practice = loadFourthPhaseDaily()?.date === daily.label;
+    setState(createInitialState(daily.team, daily.seed, { dailyLabel: daily.label, dailyPractice: practice }));
+    setImportError('');
+    setShareCopied(false);
+  }
+
+  function importRunCode() {
+    const parsed = parseFourthPhaseRunCode(importCode);
+    if (!parsed) {
+      setImportError('Invalid run code');
+      return;
+    }
+    setState(createInitialState(parsed.team, parsed.seed));
+    setImportCode('');
+    setImportError('');
+    setShareCopied(false);
+  }
+
+  function cashCardText(): string {
+    if (!state.cashIn) return '';
+    return [
+      'CALLSMITH CASH-IN',
+      `${state.cashIn.points} on ${state.cashIn.situation}`,
+      `${FOURTH_PHASE_TEAMS[state.team].shortName} · ${runCode}`,
+      `Meter ${formatMeter(state.cashIn.meter)} · BigPlay x${state.cashIn.bigPlay.toFixed(2)}`,
+      `Jokers: ${state.jokers.map((joker) => jokerDefinition(joker).name).join(' / ')}`,
+    ].join('\n');
+  }
+
+  function copyCashCard() {
+    const text = cashCardText();
+    if (!text || !navigator.clipboard) return;
+    navigator.clipboard.writeText(text).then(() => setShareCopied(true)).catch(() => setShareCopied(false));
   }
 
   function toggleCard(card: FourthPhaseCard) {
@@ -298,6 +517,8 @@ export default function FourthPhaseLab({ onHome }: Props) {
 
   function executePlay() {
     if (!preview || selectedCards.length === 0 || state.phase !== 'play') return;
+    if (tutorialStep >= 0) advanceTutorial(preview.didCash);
+    setShareCopied(false);
     setState((current) => {
       const ids = new Set(current.selectedIds);
       const selected = current.selectedIds
@@ -308,6 +529,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
       const discardPile = [...current.discardPile, ...selected];
       const refill = refillHand(current, hand, discardPile, result.fuel.draw);
       const driveScore = current.driveScore + result.points;
+      const runScore = current.runScore + result.points;
       const repeatedSituations = {
         ...current.repeatedSituations,
         [result.situation.key]: (current.repeatedSituations[result.situation.key] ?? 0) + 1,
@@ -327,6 +549,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
         ...refill,
         selectedIds: [],
         driveScore,
+        runScore,
         playsThisDrive: current.playsThisDrive + 1,
         meter: result.meterAfter,
         meterCap: result.meterCap,
@@ -338,20 +561,42 @@ export default function FourthPhaseLab({ onHome }: Props) {
       };
       if (driveScore >= current.targets[current.driveIndex]) {
         if (current.driveIndex >= FOURTH_PHASE_DRIVES - 1) {
-          return { ...baseUpdate, phase: 'won', meter: BASE_METER };
+          const bestPlay = Math.max(current.bestPlay, result.points);
+          return {
+            ...baseUpdate,
+            phase: 'won',
+            meter: BASE_METER,
+            completion: makeRunRecord(current, runScore, true, bestPlay),
+          };
         }
+        const warRoomMoney = baseUpdate.money + 5 + current.driveIndex * 2;
         return {
           ...baseUpdate,
           phase: 'warRoom',
-          draft: draftFourthPhaseJokers(current.jokers, current.seed, current.driveIndex),
-          money: baseUpdate.money + 5 + current.driveIndex * 2,
+          draft: generateFourthPhaseWarRoomOffers(
+            baseUpdate.jokers,
+            current.seed,
+            current.driveIndex,
+            current.team,
+            current.boss,
+            0,
+            current.practice,
+          ),
+          money: warRoomMoney,
           meter: BASE_METER,
+          buysThisWarRoom: 0,
+          rerollsThisWarRoom: 0,
+          pendingDraft: undefined,
         };
       }
       const outOfPlayableCards =
         refill.hand.length === 0 ||
         (baseUpdate.playsThisDrive >= FOURTH_PHASE_MAX_PLAYS_PER_DRIVE && driveScore < current.targets[current.driveIndex]);
-      return outOfPlayableCards ? { ...baseUpdate, phase: 'lost' } : baseUpdate;
+      if (outOfPlayableCards) {
+        const bestPlay = Math.max(current.bestPlay, result.points);
+        return { ...baseUpdate, phase: 'lost', completion: makeRunRecord(current, runScore, false, bestPlay) };
+      }
+      return baseUpdate;
     });
   }
 
@@ -376,58 +621,92 @@ export default function FourthPhaseLab({ onHome }: Props) {
     });
   }
 
-  function startNextDrive(nextJokers: FourthPhaseJokerState[], money: number) {
+  function buildNextDriveState(current: LabState, nextJokers: FourthPhaseJokerState[], nextPractice: FourthPhasePracticeBook, money: number): LabState {
+    const nextDrive = current.driveIndex + 1;
+    const fullPile = shuffleFourthPhase(
+      [...current.drawPile, ...current.hand, ...current.discardPile],
+      mulberry32(stringSeed(`${current.seed}:drive:${nextDrive}`)),
+    );
+    const meter = applyFourthPhaseDrawStart(
+      { meter: BASE_METER, meterCap: Math.max(BASE_METER_CAP, current.meterCap) },
+      { jokers: nextJokers, practice: nextPractice, wins: nextDrive, boss: activeBossForDrive(current, nextDrive) },
+    );
+    const draw = drawFourthPhaseCards(fullPile, [], FOURTH_PHASE_HAND_SIZE, mulberry32(stringSeed(`${current.seed}:drive-hand:${nextDrive}`)));
+    return {
+      ...current,
+      driveIndex: nextDrive,
+      drawPile: draw.deck,
+      discardPile: draw.discard,
+      hand: draw.drawn,
+      selectedIds: [],
+      jokers: nextJokers,
+      practice: nextPractice,
+      draft: [],
+      money,
+      driveScore: 0,
+      discardsLeft: FOURTH_PHASE_DISCARDS,
+      playsThisDrive: 0,
+      meter: meter.meter,
+      meterCap: meter.meterCap,
+      repeatedSituations: {},
+      drawNonce: current.drawNonce + 1,
+      phase: 'play',
+      buysThisWarRoom: 0,
+      rerollsThisWarRoom: 0,
+      pendingDraft: undefined,
+      lastPlay: undefined,
+      cashIn: undefined,
+    };
+  }
+
+  function startNextDrive(nextJokers: FourthPhaseJokerState[], nextPractice: FourthPhasePracticeBook, money: number) {
+    setState((current) => buildNextDriveState(current, nextJokers, nextPractice, money));
+  }
+
+  function finishPurchase(current: LabState, offer: FourthPhaseWarRoomOffer, jokers: FourthPhaseJokerState[], practice: FourthPhasePracticeBook, money: number): LabState {
+    const buysThisWarRoom = current.buysThisWarRoom + 1;
+    const next = {
+      ...current,
+      jokers,
+      practice,
+      money,
+      buysThisWarRoom,
+      draft: current.draft.filter((candidate) => candidate.id !== offer.id),
+      pendingDraft: undefined,
+    };
+    if (buysThisWarRoom >= FOURTH_PHASE_WAR_ROOM_BUY_LIMIT) {
+      return buildNextDriveState(next, jokers, practice, money);
+    }
+    return next;
+  }
+
+  function buyOffer(offer: FourthPhaseWarRoomOffer) {
+    if (state.phase !== 'warRoom' || state.money < offer.cost) return;
+    if (offer.kind === 'joker' && offer.joker && state.jokers.length >= FOURTH_PHASE_JOKER_LIMIT) {
+      setState((current) => ({ ...current, pendingDraft: offer }));
+      return;
+    }
     setState((current) => {
-      const nextDrive = current.driveIndex + 1;
-      const fullPile = shuffleFourthPhase(
-        [...current.drawPile, ...current.hand, ...current.discardPile],
-        mulberry32(stringSeed(`${current.seed}:drive:${nextDrive}`)),
-      );
-      const meter = applyFourthPhaseDrawStart(
-        { meter: BASE_METER, meterCap: Math.max(BASE_METER_CAP, current.meterCap) },
-        { jokers: nextJokers, wins: nextDrive, boss: activeBossForDrive(current, nextDrive) },
-      );
-      const draw = drawFourthPhaseCards(fullPile, [], FOURTH_PHASE_HAND_SIZE, mulberry32(stringSeed(`${current.seed}:drive-hand:${nextDrive}`)));
-      return {
-        ...current,
-        driveIndex: nextDrive,
-        drawPile: draw.deck,
-        discardPile: draw.discard,
-        hand: draw.drawn,
-        selectedIds: [],
-        jokers: nextJokers,
-        draft: [],
-        money,
-        driveScore: 0,
-        discardsLeft: FOURTH_PHASE_DISCARDS,
-        playsThisDrive: 0,
-        meter: meter.meter,
-        meterCap: meter.meterCap,
-        repeatedSituations: {},
-        drawNonce: current.drawNonce + 1,
-        phase: 'play',
-        pendingDraft: undefined,
-        lastPlay: undefined,
-        cashIn: undefined,
-      };
+      if (current.phase !== 'warRoom' || current.money < offer.cost) return current;
+      if (offer.kind === 'joker' && offer.joker) {
+        return finishPurchase(current, offer, [...current.jokers, offer.joker], current.practice, current.money - offer.cost);
+      }
+      if (offer.kind === 'practice' && offer.situation) {
+        const practice = { ...current.practice, [offer.situation]: Math.min(3, (current.practice[offer.situation] ?? 0) + 1) };
+        return finishPurchase(current, offer, current.jokers, practice, current.money - offer.cost);
+      }
+      return current;
     });
   }
 
-  function draftJoker(joker: FourthPhaseJokerState) {
-    if (state.phase !== 'warRoom' || state.money < WAR_ROOM_COST) return;
-    // At the slot cap, never silently drop a joker — joker order is mechanically
-    // meaningful, so make the player choose which one to release.
-    if (state.jokers.length >= FOURTH_PHASE_JOKER_LIMIT) {
-      setState((current) => ({ ...current, pendingDraft: joker }));
-      return;
-    }
-    startNextDrive([...state.jokers, joker], state.money - WAR_ROOM_COST);
-  }
-
   function confirmReplaceJoker(index: number) {
-    if (state.phase !== 'warRoom' || !state.pendingDraft || state.money < WAR_ROOM_COST) return;
-    const nextJokers = state.jokers.map((joker, i) => (i === index ? state.pendingDraft! : joker));
-    startNextDrive(nextJokers, state.money - WAR_ROOM_COST);
+    if (state.phase !== 'warRoom' || !state.pendingDraft?.joker || state.money < state.pendingDraft.cost) return;
+    setState((current) => {
+      const pending = current.pendingDraft;
+      if (!pending?.joker || current.phase !== 'warRoom' || current.money < pending.cost) return current;
+      const nextJokers = current.jokers.map((joker, i) => (i === index ? pending.joker! : joker));
+      return finishPurchase(current, pending, nextJokers, current.practice, current.money - pending.cost);
+    });
   }
 
   function cancelReplaceJoker() {
@@ -436,7 +715,30 @@ export default function FourthPhaseLab({ onHome }: Props) {
 
   function skipWarRoom() {
     if (state.phase !== 'warRoom') return;
-    startNextDrive(state.jokers, state.money + 3);
+    startNextDrive(state.jokers, state.practice, state.money + (state.buysThisWarRoom > 0 ? 0 : 3));
+  }
+
+  function rerollWarRoom() {
+    if (state.phase !== 'warRoom' || state.money < FOURTH_PHASE_WAR_ROOM_REROLL_COST) return;
+    setState((current) => {
+      if (current.phase !== 'warRoom' || current.money < FOURTH_PHASE_WAR_ROOM_REROLL_COST) return current;
+      const rerollsThisWarRoom = current.rerollsThisWarRoom + 1;
+      return {
+        ...current,
+        money: current.money - FOURTH_PHASE_WAR_ROOM_REROLL_COST,
+        rerollsThisWarRoom,
+        pendingDraft: undefined,
+        draft: generateFourthPhaseWarRoomOffers(
+          current.jokers,
+          current.seed,
+          current.driveIndex,
+          current.team,
+          current.boss,
+          rerollsThisWarRoom,
+          current.practice,
+        ),
+      };
+    });
   }
 
   function dragProps(id: string, setter: (id: string | null) => void, onDropId: (id: string) => void) {
@@ -467,6 +769,61 @@ export default function FourthPhaseLab({ onHome }: Props) {
         <button onClick={() => restart(state.team)} style={{ ...btnGhost, minWidth: 74 }}>Reset</button>
       </header>
 
+      <section style={{ ...card(8), padding: 10, marginBottom: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <button onClick={startDailyRun} style={{ ...btnPrimary, minHeight: 42 }}>
+            {todayDailyDone
+              ? `Daily practice · streak ${dailyRecord?.streak ?? 1}`
+              : `Daily · ${daily.label}`}
+          </button>
+          <div style={{ border: `1px solid ${FB.border}`, borderRadius: 8, padding: '7px 8px', background: FB.inset }}>
+            <div style={{ ...sectionLabel, fontSize: 9.5 }}>Local Best</div>
+            <div className="fb-num" style={{ fontSize: 15, color: FB.gold, fontWeight: 950 }}>
+              {localBest ? `${localBest.score}` : 'none'}
+            </div>
+          </div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 6, marginTop: 8 }}>
+          <input
+            value={importCode}
+            onChange={(event) => {
+              setImportCode(event.target.value);
+              setImportError('');
+            }}
+            placeholder="FP-BAL-1A2B3"
+            aria-label="Run code"
+            style={{
+              minHeight: 38,
+              borderRadius: 8,
+              border: `1px solid ${importError ? FB.red : FB.border}`,
+              background: '#0e151d',
+              color: FB.text,
+              padding: '0 10px',
+              fontSize: 12,
+              fontWeight: 800,
+            }}
+          />
+          <button onClick={importRunCode} style={{ ...btnGhost, minHeight: 38, padding: '0 12px' }}>Import</button>
+        </div>
+        {importError && <div style={{ fontSize: 10.5, color: FB.red, marginTop: 5 }}>{importError}</div>}
+      </section>
+
+      {tutorialStep >= 0 && tutorialStep < TUTORIAL_STEPS.length && (
+        <section style={{ ...card(8), padding: 13, marginBottom: 10, borderColor: FB.gold, background: 'linear-gradient(135deg,#1d2a17,#0d1118)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+            <div style={{ ...sectionLabel, color: FB.gold }}>Coach · step {tutorialStep + 1} of {TUTORIAL_STEPS.length}</div>
+            <button onClick={finishTutorial} style={{ background: 'transparent', border: 'none', color: FB.textFaint, fontSize: 11, fontWeight: 800, cursor: 'pointer' }}>
+              Skip tutorial
+            </button>
+          </div>
+          <div style={{ fontSize: 14, fontWeight: 950, color: FB.text, marginTop: 4 }}>{TUTORIAL_STEPS[tutorialStep].title}</div>
+          <div style={{ fontSize: 12, color: FB.textDim, lineHeight: 1.45, marginTop: 4 }}>{TUTORIAL_STEPS[tutorialStep].body}</div>
+          {TUTORIAL_STEPS[tutorialStep].cta && (
+            <button onClick={finishTutorial} style={{ ...btnPrimary, width: '100%', marginTop: 10 }}>{TUTORIAL_STEPS[tutorialStep].cta}</button>
+          )}
+        </section>
+      )}
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 10 }}>
         {teamKeys.map((team) => (
           <button
@@ -492,7 +849,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
         <span style={{ color: FB.text, fontWeight: 900 }}>{teamProfile.name}</span> · {teamProfile.identity}
       </div>
 
-      <HowToPlay defaultOpen={firstVisit} />
+      <HowToPlay defaultOpen={false} />
 
       <section style={{ ...card(8), ...meterStyle(state.meter, state.meterCap), padding: 14, overflow: 'hidden', position: 'relative', background: 'linear-gradient(180deg,#101622,#080b11)' }}>
         <div className="fb-yard" style={{ position: 'absolute', inset: 0, opacity: 0.38 }} />
@@ -521,10 +878,18 @@ export default function FourthPhaseLab({ onHome }: Props) {
             <div style={{ fontSize: 10.5, color: FB.textFaint, marginTop: 2 }}>{targetRemaining} to go · {playsLeft} plays left</div>
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div style={sectionLabel}>{FOURTH_PHASE_BOSSES[activeBoss].name}</div>
-            <div style={{ fontSize: 11, color: activeBoss === 'none' ? FB.textFaint : FB.red, maxWidth: 210 }}>
-              {FOURTH_PHASE_BOSSES[activeBoss].effect}
-            </div>
+            {activeBoss === 'none' ? (
+              <>
+                <div style={{ ...sectionLabel, color: '#d8a23a' }}>Scouting · Drive {FOURTH_PHASE_DRIVES}</div>
+                <div style={{ fontSize: 12, color: '#e8c878', fontWeight: 900 }}>{FOURTH_PHASE_BOSSES[state.boss].name}</div>
+                <div style={{ fontSize: 10.5, color: FB.textFaint, maxWidth: 210 }}>{FOURTH_PHASE_BOSSES[state.boss].effect}</div>
+              </>
+            ) : (
+              <>
+                <div style={{ ...sectionLabel, color: FB.red }}>{FOURTH_PHASE_BOSSES[activeBoss].name}</div>
+                <div style={{ fontSize: 11, color: FB.red, maxWidth: 210 }}>{FOURTH_PHASE_BOSSES[activeBoss].effect}</div>
+              </>
+            )}
           </div>
         </div>
         <div style={{ height: 9, borderRadius: 6, background: FB.inset, overflow: 'hidden', marginTop: 10 }}>
@@ -590,7 +955,12 @@ export default function FourthPhaseLab({ onHome }: Props) {
           <div style={{ fontSize: 12, color: FB.text, fontWeight: 800, marginTop: 5 }}>
             {state.cashIn.situation} · BigPlay x{state.cashIn.bigPlay.toFixed(2)} · meter {formatMeter(state.cashIn.meter)}
           </div>
-          <div style={{ fontSize: 10.5, color: FB.textFaint, marginTop: 4 }}>{state.jokers.map((joker) => jokerDefinition(joker).name).join(' / ')}</div>
+          <div style={{ fontSize: 10.5, color: FB.textFaint, marginTop: 4 }}>
+            {FOURTH_PHASE_TEAMS[state.team].shortName} · {runCode} · {state.jokers.map((joker) => jokerDefinition(joker).name).join(' / ')}
+          </div>
+          <button onClick={copyCashCard} style={{ ...btnGhost, width: '100%', marginTop: 10 }}>
+            {shareCopied ? 'Copied' : 'Copy cash card'}
+          </button>
         </section>
       )}
 
@@ -600,9 +970,11 @@ export default function FourthPhaseLab({ onHome }: Props) {
           draft={state.draft}
           jokers={state.jokers}
           pendingDraft={state.pendingDraft}
-          onDraft={draftJoker}
+          buysThisWarRoom={state.buysThisWarRoom}
+          onDraft={buyOffer}
           onReplace={confirmReplaceJoker}
           onCancelReplace={cancelReplaceJoker}
+          onReroll={rerollWarRoom}
           onSkip={skipWarRoom}
         />
       )}
@@ -615,11 +987,15 @@ export default function FourthPhaseLab({ onHome }: Props) {
           <div style={{ fontSize: 12, color: FB.textDim, marginTop: 6 }}>
             {state.phase === 'won' ? 'Fourth Phase loop cleared the abstract target set.' : 'The prototype ran out of playable pressure.'}
           </div>
+          <div className="fb-num" style={{ fontSize: 28, color: FB.gold, fontWeight: 950, marginTop: 8 }}>{state.runScore}</div>
+          {state.completion && localBest?.id === state.completion.id && (
+            <div style={{ fontSize: 11, color: FB.gold, fontWeight: 900, marginTop: 3 }}>New local best</div>
+          )}
           <button onClick={() => restart(state.team)} style={{ ...btnPrimary, width: '100%', marginTop: 12 }}>Run it back</button>
         </section>
       )}
 
-      <SituationsPanel activeKey={preview?.situation.key} defaultOpen={firstVisit} />
+      <SituationsPanel activeKey={preview?.situation.key} defaultOpen={false} />
 
       <section style={{ marginTop: 10 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
@@ -879,22 +1255,27 @@ function WarRoom({
   draft,
   jokers,
   pendingDraft,
+  buysThisWarRoom,
   onDraft,
   onReplace,
   onCancelReplace,
+  onReroll,
   onSkip,
 }: {
   money: number;
-  draft: FourthPhaseJokerState[];
+  draft: FourthPhaseWarRoomOffer[];
   jokers: FourthPhaseJokerState[];
-  pendingDraft?: FourthPhaseJokerState;
-  onDraft: (joker: FourthPhaseJokerState) => void;
+  pendingDraft?: FourthPhaseWarRoomOffer;
+  buysThisWarRoom: number;
+  onDraft: (offer: FourthPhaseWarRoomOffer) => void;
   onReplace: (index: number) => void;
   onCancelReplace: () => void;
+  onReroll: () => void;
   onSkip: () => void;
 }) {
   if (pendingDraft) {
-    const incoming = jokerDefinition(pendingDraft);
+    const incoming = pendingDraft.joker ? jokerDefinition(pendingDraft.joker) : null;
+    if (!incoming) return null;
     return (
       <section style={{ ...card(8), padding: 12, marginTop: 10, borderColor: FB.gold, background: 'linear-gradient(180deg,#15160d,#0d1118)' }}>
         <div style={{ ...sectionLabel, color: FB.gold }}>Sideline is full — release one for {incoming.name}</div>
@@ -933,36 +1314,63 @@ function WarRoom({
     <section style={{ ...card(8), padding: 12, marginTop: 10, borderColor: FB.gold, background: 'linear-gradient(180deg,#15160d,#0d1118)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
         <div style={{ ...sectionLabel, color: FB.gold }}>Mini War Room</div>
-        <div style={{ color: FB.text, fontSize: 12, fontWeight: 900 }}>${money}</div>
+        <div style={{ color: FB.text, fontSize: 12, fontWeight: 900 }}>
+          ${money} · {buysThisWarRoom}/{FOURTH_PHASE_WAR_ROOM_BUY_LIMIT} buys
+        </div>
       </div>
       <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
-        {draft.map((joker) => {
-          const def = jokerDefinition(joker);
+        {draft.map((offer) => {
+          const def = offer.joker ? jokerDefinition(offer.joker) : null;
+          const borderColor = def?.rarity === 'legendary'
+            ? FB.gold
+            : offer.kind === 'practice'
+              ? '#34c771'
+              : '#36445a';
           return (
             <button
-              key={joker.id}
-              onClick={() => onDraft(joker)}
-              disabled={money < WAR_ROOM_COST}
+              key={offer.id}
+              onClick={() => onDraft(offer)}
+              disabled={money < offer.cost}
               style={{
                 borderRadius: 8,
-                border: `1px solid ${def.rarity === 'legendary' ? FB.gold : '#36445a'}`,
+                border: `1px solid ${borderColor}`,
                 background: '#101722',
-                color: money >= WAR_ROOM_COST ? FB.text : FB.textFaint,
+                color: money >= offer.cost ? FB.text : FB.textFaint,
                 padding: 10,
                 textAlign: 'left',
-                cursor: money >= WAR_ROOM_COST ? 'pointer' : 'not-allowed',
+                cursor: money >= offer.cost ? 'pointer' : 'not-allowed',
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
-                <span style={{ fontSize: 13, fontWeight: 950 }}>{def.name}</span>
-                <span style={{ fontSize: 11, color: FB.gold, fontWeight: 950 }}>${WAR_ROOM_COST}</span>
+                <span style={{ fontSize: 13, fontWeight: 950 }}>{offer.label}</span>
+                <span style={{ fontSize: 11, color: FB.gold, fontWeight: 950 }}>${offer.cost}</span>
               </div>
-              <div style={{ fontSize: 11, color: FB.textDim, marginTop: 3 }}>{def.effect}</div>
+              <div style={{ fontSize: 11, color: FB.textDim, marginTop: 3 }}>{offer.detail}</div>
+              {offer.tags.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 7 }}>
+                  {offer.tags.map((tag) => (
+                    <span key={tag} style={{ border: `1px solid ${FB.border}`, borderRadius: 5, color: '#cbbdff', fontSize: 9.5, fontWeight: 900, padding: '2px 5px' }}>
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
             </button>
           );
         })}
       </div>
-      <button onClick={onSkip} style={{ ...btnGhost, width: '100%', marginTop: 10 }}>Skip for $3</button>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 10 }}>
+        <button
+          onClick={onReroll}
+          disabled={money < FOURTH_PHASE_WAR_ROOM_REROLL_COST}
+          style={{ ...btnGhost, opacity: money >= FOURTH_PHASE_WAR_ROOM_REROLL_COST ? 1 : 0.45 }}
+        >
+          Reroll ${FOURTH_PHASE_WAR_ROOM_REROLL_COST}
+        </button>
+        <button onClick={onSkip} style={btnGhost}>
+          {buysThisWarRoom > 0 ? 'Start drive' : 'Skip for $3'}
+        </button>
+      </div>
     </section>
   );
 }

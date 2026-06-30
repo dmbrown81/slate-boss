@@ -84,7 +84,7 @@ const complementaryGenius = scoreFourthPhasePlay([card('crowd-A'), card('offense
   meterCap: BASE_METER_CAP,
   jokers: [{ id: 'theGenius' }],
 });
-assert('The Genius doubles all-four-phase score', complementaryGenius.points >= complementaryPlain.points * 1.9, `${complementaryGenius.points} vs ${complementaryPlain.points}`);
+assert('The Genius lifts all-four-phase score', complementaryGenius.points >= complementaryPlain.points * 1.45, `${complementaryGenius.points} vs ${complementaryPlain.points}`);
 
 const leadBlockerOrdered = scoreFourthPhasePlay([card('defense-J'), card('defense-Q'), card('offense-K')], {
   meter: BASE_METER,

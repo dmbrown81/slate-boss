@@ -115,6 +115,8 @@ export interface FourthPhaseJokerState {
   id: FourthPhaseJokerId;
 }
 
+export type FourthPhasePracticeBook = Partial<Record<SituationKey, number>>;
+
 export type FourthPhaseTeamKey =
   | 'balanced'
   | 'airRaid'
@@ -146,6 +148,7 @@ export interface FourthPhaseScoreContext {
   meter: number;
   meterCap: number;
   jokers: FourthPhaseJokerState[];
+  practice: FourthPhasePracticeBook;
   discardsLeft: number;
   cardsPlayedThisDrive: number;
   driveIndex: number;
@@ -153,6 +156,19 @@ export interface FourthPhaseScoreContext {
   wins: number;
   boss: FourthPhaseBossKey;
   repeatedSituations: Partial<Record<SituationKey, number>>;
+}
+
+export type FourthPhaseWarRoomOfferKind = 'joker' | 'practice';
+
+export interface FourthPhaseWarRoomOffer {
+  id: string;
+  kind: FourthPhaseWarRoomOfferKind;
+  cost: number;
+  label: string;
+  detail: string;
+  tags: string[];
+  joker?: FourthPhaseJokerState;
+  situation?: SituationKey;
 }
 
 export interface FourthPhaseScoreResult {

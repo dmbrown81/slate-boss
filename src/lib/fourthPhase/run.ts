@@ -3,13 +3,17 @@ import { prepareFourthPhaseTeamDeck, shuffleFourthPhase } from './deck';
 import { BASE_METER, BASE_METER_CAP } from './meter';
 import { applyFourthPhaseDrawStart } from './engine';
 import { FOURTH_PHASE_JOKER_POOL } from './jokers';
+import { SITUATION_LABELS } from './situations';
 import type {
   FourthPhaseBossKey,
   FourthPhaseCard,
   FourthPhaseJokerId,
   FourthPhaseJokerState,
+  FourthPhasePracticeBook,
   FourthPhaseTeamKey,
+  FourthPhaseWarRoomOffer,
   MeterState,
+  SituationKey,
 } from './types';
 
 export const FOURTH_PHASE_HAND_SIZE = 8;
@@ -19,6 +23,8 @@ export const FOURTH_PHASE_DRIVES = 3;
 export const FOURTH_PHASE_DISCARDS = 2;
 /** Plays allowed per drive before a stalled drive is a loss. Shared by the lab UI and the balance harness. */
 export const FOURTH_PHASE_MAX_PLAYS_PER_DRIVE = 8;
+export const FOURTH_PHASE_WAR_ROOM_BUY_LIMIT = 2;
+export const FOURTH_PHASE_WAR_ROOM_REROLL_COST = 2;
 
 export interface FourthPhaseTeamProfile {
   key: FourthPhaseTeamKey;
@@ -105,6 +111,7 @@ export interface FourthPhaseRunSeed {
   team: FourthPhaseTeamKey;
   deck: FourthPhaseCard[];
   jokers: FourthPhaseJokerState[];
+  practice: FourthPhasePracticeBook;
   boss: FourthPhaseBossKey;
   targets: [number, number, number];
   money: number;
@@ -116,6 +123,18 @@ export function fourthPhaseRunCode(seed: number, team: FourthPhaseTeamKey): stri
   return `FP-${teamCode}-${seed.toString(36).toUpperCase()}`;
 }
 
+export function parseFourthPhaseRunCode(code: string): { seed: number; team: FourthPhaseTeamKey } | null {
+  const match = code.trim().toUpperCase().match(/^FP-([A-Z0-9]{2,3})-([A-Z0-9]+)$/);
+  if (!match) return null;
+  const [, teamCode, seedCode] = match;
+  const team = (Object.keys(FOURTH_PHASE_TEAMS) as FourthPhaseTeamKey[]).find(
+    (key) => FOURTH_PHASE_TEAMS[key].shortName.replace(/[^A-Z0-9]/gi, '').slice(0, 3).toUpperCase() === teamCode,
+  );
+  const seed = Number.parseInt(seedCode, 36);
+  if (!team || !Number.isFinite(seed)) return null;
+  return { seed, team };
+}
+
 export function randomFourthPhaseBoss(seed: number, team: FourthPhaseTeamKey): FourthPhaseBossKey {
   const rng = mulberry32(stringSeed(`fourth-phase-boss:${seed}:${team}`));
   return BOSS_KEYS[Math.floor(rng() * BOSS_KEYS.length)];
@@ -124,9 +143,12 @@ export function randomFourthPhaseBoss(seed: number, team: FourthPhaseTeamKey): F
 export function fourthPhaseTargets(team: FourthPhaseTeamKey, seed: number): [number, number, number] {
   const rng = mulberry32(stringSeed(`fourth-phase-targets:${seed}:${team}`));
   const bump = Math.floor(rng() * 10);
-  if (team === 'loudHouse') return [186 + bump, 366 + bump, 614 + bump];
-  if (team === 'specialTeamsChaos') return [180 + bump, 356 + bump, 600 + bump];
-  return [198 + bump, 394 + bump, 666 + bump];
+  if (team === 'airRaid') return [296 + bump, 576 + bump, 978 + bump];
+  if (team === 'smashmouth') return [232 + bump, 456 + bump, 778 + bump];
+  if (team === 'blackAndBlue') return [262 + bump, 512 + bump, 870 + bump];
+  if (team === 'loudHouse') return [208 + bump, 408 + bump, 694 + bump];
+  if (team === 'specialTeamsChaos') return [212 + bump, 416 + bump, 708 + bump];
+  return [276 + bump, 540 + bump, 916 + bump];
 }
 
 export function createFourthPhaseRun(team: FourthPhaseTeamKey = 'balanced', seed = stringSeed(`fourth-phase:${Date.now()}`)): FourthPhaseRunSeed {
@@ -142,6 +164,7 @@ export function createFourthPhaseRun(team: FourthPhaseTeamKey = 'balanced', seed
     team,
     deck,
     jokers,
+    practice: {},
     boss: randomFourthPhaseBoss(seed, team),
     targets: fourthPhaseTargets(team, seed),
     money: 8,
@@ -176,6 +199,115 @@ export function draftFourthPhaseJokers(owned: readonly FourthPhaseJokerState[], 
   const pool = FOURTH_PHASE_JOKER_POOL.filter((joker) => !ownedIds.has(joker.id));
   const ordered = shuffleFourthPhase(pool, mulberry32(stringSeed(`fourth-phase-draft:${seed}:${driveIndex}:${owned.length}`)));
   return ordered.slice(0, 3).map((joker) => ({ id: joker.id }));
+}
+
+const PRACTICE_KEYS: readonly SituationKey[] = [
+  'houseCall',
+  'fieldFlip',
+  'pickSix',
+  'drive',
+  'momentumShift',
+  'complementaryFootball',
+  'blackout',
+  'stand',
+];
+
+function bossTag(boss: FourthPhaseBossKey): string | null {
+  if (boss === 'roadGame') return 'fixes Road Game';
+  if (boss === 'fieldPositionWar') return 'answers Field Position War';
+  if (boss === 'noFlyZone') return 'answers No-Fly Zone';
+  if (boss === 'stackedBox') return 'answers Stacked Box';
+  if (boss === 'turnoverDrill') return 'answers Turnover Drill';
+  if (boss === 'adaptiveDc') return 'answers Adaptive DC';
+  if (boss === 'preventDefense') return 'answers Prevent Defense';
+  return null;
+}
+
+function offerTagsForJoker(jokerId: FourthPhaseJokerId, team: FourthPhaseTeamKey, boss: FourthPhaseBossKey): string[] {
+  const tags: string[] = [];
+  if (['fieldGeneral', 'returnAce', 'hiddenYards'].includes(jokerId)) tags.push('feeds ST economy');
+  if (['twelfthMan', 'studentSection', 'blackoutCurtain', 'homeRunThreat', 'doubleMove'].includes(jokerId)) tags.push('feeds Crowd cash-in');
+  if (['pickSixSpecialist', 'silentCount', 'bendDontBreak'].includes(jokerId)) tags.push('defensive floor');
+  if (['hurryUp', 'twoMinuteDrill', 'leadBlocker'].includes(jokerId)) tags.push('order puzzle');
+  if (['roadWarriors', 'closer', 'pressBoxAngle', 'redZonePackage', 'scriptedSeries'].includes(jokerId)) tags.push('boss-drive plan');
+  if (team === 'specialTeamsChaos' && tags.includes('feeds ST economy')) tags.unshift('team identity');
+  if (team === 'loudHouse' && tags.includes('feeds Crowd cash-in')) tags.unshift('team identity');
+  if (boss === 'roadGame' && ['roadWarriors', 'homeCooking', 'sustainedDrive'].includes(jokerId)) tags.unshift('fixes Road Game');
+  if (boss !== 'none' && ['closer', 'pressBoxAngle', 'redZonePackage'].includes(jokerId)) tags.unshift(bossTag(boss) ?? 'boss answer');
+  return [...new Set(tags)].slice(0, 3);
+}
+
+function practiceTags(situation: SituationKey, team: FourthPhaseTeamKey, boss: FourthPhaseBossKey): string[] {
+  const tags: string[] = [];
+  if (situation === 'fieldFlip') tags.push('feeds ST economy');
+  if (situation === 'houseCall' || situation === 'blackout') tags.push('feeds Crowd cash-in');
+  if (situation === 'pickSix' || situation === 'stand') tags.push('defensive floor');
+  if (situation === 'complementaryFootball' || situation === 'momentumShift') tags.push('phase glue');
+  if (team === 'specialTeamsChaos' && situation === 'fieldFlip') tags.unshift('team identity');
+  if (team === 'loudHouse' && (situation === 'houseCall' || situation === 'blackout')) tags.unshift('team identity');
+  if (boss !== 'none') tags.push(bossTag(boss) ?? 'boss prep');
+  return [...new Set(tags)].slice(0, 3);
+}
+
+function practiceKeyFor(team: FourthPhaseTeamKey, boss: FourthPhaseBossKey, seed: number, driveIndex: number, reroll: number, practice: FourthPhasePracticeBook): SituationKey {
+  const preferred: Partial<Record<FourthPhaseTeamKey, SituationKey[]>> = {
+    balanced: ['complementaryFootball', 'momentumShift', 'houseCall'],
+    airRaid: ['houseCall', 'drive', 'blackout'],
+    smashmouth: ['drive', 'fieldFlip', 'stand'],
+    blackAndBlue: ['pickSix', 'stand', 'momentumShift'],
+    loudHouse: ['houseCall', 'blackout', 'complementaryFootball'],
+    specialTeamsChaos: ['fieldFlip', 'complementaryFootball', 'houseCall'],
+  };
+  const bossPreferred: Partial<Record<FourthPhaseBossKey, SituationKey[]>> = {
+    roadGame: ['houseCall', 'blackout'],
+    fieldPositionWar: ['drive', 'houseCall'],
+    noFlyZone: ['fieldFlip', 'pickSix'],
+    stackedBox: ['fieldFlip', 'stand'],
+    turnoverDrill: ['drive', 'houseCall'],
+    adaptiveDc: ['complementaryFootball', 'momentumShift'],
+    preventDefense: ['drive', 'fieldFlip'],
+  };
+  const pool = [...(bossPreferred[boss] ?? []), ...(preferred[team] ?? []), ...PRACTICE_KEYS]
+    .filter((key, index, all) => all.indexOf(key) === index)
+    .filter((key) => (practice[key] ?? 0) < 3);
+  if (!pool.length) return 'houseCall';
+  const rng = mulberry32(stringSeed(`fourth-phase-practice:${seed}:${driveIndex}:${reroll}:${team}:${boss}`));
+  return pool[Math.floor(rng() * pool.length)];
+}
+
+export function generateFourthPhaseWarRoomOffers(
+  owned: readonly FourthPhaseJokerState[],
+  seed: number,
+  driveIndex: number,
+  team: FourthPhaseTeamKey,
+  boss: FourthPhaseBossKey,
+  reroll = 0,
+  practice: FourthPhasePracticeBook = {},
+): FourthPhaseWarRoomOffer[] {
+  const ownedIds = new Set(owned.map((joker) => joker.id));
+  const pool = FOURTH_PHASE_JOKER_POOL.filter((joker) => !ownedIds.has(joker.id));
+  const ordered = shuffleFourthPhase(pool, mulberry32(stringSeed(`fourth-phase-offers:${seed}:${driveIndex}:${owned.length}:${reroll}`)));
+  const jokerOffers = ordered.slice(0, 3).map((def): FourthPhaseWarRoomOffer => ({
+    id: `joker:${def.id}`,
+    kind: 'joker',
+    cost: 4,
+    label: def.name,
+    detail: def.effect,
+    tags: offerTagsForJoker(def.id, team, boss),
+    joker: { id: def.id },
+  }));
+  const situation = practiceKeyFor(team, boss, seed, driveIndex, reroll, practice);
+  const level = (practice[situation] ?? 0) + 1;
+  const drill: FourthPhaseWarRoomOffer = {
+    id: `practice:${situation}:${level}`,
+    kind: 'practice',
+    cost: 3,
+    label: `${SITUATION_LABELS[situation]} Drill`,
+    detail: `Level ${level}: improves ${SITUATION_LABELS[situation]} scoring or fuel.`,
+    tags: practiceTags(situation, team, boss),
+    situation,
+  };
+  return [...jokerOffers, drill];
 }
 
 export function activeBossForDrive(run: Pick<FourthPhaseRunSeed, 'boss'>, driveIndex: number): FourthPhaseBossKey {
