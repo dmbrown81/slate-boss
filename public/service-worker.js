@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gridiron-shell-v1';
+const CACHE_NAME = 'fourth-phase-shell-v1';
 const CORE_ASSETS = [
   './',
   './index.html',
