@@ -1,7 +1,13 @@
-# BUILD PROMPT — Fourth Phase (prototype mode inside the Callsmith repo)
+# BUILD PROMPT — Fourth Phase
 
 > Handoff prompt for a fresh agent. Self-contained — assumes no prior conversation context.
 > Captures the full "Fourth Phase" design dream. Two open decisions are flagged with recommended defaults.
+
+> **Status update (2026-06-29):** Fourth Phase is no longer an isolated lab — it is now the app's
+> front door. The Callsmith/Gridiron season game has been unwired from `App.tsx` (its code is retained
+> in git history and keeps its own `smoke:/matchup:/balance:gridiron` scripts). The "isolated prototype
+> mode beside Callsmith" framing throughout the brief below was the original constraint; treat it as
+> historical. New work should build directly on the Fourth Phase engine as the primary game.
 
 ## Role & context
 You are working in an existing, shipping React + TypeScript + Vite football card roguelike. The player-facing game is **Callsmith** (internal code uses `gridiron`/`football` naming). It is balanced and verified — a 3000-season Monte Carlo harness passes green gates. Your job is **not** to rewrite it. Build **Fourth Phase** as an isolated, parallel prototype mode that can be played and balance-tested next to Callsmith, so we can decide empirically whether to migrate.

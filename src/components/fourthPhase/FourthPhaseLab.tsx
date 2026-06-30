@@ -35,7 +35,7 @@ import {
 } from '../../lib/fourthPhase';
 
 interface Props {
-  onHome: () => void;
+  onHome?: () => void;
 }
 
 type LabPhase = 'play' | 'warRoom' | 'won' | 'lost';
@@ -395,7 +395,11 @@ export default function FourthPhaseLab({ onHome }: Props) {
   return (
     <div style={{ minHeight: '100svh', padding: '10px 12px 18px', background: '#090c11' }}>
       <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
-        <button onClick={onHome} style={{ ...btnGhost, minWidth: 74 }}>Home</button>
+        {onHome ? (
+          <button onClick={onHome} style={{ ...btnGhost, minWidth: 74 }}>Home</button>
+        ) : (
+          <div style={{ minWidth: 74 }} />
+        )}
         <div style={{ textAlign: 'center' }}>
           <div style={{ fontSize: 11, color: FB.gold, fontWeight: 900, letterSpacing: 1.5 }}>FOURTH PHASE LAB</div>
           <div style={{ fontSize: 11, color: FB.textFaint }}>{runCode}</div>

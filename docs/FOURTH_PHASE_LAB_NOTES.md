@@ -110,8 +110,19 @@ phase, not an audit fix.
 
 ## Migration Verdict
 
-Do not migrate yet. Fourth Phase is more readable around the scoring equation
-and has a stronger screenshot/cash-in spine, but Callsmith still has the deeper
-football grammar. The next empirical checkpoint should be a field-position flag
-or a stronger joker-content pass, then compare whether Fourth Phase can keep its
-clarity while adding football texture.
+Migrated. As of 2026-06-29 Fourth Phase is the app front door: `App.tsx` renders
+the Fourth Phase experience directly, and the Callsmith/Gridiron season game is
+unwired from the app (code retained in git history, plus its own
+`smoke:/matchup:/balance:gridiron` scripts). This was a product call to commit to
+the cleaner identity, not a claim that Fourth Phase has reached Callsmith's
+football depth yet.
+
+Because of that, the next work is depth, in rough priority:
+
+1. Joker catalog — the reward-win-gap advisory `🟡` is the headline gap; drafting
+   needs to flip losses to wins, not just raise an already-strong pilot.
+2. Field-position / downs model (the staged Fork 1) for football texture.
+3. Consumables, richer War Room economy, and the unlock spine (staged Fork 2).
+
+Callsmith remains fully recoverable from git history if a feature there is worth
+porting.
