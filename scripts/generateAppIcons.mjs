@@ -134,14 +134,11 @@ function rotatedEllipse(x, y, cx, cy, rx, ry, angle) {
   return (px * px) / (rx * rx) + (py * py) / (ry * ry);
 }
 
-function gMarkContains(x, y, scale) {
+function cMarkContains(x, y, scale) {
   const gx = x / scale;
   const gy = (y - 0.03 * scale) / scale;
   const r = Math.hypot(gx, gy);
-  const ring = r > 0.22 && r < 0.38 && !(gx > 0.08 && gy < -0.04);
-  const crossbar = gx > -0.02 && gx < 0.34 && gy > -0.02 && gy < 0.09;
-  const rightStem = gx > 0.26 && gx < 0.38 && gy > -0.02 && gy < 0.26;
-  return ring || crossbar || rightStem;
+  return r > 0.22 && r < 0.39 && !(gx > 0.09 && Math.abs(gy) < 0.21);
 }
 
 function drawIcon(size, markScale, rgb = false) {
@@ -187,7 +184,7 @@ function drawIcon(size, markScale, rgb = false) {
         ];
       }
 
-      if (shield && gMarkContains(nx, ny, scale)) color = [240, 180, 41, color[3]];
+      if (shield && cMarkContains(nx, ny, scale)) color = [240, 180, 41, color[3]];
 
       fillPixel(buf, i, color);
     }
@@ -231,7 +228,7 @@ function drawSplash(width, height, rgb = false) {
           255,
         ];
       }
-      if (shield && gMarkContains(nx, ny, scale)) color = [240, 180, 41, 255];
+      if (shield && cMarkContains(nx, ny, scale)) color = [240, 180, 41, 255];
 
       fillPixel(buf, i, color);
     }

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { FB, SIDE, card, sectionLabel, btnPrimary, btnGhost } from './footballStyles';
 import {
-  FB_BOSS_SCHEMES, FB_COORDINATORS, FB_CONCEPT_LABEL, FB_ENVIRONMENTS, FB_CARD_MODIFIERS,
+  FB_BOSS_SCHEMES, FB_COORDINATORS, FB_CONCEPT_LABEL, FB_ENVIRONMENTS, FB_CARD_MODIFIERS, FB_CARD_EDITIONS, STAFF_SLOT_ORDER, STAFF_SLOT_META,
   type FbBossSchemeKey, type FbEnvironmentKey,
 } from '../lib/footballRogue';
 import { buildIdentity, deckValueSummary, filmToolTargets, rewardFitLabel, rewardImpact, FRONT_OFFICE, SEASON_GAMES, type FbRunState, type Reward, type FilmTool, type FrontOfficeUpgrade } from '../lib/footballRun';
@@ -50,6 +50,7 @@ export default function FootballReward({ run, rewards, filmRoom, frontOfficeOffe
   const canReroll = run.funds >= rerollCost && rewards.length > 0;
   const purchaseLimitReached = purchases >= MAX_WAR_ROOM_PURCHASES;
   const trained = run.deck.filter((c) => c.modifier);
+  const edited = run.deck.filter((c) => c.edition);
   const coachId = TEAM_IDENTITY[run.team];
   const coachAdvice = nextBossScheme === 'balanced'
     ? `${coachId.quote} ${nextBoss.label} is next — feed your engine.`
@@ -209,6 +210,20 @@ export default function FootballReward({ run, rewards, filmRoom, frontOfficeOffe
             </span>
           ))}
         </div>
+        {Object.keys(run.staffBoard ?? {}).length > 0 && (
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+            {STAFF_SLOT_ORDER.map((slot) => {
+              const key = run.staffBoard?.[slot];
+              if (!key) return null;
+              const meta = STAFF_SLOT_META[slot];
+              return (
+                <span key={slot} title={meta.description} style={{ fontSize: 11, fontWeight: 800, color: FB.gold, background: FB.goldSoft, border: '1px solid #5a4112', borderRadius: 7, padding: '4px 8px' }}>
+                  {meta.short} · {FB_COORDINATORS[key].name}
+                </span>
+              );
+            })}
+          </div>
+        )}
         {trained.length > 0 && (
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
             {trained.map((c) => {
@@ -216,6 +231,18 @@ export default function FootballReward({ run, rewards, filmRoom, frontOfficeOffe
               return (
                 <span key={c.id} style={{ fontSize: 11, fontWeight: 800, color: m.color, background: FB.inset, border: `1px solid ${m.color}44`, borderRadius: 7, padding: '4px 8px' }}>
                   {c.label} · {m.label}
+                </span>
+              );
+            })}
+          </div>
+        )}
+        {edited.length > 0 && (
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+            {edited.map((c) => {
+              const ed = FB_CARD_EDITIONS[c.edition!];
+              return (
+                <span key={c.id} style={{ fontSize: 11, fontWeight: 800, color: ed.color, background: FB.inset, border: `1px solid ${ed.color}55`, borderRadius: 7, padding: '4px 8px' }}>
+                  {c.label} · {ed.label}
                 </span>
               );
             })}
@@ -417,6 +444,7 @@ function FilmSheet({ tool, run, affordable, onBuy, onClose }: {
               {targets.map((c) => {
                 const sel = c.id === targetId;
                 const s = SIDE[c.side];
+                const edition = c.edition ? FB_CARD_EDITIONS[c.edition] : null;
                 return (
                   <button key={c.id} onClick={() => setTargetId(c.id)} aria-label={`Target ${c.label}, ${c.position}, ${c.value} value`} style={{ background: sel ? s.grad : FB.panelSoft, border: `1.5px solid ${sel ? s.border : FB.borderSoft}`, borderRadius: 9, padding: '7px 6px', cursor: 'pointer', textAlign: 'left' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -425,7 +453,7 @@ function FilmSheet({ tool, run, affordable, onBuy, onClose }: {
                     </div>
                     <div style={{ fontSize: 11, fontWeight: 800, color: s.text, marginTop: 3, lineHeight: 1.05 }}>{c.label}</div>
                     <div className="fb-num" style={{ fontSize: 14, fontWeight: 900, color: FB.text }}>{c.value}</div>
-                    <div style={{ fontSize: 11, color: FB.textFaint, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.modifier ? FB_CARD_MODIFIERS[c.modifier].label : c.playerName}</div>
+                    <div style={{ fontSize: 11, color: edition ? edition.color : FB.textFaint, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{edition ? edition.label : c.modifier ? FB_CARD_MODIFIERS[c.modifier].label : c.playerName}</div>
                   </button>
                 );
               })}

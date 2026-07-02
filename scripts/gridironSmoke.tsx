@@ -23,7 +23,7 @@ const boss = randomBossScheme(run.gameNumber, isChampionship(run.gameNumber), ru
 const rewards = generateRewards(run, runRng(run, 'smoke-rewards'));
 
 const home = renderToString(<FootballHome onPlay={noop} onClassic={noop} />);
-assert(home.includes('GRIDIRON'), 'FootballHome should render the Gridiron brand.');
+assert(home.includes('CALLSMITH'), 'FootballHome should render the Callsmith brand.');
 
 const teamSelect = renderToString(<FootballTeamSelect onStart={noop} onHome={noop} />);
 assert(
@@ -59,8 +59,11 @@ const match = renderToString(
     team={run.team}
     deck={run.deck}
     coordinators={run.coordinators}
+    staffBoard={run.staffBoard}
     playbook={run.playbook}
     bombGames={run.bombGames}
+    keeperGames={run.keeperGames}
+    takeawayGames={run.takeawayGames}
     targets={gameTargets(env, run.gameNumber)}
     environment={env}
     bossScheme={boss}
@@ -81,6 +84,7 @@ const bossIntroMatch = renderToString(
     team={run.team}
     deck={run.deck}
     coordinators={run.coordinators}
+    staffBoard={run.staffBoard}
     playbook={run.playbook}
     bombGames={run.bombGames}
     keeperGames={run.keeperGames}
@@ -110,6 +114,7 @@ const overtimeMatch = renderToString(
     team={run.team}
     deck={run.deck}
     coordinators={run.coordinators}
+    staffBoard={run.staffBoard}
     playbook={run.playbook}
     bombGames={run.bombGames}
     keeperGames={run.keeperGames}
@@ -147,6 +152,7 @@ const catchCard = pass ? run.deck.find((c) => c.side === 'catch' && c.team === p
 assert(pass && catchCard, 'Starter deck should contain a stackable pass/catch pair.');
 const result = scoreFootballPlay([pass, catchCard] as FbCard[], {
   coordinators: run.coordinators,
+  staffBoard: run.staffBoard,
   environment: env,
   bossScheme: boss,
   stacksThisMatch: 0,
@@ -154,6 +160,8 @@ const result = scoreFootballPlay([pass, catchCard] as FbCard[], {
   conceptCountsThisDrive: {},
   playbook: run.playbook,
   bombGames: run.bombGames,
+  keeperGames: run.keeperGames,
+  takeawayGames: run.takeawayGames,
 });
 assert(result.valid, 'Stack smoke play should be valid.');
 assert(result.ledger.every((entry) => entry.stage && entry.channel && entry.operation), 'Every ledger entry should carry stage/channel/operation metadata.');

@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Gridiron</string>
-    <string name="title_activity_main">Gridiron</string>
-    <string name="package_name">com.slateboss.gridiron</string>
-    <string name="custom_url_scheme">com.slateboss.gridiron</string>
+    <string name="app_name">Callsmith</string>
+    <string name="title_activity_main">Callsmith</string>
+    <string name="package_name">com.slateboss.callsmith</string>
+    <string name="custom_url_scheme">com.slateboss.callsmith</string>
 </resources>

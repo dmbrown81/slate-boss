@@ -30,8 +30,25 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Lint
+        run: npm run lint
+
       - name: Build
         run: npm run build
+
+      - name: Smoke test
+        run: npm run smoke:gridiron
+
+      - name: Matchup proof
+        run: npm run matchup:gridiron
+
+      - name: Fourth Phase matchup proof
+        run: npm run matchup:fourthphase
+
+      # Full-sample proof: the hard gates (team spread, win-rate bands) are tuned
+      # for 3000 samples; smaller samples fail on noise alone.
+      - name: Fourth Phase balance gates
+        run: npm run balance:fourthphase -- 3000
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v5

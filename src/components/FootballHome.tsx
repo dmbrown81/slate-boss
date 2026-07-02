@@ -34,7 +34,7 @@ export default function FootballHome({ onPlay, onFourthPhase }: Props) {
 
   function copyDaily() {
     if (!todayDaily || typeof navigator === 'undefined' || !navigator.clipboard) return;
-    const recap = `Gridiron Daily ${todayDaily.date} · ${TEAM_PROFILES[todayDaily.team].shortName} · ${todayDaily.won ? 'Champions 5/5' : `${todayDaily.gamesWon}/${SEASON_GAMES}`} · ${todayDaily.score} · streak ${todayDaily.streak} 🔥`;
+    const recap = `Callsmith Daily ${todayDaily.date} · ${TEAM_PROFILES[todayDaily.team].shortName} · ${todayDaily.won ? 'Champions 5/5' : `${todayDaily.gamesWon}/${SEASON_GAMES}`} · ${todayDaily.score} · streak ${todayDaily.streak} 🔥`;
     navigator.clipboard.writeText(recap).then(() => {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1300);
@@ -76,9 +76,9 @@ export default function FootballHome({ onPlay, onFourthPhase }: Props) {
           overflow: 'hidden',
         }}
       >
-        <div style={{ fontSize: 11, letterSpacing: 3, color: FB.gold, fontWeight: 800 }}>SLATE BOSS PRESENTS</div>
+        <div style={{ fontSize: 11, letterSpacing: 3, color: FB.gold, fontWeight: 800 }}>FOOTBALL CARD ROGUELIKE</div>
         <div className="fb-pop" style={{ fontSize: 54, fontWeight: 900, color: FB.text, lineHeight: 0.95, marginTop: 8, letterSpacing: -1.5, textShadow: '0 2px 24px rgba(240,180,41,0.18)' }}>
-          GRIDIRON
+          CALLSMITH
         </div>
         <div style={{ fontSize: 13, color: FB.textDim, marginTop: 10, fontWeight: 600 }}>A football card roguelike</div>
         <div style={{ fontSize: 12.5, color: FB.gold, marginTop: 18, fontWeight: 700, letterSpacing: 0.3 }}>
@@ -107,7 +107,7 @@ export default function FootballHome({ onPlay, onFourthPhase }: Props) {
 
       {bestRun && bestTeam && (
         <div style={{ ...card(12), padding: '12px 14px', marginTop: 12, background: 'linear-gradient(160deg,#111a24,#0c1118)' }}>
-          <div style={{ fontSize: 11, color: FB.gold, letterSpacing: 1.2, fontWeight: 900 }}>BEST LOCAL RUN</div>
+          <div style={{ fontSize: 11, color: FB.gold, letterSpacing: 1.2, fontWeight: 900 }}>LOCAL SCORE CHASE</div>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline', marginTop: 4 }}>
             <div style={{ fontSize: 14, color: FB.text, fontWeight: 900 }}>{bestTeam.displayName}</div>
             <div className="fb-num" style={{ fontSize: 12, color: bestRun.won ? FB.gold : FB.textDim, fontWeight: 900 }}>
@@ -196,7 +196,7 @@ export default function FootballHome({ onPlay, onFourthPhase }: Props) {
         </button>
         {showCode ? (
           <div style={{ ...card(12), padding: '12px 14px', borderColor: `${FB.gold}55` }}>
-            <div style={{ fontSize: 11, color: FB.gold, letterSpacing: 1.2, fontWeight: 900 }}>PLAY A CODE</div>
+            <div style={{ fontSize: 11, color: FB.gold, letterSpacing: 1.2, fontWeight: 900 }}>IMPORT RUN CODE</div>
             <div style={{ fontSize: 11.5, color: FB.textDim, marginTop: 3, lineHeight: 1.4 }}>
               Paste a run code to replay the same team, weather, bosses, and shelves. e.g. <span style={{ color: FB.text, fontWeight: 800 }}>VLT-2K9F4P</span>
             </div>
@@ -218,7 +218,7 @@ export default function FootballHome({ onPlay, onFourthPhase }: Props) {
             )}
             <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
               <button onClick={() => { setShowCode(false); setCodeInput(''); }} style={{ flex: 1, padding: '11px 0', background: FB.inset, border: `1px solid ${FB.borderSoft}`, color: FB.textDim, borderRadius: 10, fontSize: 13, fontWeight: 800, cursor: 'pointer' }}>Cancel</button>
-              <button onClick={startCode} disabled={!codeParsed} style={{ flex: 2, padding: '11px 0', background: codeParsed ? 'linear-gradient(180deg,#f7c544,#e6a519)' : '#1a2330', color: codeParsed ? '#1a1206' : FB.textFaint, border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 900, cursor: codeParsed ? 'pointer' : 'not-allowed' }}>Play code →</button>
+              <button onClick={startCode} disabled={!codeParsed} style={{ flex: 2, padding: '11px 0', background: codeParsed ? 'linear-gradient(180deg,#f7c544,#e6a519)' : '#1a2330', color: codeParsed ? '#1a1206' : FB.textFaint, border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 900, cursor: codeParsed ? 'pointer' : 'not-allowed' }}>Start replay →</button>
             </div>
           </div>
         ) : (
@@ -226,7 +226,7 @@ export default function FootballHome({ onPlay, onFourthPhase }: Props) {
             onClick={() => setShowCode(true)}
             style={{ width: '100%', padding: '13px 0', background: '#141b24', border: `1px solid ${FB.border}`, color: FB.textDim, borderRadius: 12, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}
           >
-            🔑 Play a Code
+            🔑 Import Run Code
           </button>
         )}
       </div>

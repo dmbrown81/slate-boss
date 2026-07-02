@@ -7,6 +7,7 @@ import {
   BASE_METER,
   BASE_METER_CAP,
   FOURTH_PHASE_DISCARDS,
+  FOURTH_PHASE_DISCOUNT_TOKEN_CAP,
   FOURTH_PHASE_HAND_SIZE,
   FOURTH_PHASE_JOKER_LIMIT,
   FOURTH_PHASE_MAX_PLAYS_PER_DRIVE,
@@ -16,6 +17,7 @@ import {
   activeBossForDrive,
   applyFourthPhaseDrawStart,
   createFourthPhaseRun,
+  discountedOfferCost,
   drawFourthPhaseCards,
   generateFourthPhaseWarRoomOffers,
   jokerDefinition,
@@ -259,33 +261,41 @@ function runWarRoom(
   jokers: FourthPhaseJokerState[],
   practice: FourthPhasePracticeBook,
   money: number,
+  discounts: number,
   seed: number,
   driveIndex: number,
   team: FourthPhaseTeamKey,
   boss: ReturnType<typeof activeBossForDrive>,
   policy: Policy,
   rng: RNG,
-): { jokers: FourthPhaseJokerState[]; practice: FourthPhasePracticeBook; money: number } {
-  if (policy === 'none') return { jokers, practice, money: money + 3 };
+): { jokers: FourthPhaseJokerState[]; practice: FourthPhasePracticeBook; money: number; discounts: number } {
+  if (policy === 'none') return { jokers, practice, money: money + 3, discounts };
   let nextJokers = jokers;
   let nextPractice = practice;
   let nextMoney = money;
+  let nextDiscounts = discounts;
   let buys = 0;
   let rerolls = 0;
   const bossDriveSoon = driveIndex >= 1 || boss !== 'none';
   let offers = generateFourthPhaseWarRoomOffers(nextJokers, seed, driveIndex, team, boss, rerolls, nextPractice);
 
+  // Same token math the Lab UI uses (discountedOfferCost) — the harness must buy
+  // at the prices a real player would see.
+  const effectiveCost = (cost: number) => discountedOfferCost(cost, nextDiscounts).cost;
+
   while (buys < FOURTH_PHASE_WAR_ROOM_BUY_LIMIT) {
-    const affordable = offers.filter((offer) => offer.cost <= nextMoney);
+    const affordable = offers.filter((offer) => effectiveCost(offer.cost) <= nextMoney);
     if (!affordable.length) break;
 
     if (policy === 'random') {
       if (rng() < (buys === 0 ? 0.28 : 0.48)) break;
       const offer = affordable[Math.floor(rng() * affordable.length)];
       const applied = applyOffer(offer, nextJokers, nextPractice, team, bossDriveSoon);
+      const priced = discountedOfferCost(offer.cost, nextDiscounts);
       nextJokers = applied.jokers;
       nextPractice = applied.practice;
-      nextMoney -= offer.cost;
+      nextMoney -= priced.cost;
+      nextDiscounts -= priced.used;
       offers = offers.filter((candidate) => candidate.id !== offer.id);
       buys += 1;
       continue;
@@ -294,7 +304,7 @@ function runWarRoom(
     const ranked = [...affordable].sort((a, b) => offerValue(b, team, bossDriveSoon, nextPractice) - offerValue(a, team, bossDriveSoon, nextPractice));
     const best = ranked[0];
     const bestValue = offerValue(best, team, bossDriveSoon, nextPractice);
-    if (bestValue < 42 && rerolls < 1 && nextMoney >= FOURTH_PHASE_WAR_ROOM_REROLL_COST + Math.min(...offers.map((offer) => offer.cost))) {
+    if (bestValue < 42 && rerolls < 1 && nextMoney >= FOURTH_PHASE_WAR_ROOM_REROLL_COST + Math.min(...offers.map((offer) => effectiveCost(offer.cost)))) {
       nextMoney -= FOURTH_PHASE_WAR_ROOM_REROLL_COST;
       rerolls += 1;
       offers = generateFourthPhaseWarRoomOffers(nextJokers, seed, driveIndex, team, boss, rerolls, nextPractice);
@@ -302,15 +312,17 @@ function runWarRoom(
     }
     if (bestValue < 30) break;
     const applied = applyOffer(best, nextJokers, nextPractice, team, bossDriveSoon);
+    const priced = discountedOfferCost(best.cost, nextDiscounts);
     nextJokers = applied.jokers;
     nextPractice = applied.practice;
-    nextMoney -= best.cost;
+    nextMoney -= priced.cost;
+    nextDiscounts -= priced.used;
     offers = offers.filter((candidate) => candidate.id !== best.id);
     buys += 1;
   }
 
   if (buys === 0) nextMoney += 3;
-  return { jokers: nextJokers, practice: nextPractice, money: nextMoney };
+  return { jokers: nextJokers, practice: nextPractice, money: nextMoney, discounts: nextDiscounts };
 }
 
 function simulateGame(team: FourthPhaseTeamKey, seed: number, policy: Policy): SimResult {
@@ -325,6 +337,7 @@ function simulateGame(team: FourthPhaseTeamKey, seed: number, policy: Policy): S
   let jokers = [...run.jokers];
   let practice = { ...run.practice };
   let money = run.money;
+  let discountTokens = 0;
   let meter = run.meter.meter;
   let meterCap = run.meter.meterCap;
   let totalScore = 0;
@@ -398,6 +411,7 @@ function simulateGame(team: FourthPhaseTeamKey, seed: number, policy: Policy): S
       meterCap = candidate.result.meterCap;
       peakMeter = Math.max(peakMeter, meter);
       money = Math.max(0, money + candidate.result.fuel.money);
+      discountTokens = Math.min(FOURTH_PHASE_DISCOUNT_TOKEN_CAP, discountTokens + candidate.result.fuel.discount);
       repeatedSituations[candidate.result.situation.key] = (repeatedSituations[candidate.result.situation.key] ?? 0) + 1;
       cardsPlayedThisDrive += 1;
       plays += 1;
@@ -410,10 +424,11 @@ function simulateGame(team: FourthPhaseTeamKey, seed: number, policy: Policy): S
 
     money += 5 + driveIndex * 2;
     if (driveIndex < run.targets.length - 1) {
-      const drafted = runWarRoom(jokers, practice, money, seed, driveIndex, team, activeBossForDrive(run, driveIndex + 1), policy, rng);
+      const drafted = runWarRoom(jokers, practice, money, discountTokens, seed, driveIndex, team, activeBossForDrive(run, driveIndex + 1), policy, rng);
       jokers = drafted.jokers;
       practice = drafted.practice;
       money = drafted.money;
+      discountTokens = drafted.discounts;
     }
   }
 
@@ -491,7 +506,7 @@ for (const gate of gates) {
   console.log(`  ${gate.pass ? 'OK' : 'FAIL'} ${gate.label} -- ${gate.detail}`);
 }
 
-console.log('\nCallsmith comparison: run `npm run balance:gridiron -- 3000` separately; this harness does not claim inherited balance.');
+console.log('\nLegacy Gridiron comparison: run `npm run balance:gridiron -- 3000` separately; this harness does not claim inherited balance.');
 
 if (failures > 0) {
   console.error(`Fourth Phase balance FAILED: ${failures} gate(s) missed.`);

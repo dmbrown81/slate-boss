@@ -66,10 +66,10 @@ const CONCEPT_LANE: Record<string, FbLane> = {
 // ── Film Tool / Front Office rarity (label only) ─────────────────────────────
 const FILM_RARITY: Partial<Record<FilmToolKey, FbRarity>> = {
   film_cut: 'common', contract_restructure: 'common', bulk_up: 'common', reliable_hands: 'common',
-  depth_chart: 'common', film_grind: 'common',
-  deep_threat: 'uncommon', clutch_reps: 'uncommon', boss_prep: 'uncommon',
+  depth_chart: 'common', film_grind: 'common', rookie_contracts: 'common',
+  deep_threat: 'uncommon', route_tree: 'uncommon', clutch_reps: 'uncommon', boss_prep: 'uncommon', all_pro_tape: 'uncommon', rhythm_install: 'uncommon',
   clone_tape: 'rare', explosive_pkg: 'rare', hot_route_install: 'rare',
-  flea_flicker: 'rare', gadget_gamble: 'rare',
+  home_run_cutup: 'rare', captain_patch: 'rare', flea_flicker: 'rare', gadget_gamble: 'rare', trick_shot: 'rare',
 };
 export function filmToolRarity(key: FilmToolKey): FbRarity { return FILM_RARITY[key] ?? 'uncommon'; }
 

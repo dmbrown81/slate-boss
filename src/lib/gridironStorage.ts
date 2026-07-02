@@ -1,4 +1,5 @@
 import type { FbRunState } from './footballRun';
+import { defaultStaffBoard } from './footballRogue';
 import { STARTING_FUNDS, type ShopCreditInfo } from './gridironEconomy';
 import { defaultHapticsEnabled } from './feedback';
 
@@ -7,11 +8,11 @@ export const GRIDIRON_HISTORY_STORAGE_KEY = 'gridiron_history_v1';
 export const GRIDIRON_DAILY_STORAGE_KEY = 'gridiron_daily_v1';
 export const GRIDIRON_PREFS_STORAGE_KEY = 'gridiron_prefs_v1';
 // v2 added Front Office Funds + card Player Traits. v3 added the season-long lane
-// counters (keeperGames / takeawayGames) for the mobile & defense compounders. We
-// still read older saves and migrate them (additive backfill) so an in-progress
-// season survives the upgrade.
-const STORAGE_VERSION = 3;
-const READABLE_VERSIONS = new Set([1, 2, 3]);
+// counters (keeperGames / takeawayGames) for the mobile & defense compounders.
+// v4 added the Staff Board role assignment. We still read older saves and migrate
+// them (additive backfill) so an in-progress season survives the upgrade.
+const STORAGE_VERSION = 4;
+const READABLE_VERSIONS = new Set([1, 2, 3, 4]);
 
 export type GridironPersistedPhase = 'match' | 'reward';
 
@@ -86,6 +87,7 @@ function migrate(persisted: GridironPersistedRun): GridironPersistedRun {
   if (typeof run.takeawayGames !== 'number') run.takeawayGames = 0;
   if (typeof run.stake !== 'number') run.stake = 1;
   if (!Array.isArray(run.upgrades)) run.upgrades = [];
+  if (!run.staffBoard || typeof run.staffBoard !== 'object') run.staffBoard = defaultStaffBoard(run.coordinators ?? []);
   return { ...persisted, version: STORAGE_VERSION, run };
 }
 
@@ -244,11 +246,12 @@ function previousUtcDate(date: string): string {
 export interface GridironPrefs {
   quickResults: boolean;   // snap non-splash theatre + halve the count-up
   hapticsEnabled: boolean; // navigator.vibrate on clears / turnovers / signatures
+  audioEnabled: boolean;   // tiny WebAudio chimes for score beats; off by default
   showMath: boolean;       // expand the live equation in the play preview
 }
 
 function defaultPrefs(): GridironPrefs {
-  return { quickResults: false, hapticsEnabled: defaultHapticsEnabled(), showMath: false };
+  return { quickResults: false, hapticsEnabled: defaultHapticsEnabled(), audioEnabled: false, showMath: false };
 }
 
 export function loadGridironPrefs(): GridironPrefs {
@@ -261,6 +264,7 @@ export function loadGridironPrefs(): GridironPrefs {
     return {
       quickResults: typeof parsed.quickResults === 'boolean' ? parsed.quickResults : fallback.quickResults,
       hapticsEnabled: typeof parsed.hapticsEnabled === 'boolean' ? parsed.hapticsEnabled : fallback.hapticsEnabled,
+      audioEnabled: typeof parsed.audioEnabled === 'boolean' ? parsed.audioEnabled : fallback.audioEnabled,
       showMath: typeof parsed.showMath === 'boolean' ? parsed.showMath : fallback.showMath,
     };
   } catch {

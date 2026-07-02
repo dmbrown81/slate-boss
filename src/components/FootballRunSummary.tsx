@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { FB, btnPrimary, btnGhost, card } from './footballStyles';
-import { FB_CONCEPT_LABEL, FB_COORDINATORS, FB_ENVIRONMENTS, FB_BOSS_SCHEMES, randomEnvironment, randomBossScheme, TEAM_PROFILES } from '../lib/footballRogue';
+import { FB_CARD_EDITIONS, FB_CONCEPT_LABEL, FB_COORDINATORS, FB_ENVIRONMENTS, FB_BOSS_SCHEMES, STAFF_SLOT_ORDER, STAFF_SLOT_META, randomEnvironment, randomBossScheme, TEAM_PROFILES } from '../lib/footballRogue';
 import { buildCoachDebrief, buildIdentity, buildLossReasons, generateBuildTitle, isChampionship, runRng, stakeProfile, SEASON_GAMES, type FbRunState } from '../lib/footballRun';
 import { bestGridironHistoryRun, loadGridironHistory, saveGridironDailyResult, saveGridironHistoryEntry, type GridironRunHistoryEntry } from '../lib/gridironStorage';
 import { formatRunCode, rarestOwned, coordinatorTaxonomy, RARITY_META } from '../lib/gridironTaxonomy';
@@ -47,6 +47,7 @@ export default function FootballRunSummary({ won, gamesWon, run, lostDrive, scor
   const previousBest = bestGridironHistoryRun(history);
   const recent = history.slice(0, 5);
   const lossReasons = won ? [] : buildLossReasons(run, gamesWon, lostDrive);
+  const editedCards = run.deck.filter((c) => c.edition);
   const bestLabel = previousBest
     ? `${TEAM_PROFILES[previousBest.team].displayName} · ${previousBest.won ? 'Champions' : `${previousBest.gamesWon}/${SEASON_GAMES}`} · ${previousBest.score}`
     : 'First recorded run';
@@ -54,7 +55,7 @@ export default function FootballRunSummary({ won, gamesWon, run, lostDrive, scor
   // label, build identity + result, score + best drive, Overtime, rarest find,
   // and the replayable code (omitted for daily, which is a fixed assignment).
   const shareLines = [
-    dailyRun ? `🏈 GRIDIRON · Daily ${dailyRun.date}` : '🏈 GRIDIRON',
+    dailyRun ? `🏈 CALLSMITH · Daily ${dailyRun.date}` : '🏈 CALLSMITH',
     `${buildTitle} — ${won ? `Champions ${SEASON_GAMES}/${SEASON_GAMES}` : `${gamesWon}/${SEASON_GAMES}`}`,
     `Score ${score}${bestDrive ? ` · Best drive ${bestDrive}` : ''}`,
   ];
@@ -170,6 +171,23 @@ export default function FootballRunSummary({ won, gamesWon, run, lostDrive, scor
               {FB_CONCEPT_LABEL[c] ?? c} <span style={{ color: FB.gold }}>Lv{l}</span>
             </span>
           ))}
+          {STAFF_SLOT_ORDER.map((slot) => {
+            const key = run.staffBoard?.[slot];
+            if (!key) return null;
+            return (
+              <span key={slot} title={STAFF_SLOT_META[slot].description} style={{ fontSize: 11, fontWeight: 800, color: FB.gold, background: FB.goldSoft, border: '1px solid #5a4112', borderRadius: 7, padding: '4px 8px' }}>
+                {STAFF_SLOT_META[slot].short} · {FB_COORDINATORS[key].name}
+              </span>
+            );
+          })}
+          {editedCards.map((c) => {
+            const ed = FB_CARD_EDITIONS[c.edition!];
+            return (
+              <span key={c.id} style={{ fontSize: 11, fontWeight: 800, color: ed.color, background: FB.inset, border: `1px solid ${ed.color}55`, borderRadius: 7, padding: '4px 8px' }}>
+                {c.label} · {ed.label}
+              </span>
+            );
+          })}
         </div>
         <div style={{ marginTop: 13, background: FB.inset, border: `1px solid ${FB.borderSoft}`, borderRadius: 10, padding: '11px 12px' }}>
           <div style={{ fontSize: 11, color: FB.gold, letterSpacing: 1.1, fontWeight: 900 }}>{debrief.title.toUpperCase()}</div>
@@ -224,11 +242,11 @@ export default function FootballRunSummary({ won, gamesWon, run, lostDrive, scor
           <div style={{ marginTop: 12, background: '#101720', border: `1px solid ${FB.borderSoft}`, borderRadius: 10, padding: '10px 11px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 11, color: FB.textFaint, letterSpacing: 1.1, fontWeight: 900 }}>RUN CODE</div>
+                <div style={{ fontSize: 11, color: FB.textFaint, letterSpacing: 1.1, fontWeight: 900 }}>REPLAY CODE</div>
                 <div className="fb-num" style={{ fontSize: 16, color: FB.gold, fontWeight: 900, marginTop: 2, letterSpacing: 1 }}>{runCode}</div>
               </div>
               <button onClick={copyCode} style={{ flexShrink: 0, background: FB.inset, border: `1px solid ${FB.borderSoft}`, color: codeCopied ? FB.green : FB.gold, borderRadius: 9, padding: '8px 12px', fontSize: 12, fontWeight: 900, cursor: 'pointer' }}>
-                {codeCopied ? '✓ Copied' : '📋 Copy code'}
+                {codeCopied ? '✓ Copied' : '📋 Copy replay'}
               </button>
             </div>
             <div style={{ fontSize: 11, color: FB.textDim, marginTop: 6, lineHeight: 1.35 }}>
@@ -242,7 +260,7 @@ export default function FootballRunSummary({ won, gamesWon, run, lostDrive, scor
           onClick={copyShare}
           style={{ ...btnPrimary, width: '100%', marginTop: 12, ...(copied ? { background: FB.greenSoft, color: FB.green, boxShadow: 'none' } : {}) }}
         >
-          {copied ? '✓ Result copied' : '📋 Copy Result'}
+          {copied ? '✓ Result copied' : '📋 Copy challenge result'}
         </button>
       </div>
 

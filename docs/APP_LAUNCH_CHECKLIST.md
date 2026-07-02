@@ -1,6 +1,6 @@
-# Gridiron App Launch Checklist
+# Callsmith App Launch Checklist
 
-Gridiron can ship as a web app first, then as native iOS and Android apps through
+Callsmith can ship as a web app first, then as native iOS and Android apps through
 Capacitor. Keep the store positioning simple: fictional single-player football
 strategy, no real teams, no real players, no real money, no prizes.
 
@@ -34,13 +34,13 @@ npm run cap:sync
 - Short description: "A fictional football card roguelike."
 - Avoid sportsbook, gambling, deposit, withdrawal, betting, DFS contest, or cash
   prize language in public store copy.
-- Include the disclaimer in long-form listing text: "Gridiron uses fictional
+- Include the disclaimer in long-form listing text: "Callsmith uses fictional
   teams and players. It has no real-money play, prizes, deposits, or withdrawals."
 
 ## Before Submission
 
-- Replace the bundle id in `capacitor.config.ts` if you want a different permanent
-  publisher namespace before the first public release.
+- Keep the bundle id in `capacitor.config.ts` final before the first public
+  release. It is currently `com.slateboss.callsmith`.
 - Capture phone and tablet screenshots from real builds, not desktop browser
   screenshots.
 - Add a privacy policy URL, even if the first release only stores local save data.
