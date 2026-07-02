@@ -1,11 +1,13 @@
 import { useState, type CSSProperties, type ReactNode } from 'react';
 import { FB, btnPrimary, sectionLabel, SIDE } from './footballStyles';
 import {
-  FB_BOSS_SCHEMES, FB_COORDINATORS, FB_ENVIRONMENTS, FB_CARD_MODIFIERS, STARTER_COORDINATORS,
+  FB_BOSS_SCHEMES, FB_COORDINATORS, FB_ENVIRONMENTS, FB_CARD_MODIFIERS, FB_CARD_EDITIONS, STAFF_SLOT_ORDER, STAFF_SLOT_META, STARTER_COORDINATORS,
   DRIVES_PER_MATCH, AUDIBLES_PER_DRIVE, MAX_PLAY_CARDS, FB_ENVIRONMENT_WEIGHTS,
   type FbBossSchemeKey,
+  type FbCardEdition,
   type FbCardModifier,
   type FbEnvironmentKey,
+  type FbStaffSlot,
 } from '../lib/footballRogue';
 import { STARTING_FUNDS } from '../lib/gridironEconomy';
 import { FILM_TOOLS, FILM_TOOL_KEYS, FRONT_OFFICE, FRONT_OFFICE_KEYS } from '../lib/footballRun';
@@ -75,6 +77,12 @@ export default function FootballHelpModal({ onClose, prefs, onPrefsChange }: Pro
               sub="Vibrate on drive clears, turnovers, and signature plays (supported devices)."
               on={prefs.hapticsEnabled}
               onToggle={() => onPrefsChange({ hapticsEnabled: !prefs.hapticsEnabled })}
+            />
+            <Toggle
+              label="Audio cues"
+              sub="Play small scoring chimes. Off by default; scoring never depends on sound."
+              on={prefs.audioEnabled}
+              onToggle={() => onPrefsChange({ audioEnabled: !prefs.audioEnabled })}
             />
           </Block>
         )}
@@ -160,6 +168,19 @@ export default function FootballHelpModal({ onClose, prefs, onPrefsChange }: Pro
           </div>
         </Block>
 
+        <Block title="Staff Board">
+          Coordinators also take lightweight roles on the Staff Board. Roles add tiny, readable bonuses on
+          specific ledger stages, and new hires are slotted automatically.
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 8 }}>
+            {STAFF_SLOT_ORDER.map((slot: FbStaffSlot) => (
+              <div key={slot} style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
+                <span style={{ fontSize: 12, fontWeight: 800, color: FB.gold, minWidth: 82 }}>{STAFF_SLOT_META[slot].label}</span>
+                <span style={{ fontSize: 11.5, color: FB.textDim }}>{STAFF_SLOT_META[slot].description}</span>
+              </div>
+            ))}
+          </div>
+        </Block>
+
         <Block title="Game Plan — commit & scale">
           After each win you can <b>level a Game Plan</b> (a play concept like Stack TD or Ground & Pound).
           Each level scores more every time you call that play — and once it's your core play, it adds a
@@ -213,6 +234,19 @@ export default function FootballHelpModal({ onClose, prefs, onPrefsChange }: Pro
               <div key={k} style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
                 <span style={{ fontSize: 12, fontWeight: 800, color: FB_CARD_MODIFIERS[k].color, minWidth: 78 }}>{FB_CARD_MODIFIERS[k].label}</span>
                 <span style={{ fontSize: 11.5, color: FB.textDim }}>{FB_CARD_MODIFIERS[k].description}</span>
+              </div>
+            ))}
+          </div>
+        </Block>
+
+        <Block title="Card Editions">
+          Premium Film Room development can add one football-native <b>edition</b> to a card. Editions show on
+          the card face and write their effect into the scoring ledger when relevant.
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 8 }}>
+            {(Object.keys(FB_CARD_EDITIONS) as FbCardEdition[]).map((k) => (
+              <div key={k} style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
+                <span style={{ fontSize: 12, fontWeight: 800, color: FB_CARD_EDITIONS[k].color, minWidth: 78 }}>{FB_CARD_EDITIONS[k].label}</span>
+                <span style={{ fontSize: 11.5, color: FB.textDim }}>{FB_CARD_EDITIONS[k].description}</span>
               </div>
             ))}
           </div>

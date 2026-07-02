@@ -1,4 +1,4 @@
-package com.slateboss.gridiron;
+package com.slateboss.callsmith;
 
 import com.getcapacitor.BridgeActivity;
 

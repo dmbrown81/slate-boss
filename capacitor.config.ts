@@ -1,8 +1,8 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.slateboss.gridiron',
-  appName: 'Gridiron',
+  appId: 'com.slateboss.callsmith',
+  appName: 'Callsmith',
   webDir: 'dist',
   server: {
     androidScheme: 'https',

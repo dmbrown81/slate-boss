@@ -25,6 +25,21 @@ export const FOURTH_PHASE_DISCARDS = 2;
 export const FOURTH_PHASE_MAX_PLAYS_PER_DRIVE = 8;
 export const FOURTH_PHASE_WAR_ROOM_BUY_LIMIT = 2;
 export const FOURTH_PHASE_WAR_ROOM_REROLL_COST = 2;
+/** Most Special Teams discount tokens a run can bank at once. */
+export const FOURTH_PHASE_DISCOUNT_TOKEN_CAP = 3;
+/** Most tokens one War Room offer can consume. */
+export const FOURTH_PHASE_DISCOUNT_PER_OFFER = 2;
+
+/**
+ * Spend banked Special Teams discount tokens on one War Room offer.
+ * Shaves $1 per token, at most FOURTH_PHASE_DISCOUNT_PER_OFFER per offer,
+ * never below $1. Shared by the Lab UI and the balance harness so the two
+ * economies cannot diverge.
+ */
+export function discountedOfferCost(cost: number, tokens: number): { cost: number; used: number } {
+  const used = Math.max(0, Math.min(FOURTH_PHASE_DISCOUNT_PER_OFFER, Math.floor(tokens), cost - 1));
+  return { cost: cost - used, used };
+}
 
 export interface FourthPhaseTeamProfile {
   key: FourthPhaseTeamKey;
@@ -275,6 +290,22 @@ function practiceKeyFor(team: FourthPhaseTeamKey, boss: FourthPhaseBossKey, seed
   return pool[Math.floor(rng() * pool.length)];
 }
 
+// Concrete numbers only — this string is the shop's promise, so it must mirror
+// applyPracticeBonus in engine.ts exactly (+5 Yards / +0.03 Exec per level;
+// +0.12 BP per level on cashing situations, +0.05 otherwise; utility packages
+// for Field Flip and The Blackout).
+function practiceDrillDetail(situation: SituationKey, level: number): string {
+  if (situation === 'fieldFlip') {
+    return `Level ${level}: Field Flip also pays +${level} draw and +$${level * 2}.`;
+  }
+  if (situation === 'blackout') {
+    return `Level ${level}: The Blackout also charges +${(level * 0.15).toFixed(2)} meter.`;
+  }
+  const cashes = situation === 'houseCall' || situation === 'complementaryFootball';
+  const bigPlay = level * (cashes ? 0.12 : 0.05);
+  return `Level ${level}: ${SITUATION_LABELS[situation]} gains +${level * 5} Yards, +${(level * 0.03).toFixed(2)} Exec, +${bigPlay.toFixed(2)} BP.`;
+}
+
 export function generateFourthPhaseWarRoomOffers(
   owned: readonly FourthPhaseJokerState[],
   seed: number,
@@ -303,7 +334,7 @@ export function generateFourthPhaseWarRoomOffers(
     kind: 'practice',
     cost: 3,
     label: `${SITUATION_LABELS[situation]} Drill`,
-    detail: `Level ${level}: improves ${SITUATION_LABELS[situation]} scoring or fuel.`,
+    detail: practiceDrillDetail(situation, level),
     tags: practiceTags(situation, team, boss),
     situation,
   };

@@ -29,7 +29,8 @@ function gameSetup(run: FbRunState): { env: FbEnvironmentKey; scheme: FbBossSche
 }
 
 function rewardsFor(run: FbRunState, rerolls = 0): Reward[] {
-  return generateRewards(run, runRng(run, `rewards:${rerolls}`));
+  const next = gameSetup({ ...run, gameNumber: run.gameNumber + 1 });
+  return generateRewards(run, runRng(run, `rewards:${rerolls}`), next.scheme);
 }
 
 function hydrateRewards(run: FbRunState, rewardIds: string[] | undefined, rerolls: number): Reward[] {
@@ -348,6 +349,7 @@ export default function FootballSeason({ onHome, initialSeed, initialTeam }: { o
       team={run.team}
       deck={run.deck}
       coordinators={run.coordinators}
+      staffBoard={run.staffBoard}
       playbook={run.playbook}
       bombGames={run.bombGames}
       keeperGames={run.keeperGames}

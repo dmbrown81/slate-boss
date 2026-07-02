@@ -2,9 +2,9 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   buildStarterDeck, scoreFootballPlay, shuffle, cardCost,
   HAND_SIZE, DRIVES_PER_MATCH, AUDIBLES_PER_DRIVE, MAX_PLAY_CARDS, DRIVE_BUDGET,
-  FB_BOSS_SCHEMES, FB_COORDINATORS, FB_ENVIRONMENTS, FB_CONCEPT_LABEL, FB_CARD_MODIFIERS, TEAM_PROFILES,
+  FB_BOSS_SCHEMES, FB_COORDINATORS, FB_ENVIRONMENTS, FB_CONCEPT_LABEL, FB_CARD_MODIFIERS, FB_CARD_EDITIONS, STAFF_SLOT_ORDER, STAFF_SLOT_META, TEAM_PROFILES,
   livePresentation, presentationForScheme, SHELL_LABEL, BOX_LABEL, PRESSURE_LABEL,
-  type FbBossSchemeKey, type FbCard, type FbCoordinatorKey, type FbEnvironmentKey, type FbPlaybook, type FbPlayResult, type FbConceptKey, type TeamArchetype, type FbDefensivePresentation,
+  type FbBossSchemeKey, type FbCard, type FbCoordinatorKey, type FbEnvironmentKey, type FbPlaybook, type FbPlayResult, type FbConceptKey, type TeamArchetype, type FbDefensivePresentation, type FbStaffBoard, type FbScoreStage, type FbLedgerEntry,
 } from '../lib/footballRogue';
 import { mulberry32, stringSeed, type RNG } from '../lib/rng';
 import { buildIdentity } from '../lib/footballRun';
@@ -12,7 +12,7 @@ import { FB, SIDE, btnPrimary, btnGhost } from './footballStyles';
 import { CoachPortrait } from './coachIdentity';
 import { TEAM_IDENTITY } from './teamIdentity';
 import FootballHelpModal from './FootballHelpModal';
-import { haptic } from '../lib/feedback';
+import { audioCue, haptic } from '../lib/feedback';
 import { loadGridironPrefs, saveGridironPrefs, type GridironPrefs } from '../lib/gridironStorage';
 import { conceptDossier, conceptMatchup, cardConcept } from '../lib/gridironPlaybook';
 
@@ -20,6 +20,7 @@ export interface MatchProps {
   team: TeamArchetype;
   deck: FbCard[];
   coordinators: FbCoordinatorKey[];
+  staffBoard: FbStaffBoard;
   playbook: FbPlaybook;
   bombGames: number;
   keeperGames: number;
@@ -136,7 +137,7 @@ function usePrefersReducedMotion() {
 }
 
 export default function FootballMatch(props: MatchProps) {
-  const { team, deck: runDeck, coordinators, playbook, bombGames, keeperGames, takeawayGames, targets, environment, bossScheme, gameNumber, totalGames, championship, seed } = props;
+  const { team, deck: runDeck, coordinators, staffBoard, playbook, bombGames, keeperGames, takeawayGames, targets, environment, bossScheme, gameNumber, totalGames, championship, seed } = props;
   const overtimeRound = props.overtimeRound ?? 0;
   const isOvertime = overtimeRound > 0;
   const audPerDrive = props.audiblesPerDrive ?? AUDIBLES_PER_DRIVE;
@@ -205,7 +206,7 @@ export default function FootballMatch(props: MatchProps) {
     [selected, match.hand],
   );
   const actualScoreCtx = useMemo(() => ({
-    coordinators, environment, bossScheme, presentation: livePres, playbook, bombGames, keeperGames, takeawayGames,
+    coordinators, staffBoard, environment, bossScheme, presentation: livePres, playbook, bombGames, keeperGames, takeawayGames,
     stacksThisMatch: match.stacksThisMatch,
     groundBonusThisMatch: match.groundBonusThisMatch,
     qbRunsThisMatch: match.qbRunsThisMatch,
@@ -213,7 +214,7 @@ export default function FootballMatch(props: MatchProps) {
     conceptCountsThisDrive: match.conceptCountsThisDrive,
     driveIndex: match.driveIndex,
     championship,
-  }), [coordinators, environment, bossScheme, livePres, playbook, bombGames, keeperGames, takeawayGames, match.stacksThisMatch, match.groundBonusThisMatch, match.qbRunsThisMatch, match.defPlaysThisMatch, match.conceptCountsThisDrive, match.driveIndex, championship]);
+  }), [coordinators, staffBoard, environment, bossScheme, livePres, playbook, bombGames, keeperGames, takeawayGames, match.stacksThisMatch, match.groundBonusThisMatch, match.qbRunsThisMatch, match.defPlaysThisMatch, match.conceptCountsThisDrive, match.driveIndex, championship]);
   const previewPresentation = lookRevealed ? livePres : presentationForScheme('balanced');
   const previewScoreCtx = useMemo(() => ({
     ...actualScoreCtx,
@@ -251,27 +252,35 @@ export default function FootballMatch(props: MatchProps) {
     () => (Object.entries(playbook) as [FbConceptKey, number][]).filter(([, level]) => level > 0),
     [playbook],
   );
-  const visibleScoreBeat = reducedMotion && match.lastPlay ? 3 : scoreBeat;
+  const visibleScoreBeat = reducedMotion && match.lastPlay ? 99 : scoreBeat;
   const teamPlan = teamWinCondition(team);
 
   useEffect(() => {
     if (!match.lastPlay) return undefined;
     if (reducedMotion) return undefined;
-    const delays = quickMode ? [80, 160, 240] : [260, 560, 900];
-    const timers = delays.map((ms, i) => window.setTimeout(() => setScoreBeat(i + 1), ms));
+    const beatCount = scoreStages(match.lastPlay).length;
+    const firstDelay = quickMode ? 80 : 180;
+    const stepDelay = quickMode ? 95 : 230;
+    const timers = Array.from({ length: Math.max(0, beatCount - 1) }, (_, i) => (
+      window.setTimeout(() => {
+        setScoreBeat(i + 1);
+        audioCue('score_tick', prefs.audioEnabled);
+      }, firstDelay + i * stepDelay)
+    ));
     return () => timers.forEach((timer) => window.clearTimeout(timer));
-  }, [match.lastPlay, match.popKey, reducedMotion, quickMode]);
+  }, [match.lastPlay, match.popKey, reducedMotion, quickMode, prefs.audioEnabled]);
 
   // A stalled drive earns a beat of mourning before the result panel.
   useEffect(() => {
     if (match.status !== 'lost') return undefined;
     haptic('turnover', prefs.hapticsEnabled);
+    audioCue('turnover', prefs.audioEnabled);
     const timer = window.setTimeout(
       () => setStamp({ id: match.popKey, kind: 'turnover', text: 'TURNOVER ON DOWNS', tone: 'red' }),
       reducedMotion ? 0 : 120,
     );
     return () => window.clearTimeout(timer);
-  }, [match.status, match.popKey, reducedMotion, prefs.hapticsEnabled]);
+  }, [match.status, match.popKey, reducedMotion, prefs.hapticsEnabled, prefs.audioEnabled]);
 
   // Signature lane callout (Volts keeper chain, Ghosts pressure chain, …) is a
   // transient toast — auto-dismiss it. Snappier under Quick Results.
@@ -321,8 +330,10 @@ export default function FootballMatch(props: MatchProps) {
     if (sig && !match.signatureFired) {
       setLaneCallout(sig);
       haptic('signature', prefs.hapticsEnabled);
+      audioCue('signature', prefs.audioEnabled);
     } else if (cleared) {
       haptic('drive_clear', prefs.hapticsEnabled);
+      audioCue('drive_clear', prefs.audioEnabled);
     }
     if (askCoach) setAskCoach(false);
 
@@ -332,8 +343,8 @@ export default function FootballMatch(props: MatchProps) {
       const discardAfter = [...m.discard, ...m.hand.filter((c) => playedIds.has(c.id))];
       const newScore = m.driveScore + result.total;
       const newBudget = m.budgetLeft - result.cost;
-      const isStackCon = result.concept === 'stack_td' || result.concept === 'double_stack_bomb' || result.concept === 'shootout_stack';
-      const isDefSplash = result.concept === 'pick_six' || result.concept === 'takeaway' || result.concept === 'sack';
+      const isStackCon = result.containedConcepts.includes('stack_td');
+      const isDefSplash = result.containedConcepts.some((c) => c === 'pick_six' || c === 'takeaway' || c === 'sack');
       const playedQbRun = result.valid && selectedCards.some((c) => c.action === 'scramble' || c.action === 'qb_sneak');
       const stacks = m.stacksThisMatch + (isStackCon ? 1 : 0);
       const ground = m.groundBonusThisMatch + (result.concept === 'ground_pound' ? 6 : 0);
@@ -342,7 +353,8 @@ export default function FootballMatch(props: MatchProps) {
       const cleanConcepts = m.cleanConceptsThisMatch + (result.valid && result.concept !== 'busted_play' ? 1 : 0);
       const bomb = m.bombLanded || result.concept === 'double_stack_bomb';
       const keeper = m.keeperLanded || result.concept === 'qb_keeper';
-      const counts = { ...m.conceptCountsThisDrive, [result.concept]: (m.conceptCountsThisDrive[result.concept] ?? 0) + 1 };
+      const counts = { ...m.conceptCountsThisDrive };
+      for (const c of result.containedConcepts) counts[c] = (counts[c] ?? 0) + 1;
       const signatureFired = m.signatureFired || (result.valid && Boolean(signatureCallout(team, result.concept)));
       const base = { ...m, stacksThisMatch: stacks, groundBonusThisMatch: ground, qbRunsThisMatch: qbRuns, defPlaysThisMatch: defPlays, cleanConceptsThisMatch: cleanConcepts, bestDriveThisMatch: Math.max(m.bestDriveThisMatch, newScore), bombLanded: bomb, keeperLanded: keeper, signatureFired, lastPlay: result, popKey: m.popKey + 1 };
 
@@ -459,6 +471,7 @@ export default function FootballMatch(props: MatchProps) {
                 <BuildChipRows
                   team={team}
                   coordinators={coordinators}
+                  staffBoard={staffBoard}
                   playbookEntries={playbookEntries}
                   stacksThisMatch={match.stacksThisMatch}
                   groundBonusThisMatch={match.groundBonusThisMatch}
@@ -652,6 +665,7 @@ function PlayStamp({ stamp, reduced, onSkip }: { stamp: PlayStampState; reduced:
 function BuildChipRows({
   team,
   coordinators,
+  staffBoard,
   playbookEntries,
   stacksThisMatch,
   groundBonusThisMatch,
@@ -663,6 +677,7 @@ function BuildChipRows({
 }: {
   team: TeamArchetype;
   coordinators: FbCoordinatorKey[];
+  staffBoard: FbStaffBoard;
   playbookEntries: [FbConceptKey, number][];
   stacksThisMatch: number;
   groundBonusThisMatch: number;
@@ -699,6 +714,20 @@ function BuildChipRows({
           );
         })}
       </ChipRow>
+      {Object.keys(staffBoard).length > 0 && (
+        <ChipRow label="Staff Board">
+          {STAFF_SLOT_ORDER.map((slot) => {
+            const key = staffBoard[slot];
+            if (!key) return null;
+            const meta = STAFF_SLOT_META[slot];
+            return (
+              <span key={slot} title={meta.description} style={{ fontSize: 11, fontWeight: 850, color: FB.gold, background: FB.goldSoft, border: '1px solid #5a4112', borderRadius: 7, padding: '4px 8px' }}>
+                {meta.short} · {FB_COORDINATORS[key].name}
+              </span>
+            );
+          })}
+        </ChipRow>
+      )}
       {playbookEntries.length > 0 && (
         <ChipRow label="Game Plan">
           {playbookEntries.map(([c, l]) => (
@@ -764,17 +793,18 @@ function CardView({ card, active, highlighted, affordable, onClick }: { card: Fb
   const eff = cardCost(card);
   const discounted = eff < card.cost;
   const trait = card.modifier ? FB_CARD_MODIFIERS[card.modifier] : null;
+  const edition = card.edition ? FB_CARD_EDITIONS[card.edition] : null;
   const fb = cardConcept(card);
   const costText = `${affordable || active ? '$' : '🔒 $'}${eff}${discounted ? ' ↓' : ''}`;
   return (
     <button onClick={onClick} aria-label={`${active ? 'Deselect' : 'Select'} ${card.label} (${fb.family} · ${fb.route}), ${card.position}, ${card.value} value, cost ${eff}${discounted ? ', discounted' : ''}${affordable || active ? '' : ', unaffordable with current budget'}`} className={highlighted && !active ? 'fb-glow' : undefined} style={{
       background: active ? c.grad : FB.panelSoft,
-      border: `1.5px solid ${active || highlighted ? c.border : trait ? `${trait.color}55` : FB.borderSoft}`,
+      border: `1.5px solid ${active || highlighted ? c.border : edition ? `${edition.color}aa` : trait ? `${trait.color}55` : FB.borderSoft}`,
       borderRadius: 11, padding: '8px 6px 7px', cursor: 'pointer', textAlign: 'left',
       transform: active ? 'translateY(-5px)' : 'none', transition: 'transform .14s ease, border-color .14s',
       minHeight: 84, display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
       opacity: affordable || active ? 1 : 0.42,
-      boxShadow: highlighted && !active ? `0 0 0 2px ${c.border}44, 0 0 18px ${c.border}25` : undefined,
+      boxShadow: highlighted && !active ? `0 0 0 2px ${c.border}44, 0 0 18px ${c.border}25` : edition ? `0 0 18px -12px ${edition.color}` : undefined,
     }}>
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -787,8 +817,11 @@ function CardView({ card, active, highlighted, affordable, onClick }: { card: Fb
         <div style={{ fontSize: 11, fontWeight: 800, color: c.text, marginTop: 5, lineHeight: 1.05, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{fb.route}</div>
         <div className="fb-num" style={{ fontSize: 16, fontWeight: 900, color: FB.text, marginTop: 1 }}>{card.value}</div>
       </div>
-      {trait ? (
-        <div style={{ fontSize: 11, fontWeight: 900, color: trait.color, background: `${trait.color}1a`, border: `1px solid ${trait.color}55`, borderRadius: 4, padding: '1px 4px', textAlign: 'center', letterSpacing: 0.4 }}>{trait.label.toUpperCase()}</div>
+      {trait || edition ? (
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+          {edition && <span style={{ flex: 1, fontSize: 10.5, fontWeight: 900, color: edition.color, background: `${edition.color}18`, border: `1px solid ${edition.color}66`, borderRadius: 4, padding: '1px 4px', textAlign: 'center', letterSpacing: 0.4 }}>{edition.label.toUpperCase()}</span>}
+          {trait && <span style={{ flex: 1, fontSize: 10.5, fontWeight: 900, color: trait.color, background: `${trait.color}1a`, border: `1px solid ${trait.color}55`, borderRadius: 4, padding: '1px 4px', textAlign: 'center', letterSpacing: 0.4 }}>{trait.label.toUpperCase()}</span>}
+        </div>
       ) : (
         <div style={{ fontSize: 11, color: FB.textFaint, lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.playerName} · {card.team}</div>
       )}
@@ -946,8 +979,8 @@ function PlayPreview({
           </div>
           {result.ledger.length > 2 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-              {result.ledger.filter((e) => ['execution', 'big_play', 'coordinator', 'environment', 'boss', 'matchup', 'spam'].includes(e.kind)).map((e) => (
-                <span key={e.id} style={{ fontSize: 11, fontWeight: 800, color: e.kind === 'coordinator' ? '#b7a7ff' : e.kind === 'spam' || e.kind === 'boss' ? FB.red : e.kind === 'matchup' ? FB.green : e.kind === 'environment' ? '#9cc6ff' : e.kind === 'big_play' ? FB.gold : FB.blue, background: FB.inset, border: `1px solid ${FB.borderSoft}`, borderRadius: 6, padding: '3px 7px' }}>{ledgerGlyph(e.kind)} {e.label}</span>
+              {result.ledger.filter((e) => ['execution', 'big_play', 'coordinator', 'staff', 'edition', 'environment', 'boss', 'matchup', 'spam'].includes(e.kind)).map((e, i) => (
+                <span key={`${e.id}-${i}`} style={{ fontSize: 11, fontWeight: 800, color: ledgerColor(e), background: FB.inset, border: `1px solid ${FB.borderSoft}`, borderRadius: 6, padding: '3px 7px' }}>{ledgerGlyph(e.kind)} {e.label}</span>
               ))}
             </div>
           )}
@@ -1000,22 +1033,60 @@ function ConceptDossierPanel({ concept, bossScheme, revealedPresentation, open, 
   );
 }
 
+const SCORE_STAGE_ORDER: FbScoreStage[] = ['cards', 'concept', 'coordinator', 'staff', 'playbook', 'environment', 'boss', 'adjustment', 'final'];
+const SCORE_STAGE_LABEL: Record<FbScoreStage, string> = {
+  cards: 'Cards',
+  concept: 'Concept',
+  coordinator: 'Staff',
+  staff: 'Roles',
+  playbook: 'Plan',
+  environment: 'Weather',
+  boss: 'Defense',
+  adjustment: 'Adjust',
+  final: 'Final',
+};
+const SCORE_STAGE_COLOR: Record<FbScoreStage, string> = {
+  cards: FB.green,
+  concept: FB.blue,
+  coordinator: '#b7a7ff',
+  staff: FB.gold,
+  playbook: '#5fe0a0',
+  environment: '#9cc6ff',
+  boss: FB.red,
+  adjustment: FB.red,
+  final: FB.text,
+};
+
+function scoreStages(result: FbPlayResult): { stage: FbScoreStage; label: string; color: string; entries: FbLedgerEntry[] }[] {
+  return SCORE_STAGE_ORDER
+    .map((stage) => ({
+      stage,
+      label: SCORE_STAGE_LABEL[stage],
+      color: SCORE_STAGE_COLOR[stage],
+      entries: result.ledger.filter((entry) => entry.stage === stage),
+    }))
+    .filter((beat) => beat.entries.length > 0);
+}
+
 function ScoreBeats({ result, stage }: { result: FbPlayResult; stage: number }) {
-  const beats = [
+  const stages = scoreStages(result);
+  const activeIndex = Math.min(Math.max(stage, 0), Math.max(0, stages.length - 1));
+  const activeStage = stages[activeIndex] ?? stages[0];
+  const channels = [
     { label: 'B Base', value: `${result.base}`, color: FB.green },
     { label: '+EXE', value: `+${result.execution.toFixed(2)}`, color: FB.blue },
-    { label: '×BP', value: `×${formatMultiplier(result.bigPlay)}`, color: FB.gold },
+    { label: 'xBP', value: `x${formatMultiplier(result.bigPlay)}`, color: FB.gold },
     { label: 'Final', value: `+${result.total}`, color: FB.text },
   ];
   return (
     <div style={{ background: FB.panelSoft, border: `1px solid ${FB.borderSoft}`, borderRadius: 12, padding: 10 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
         <div style={{ fontSize: 11, color: FB.textFaint, letterSpacing: 1.2, fontWeight: 900 }}>SCORING SEQUENCE</div>
-        <div style={{ fontSize: 11, color: FB.textDim, fontWeight: 800 }}>{result.playName}</div>
+        <div style={{ fontSize: 11, color: activeStage?.color ?? FB.textDim, fontWeight: 900 }}>{activeStage?.label ?? result.playName}</div>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
-        {beats.map((beat, i) => {
-          const active = stage >= i;
+        {channels.map((beat, i) => {
+          const active = i < 3 ? activeIndex >= 0 : activeStage?.stage === 'final';
           const impact = active && i === 3 && result.bigPlay > 1;
           return (
             <div key={beat.label} className={active ? 'fb-pop' : undefined} style={{ background: active ? (impact ? '#2a230c' : '#111d28') : FB.inset, border: `1px solid ${active ? (impact ? FB.gold : beat.color) : FB.borderSoft}`, borderRadius: 8, padding: '7px 4px', textAlign: 'center', opacity: active ? 1 : 0.45, boxShadow: impact ? '0 0 18px -8px rgba(240,180,41,0.9)' : undefined }}>
@@ -1025,6 +1096,26 @@ function ScoreBeats({ result, stage }: { result: FbPlayResult; stage: number }) 
           );
         })}
       </div>
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.max(1, stages.length)}, minmax(0, 1fr))`, gap: 4, marginTop: 8 }}>
+        {stages.map((beat, i) => {
+          const active = i <= activeIndex;
+          return (
+            <div key={beat.stage} style={{ height: 6, borderRadius: 4, background: active ? beat.color : FB.inset, border: `1px solid ${active ? beat.color : FB.borderSoft}`, opacity: i === activeIndex ? 1 : active ? 0.65 : 0.55 }} />
+          );
+        })}
+      </div>
+      {activeStage && (
+        <div style={{ marginTop: 8, background: '#081018', border: `1px solid ${activeStage.color}55`, borderRadius: 9, padding: '7px 8px' }}>
+          <div style={{ fontSize: 11, color: activeStage.color, fontWeight: 900, letterSpacing: 0.7 }}>{activeStage.label.toUpperCase()}</div>
+          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 5 }}>
+            {activeStage.entries.slice(0, 4).map((entry, i) => (
+              <span key={`${entry.id}-${i}`} style={{ fontSize: 11, fontWeight: 800, color: ledgerColor(entry), background: FB.inset, border: `1px solid ${FB.borderSoft}`, borderRadius: 6, padding: '3px 7px' }}>
+                {ledgerGlyph(entry.kind)} {entry.label}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1205,13 +1296,27 @@ function classifyPlayQuality(result: FbPlayResult, remaining: number, budgetLeft
 }
 
 function ledgerGlyph(kind: string): string {
-  if (kind === 'big_play') return '×';
+  if (kind === 'big_play') return 'x';
   if (kind === 'execution') return '+';
   if (kind === 'coordinator') return '★';
+  if (kind === 'staff') return 'S';
+  if (kind === 'edition') return 'ED';
   if (kind === 'environment') return '◇';
   if (kind === 'boss' || kind === 'spam') return '!';
   if (kind === 'matchup') return '▲';
   return '•';
+}
+
+function ledgerColor(entry: Pick<FbLedgerEntry, 'kind'>): string {
+  if (entry.kind === 'coordinator') return '#b7a7ff';
+  if (entry.kind === 'staff') return FB.gold;
+  if (entry.kind === 'edition') return '#d8e2ef';
+  if (entry.kind === 'spam' || entry.kind === 'boss') return FB.red;
+  if (entry.kind === 'matchup') return FB.green;
+  if (entry.kind === 'environment') return '#9cc6ff';
+  if (entry.kind === 'big_play') return FB.gold;
+  if (entry.kind === 'execution') return FB.blue;
+  return FB.textDim;
 }
 
 // The one moment-to-moment beat that makes a team FEEL like itself: when the

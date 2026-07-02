@@ -3,10 +3,11 @@
 
 import {
   buildTeamDeck, driveTargets, createFreeAgentCard, TEAM_PROFILES, TEAM_ARCHETYPES,
-  FB_COORDINATORS, MAX_COORDINATORS, AUDIBLES_PER_DRIVE, FB_CONCEPT_LABEL, FB_CARD_MODIFIERS,
+  FB_COORDINATORS, MAX_COORDINATORS, AUDIBLES_PER_DRIVE, FB_CONCEPT_LABEL, FB_CARD_MODIFIERS, FB_CARD_EDITIONS,
+  addCoordinatorToStaff, defaultStaffBoard,
   scoreFootballPlay, shuffle,
   FREE_AGENT_KEYS,
-  type FbBossSchemeKey, type FbCard, type FbCardModifier, type FbCoordinatorKey, type FbPlaybook, type FbEnvironmentKey, type FbConceptKey, type FreeAgentKey, type TeamArchetype,
+  type FbBossSchemeKey, type FbCard, type FbCardModifier, type FbCardEdition, type FbCoordinatorKey, type FbPlaybook, type FbEnvironmentKey, type FbConceptKey, type FreeAgentKey, type TeamArchetype, type FbStaffBoard,
 } from './footballRogue';
 import { STARTING_FUNDS, INTEREST_CAP } from './gridironEconomy';
 import { mulberry32, stringSeed, type RNG } from './rng';
@@ -34,6 +35,7 @@ export interface FbRunState {
   stake: number;             // League Level (1 = Pro / default). Affects starting Funds only.
   deck: FbCard[];
   coordinators: FbCoordinatorKey[];
+  staffBoard: FbStaffBoard;  // lightweight coordinator role board (Script / Booth / Adjustment / Closer)
   playbook: FbPlaybook;
   bombGames: number;         // games in which you landed a Bomb (Franchise QB)
   keeperGames: number;       // games in which you landed a QB Keeper (The Improviser)
@@ -60,6 +62,7 @@ export function createRun(team: TeamArchetype = 'balanced', seed = createGridiro
     stake,
     deck: buildTeamDeck(team).cards,
     coordinators: [...profile.startingCoordinators],
+    staffBoard: defaultStaffBoard(profile.startingCoordinators),
     playbook: {},
     bombGames: 0,
     keeperGames: 0,
@@ -170,7 +173,10 @@ function coordinatorReward(key: FbCoordinatorKey): Reward {
   return {
     id: `coord-${key}`, kind: 'coordinator', emoji: LEGENDARY_COORDINATORS.has(key) ? '🌟' : '🧠', title: `Hire: ${c.name}`, detail: c.description,
     cost: LEGENDARY_COORDINATORS.has(key) ? 8 : RARE_COORDINATORS.has(key) ? 7 : REWARD_COST.coordinator,
-    apply: (run) => ({ ...run, coordinators: [...run.coordinators, key] }),
+    apply: (run) => {
+      const staff = addCoordinatorToStaff(run.coordinators, run.staffBoard, key);
+      return { ...run, ...staff };
+    },
   };
 }
 
@@ -331,12 +337,53 @@ function firstAvailableCoord(lean: Lean, owned: FbCoordinatorKey[]): FbCoordinat
   return ordered.find((k) => !owned.includes(k)) ?? null;
 }
 
+function counterRewardsForBoss(run: FbRunState, bossScheme: FbBossSchemeKey, primary: FbConceptKey, secondary: FbConceptKey, lvl: (c: FbConceptKey) => number): Reward[] {
+  const canHire = run.coordinators.length < effectiveMaxCoordinators(run);
+  const coord = (key: FbCoordinatorKey) => canHire && !run.coordinators.includes(key) ? coordinatorReward(key) : null;
+  const plan = (concept: FbConceptKey) => playbookReward(concept, lvl(concept) + 1);
+  const candidates: (Reward | null)[] =
+    bossScheme === 'no_fly_zone' ? [
+      plan('checkdown'),
+      plan('ground_pound'),
+      coord('west_coast'),
+      coord('bell_cow'),
+      cardReward('value_slot'),
+      cardReward('bell_rb'),
+    ] : bossScheme === 'stacked_box' ? [
+      plan('stack_td'),
+      plan('double_stack_bomb'),
+      coord('air_raid'),
+      coord('west_coast'),
+      cardReward('gunslinger'),
+      cardReward('deep_wr'),
+    ] : bossScheme === 'turnover_drill' ? [
+      plan('stack_td'),
+      plan('ground_pound'),
+      plan('checkdown'),
+      coord('bell_cow'),
+      coord('west_coast'),
+      cardReward('value_slot'),
+    ] : bossScheme === 'adaptive_dc' ? [
+      plan(secondary === primary ? 'checkdown' : secondary),
+      TRIM,
+      cardReward(LEAN_CARD[deckLean(run.deck)][0]),
+      STRENGTH,
+    ] : [];
+  return candidates.filter((reward): reward is Reward => Boolean(reward));
+}
+
+function pushUniqueReward(picks: Reward[], reward: Reward | null): boolean {
+  if (!reward || picks.some((p) => p.id === reward.id)) return false;
+  picks.push(reward);
+  return true;
+}
+
 // Offer 3 rewards built around the player's deck lean:
 //   1) a KEYSTONE engine piece (a scaling coordinator, or a Game-Plan level),
 //   2) the COMMITMENT lever — level your core Game Plan (stack it to snowball),
 //   3) a flex stabilizer.
 // The skill is committing: stack one Game Plan + the coordinators that feed it.
-export function generateRewards(run: FbRunState, rng: RNG = Math.random): Reward[] {
+export function generateRewards(run: FbRunState, rng: RNG = Math.random, nextBossScheme: FbBossSchemeKey = 'balanced'): Reward[] {
   const lean = deckLean(run.deck);
   const primary = LEAN_PB[lean][0];
   const secondary = LEAN_PB[lean][1] ?? primary;
@@ -345,17 +392,23 @@ export function generateRewards(run: FbRunState, rng: RNG = Math.random): Reward
 
   // 1) Keystone
   const coord = run.coordinators.length < effectiveMaxCoordinators(run) ? firstAvailableCoord(lean, run.coordinators) : null;
-  if (coord && rng() < 0.6) picks.push(coordinatorReward(coord));
-  else picks.push(playbookReward(primary, lvl(primary) + 1));
+  if (coord && rng() < 0.6) pushUniqueReward(picks, coordinatorReward(coord));
+  else pushUniqueReward(picks, playbookReward(primary, lvl(primary) + 1));
 
   // 2) Commitment lever — level a Game Plan you can ride
   const slot2 = picks[0].id === `pb-${primary}` ? secondary : primary;
-  picks.push(playbookReward(slot2, lvl(slot2) + 1));
+  if (nextBossScheme !== 'balanced') {
+    const counters = counterRewardsForBoss(run, nextBossScheme, primary, secondary, lvl);
+    pushUniqueReward(picks, shuffle(counters, rng)[0] ?? null);
+  }
+  if (picks.length < 2) pushUniqueReward(picks, playbookReward(slot2, lvl(slot2) + 1));
 
   // 3) Flex stabilizer — value, consistency, a free agent, or a Player Trait.
   const flex: Reward[] = [STRENGTH, trainingReward(LEAN_TRAINING[lean])];
   if (run.deck.length > 26) flex.push(TRIM); else flex.push(cardReward(LEAN_CARD[lean][0]));
-  picks.push(shuffle(flex, rng)[0]);
+  for (const reward of shuffle(flex, rng)) {
+    if (pushUniqueReward(picks, reward)) break;
+  }
 
   // 4) Optional extra slot from the "Bigger Front Office" upgrade. Gated on the
   // upgrade so a fresh run (and the balance harness) sees exactly 3 — no drift.
@@ -363,7 +416,7 @@ export function generateRewards(run: FbRunState, rng: RNG = Math.random): Reward
     const used = new Set(picks.map((p) => p.id));
     const extras: Reward[] = [STRENGTH, TRIM, cardReward(LEAN_CARD[lean][0]), trainingReward(LEAN_TRAINING[lean])];
     const extra = extras.find((r) => !used.has(r.id));
-    if (extra) picks.push(extra);
+    if (extra) pushUniqueReward(picks, extra);
   }
 
   return shuffle(picks, rng);
@@ -631,6 +684,7 @@ export function estimateConceptScore(run: FbRunState, concept: FbConceptKey, bos
   if (!cards) return null;
   const result = scoreFootballPlay(cards, {
     coordinators: run.coordinators,
+    staffBoard: run.staffBoard,
     environment: 'clear',
     bossScheme,
     stacksThisMatch: 1,
@@ -713,9 +767,10 @@ export function rewardImpact(run: FbRunState, reward: Reward, bossScheme: FbBoss
 export type FilmToolKey =
   | 'film_cut' | 'clone_tape' | 'bulk_up' | 'contract_restructure' | 'deep_threat'
   | 'reliable_hands' | 'explosive_pkg' | 'clutch_reps' | 'boss_prep' | 'hot_route_install'
+  | 'route_tree' | 'rookie_contracts' | 'all_pro_tape' | 'rhythm_install' | 'home_run_cutup' | 'captain_patch'
   // Phase-6 wave: 2 safe tools + 2 risky "Trick Plays" (the Spectral analog —
   // run-warping with a real downside, legible, never mandatory).
-  | 'depth_chart' | 'film_grind' | 'flea_flicker' | 'gadget_gamble';
+  | 'depth_chart' | 'film_grind' | 'flea_flicker' | 'gadget_gamble' | 'trick_shot';
 
 export interface FilmTool {
   key: FilmToolKey;
@@ -739,6 +794,11 @@ function mutateCard(run: FbRunState, targetId: string | undefined, fn: (c: FbCar
   return { ...run, deck: run.deck.map((c) => (c.id === targetId ? fn(c) : c)) };
 }
 const untraited = (c: FbCard) => !c.modifier;
+const unedited = (c: FbCard) => !c.edition;
+
+function applyEdition(run: FbRunState, id: string | undefined, edition: FbCardEdition): FbRunState {
+  return mutateCard(run, id, (c) => ({ ...c, edition }));
+}
 
 export const FILM_TOOLS: Record<FilmToolKey, FilmTool> = {
   film_cut: {
@@ -774,6 +834,17 @@ export const FILM_TOOLS: Record<FilmToolKey, FilmTool> = {
     detail: 'Turn a Quick Catch into a Deep Catch (+30 yards) — unlocks the shot-play bonus.',
     apply: (run, id) => mutateCard(run, id, (c) => ({ ...c, action: 'deep_catch', label: 'Deep Catch', value: c.value + 30 })),
   },
+  route_tree: {
+    key: 'route_tree', emoji: '🌳', name: 'Route Tree', cost: 4, targeted: true,
+    eligible: (c) => c.side === 'catch',
+    detail: 'Rework one catch route: Checkdown → Quick Catch, Quick Catch → Deep Catch, Deep Catch → Checkdown with -1 cost.',
+    apply: (run, id) => mutateCard(run, id, (c) => {
+      if (c.action === 'checkdown_catch') return { ...c, action: 'short_catch', label: 'Quick Catch', value: c.value + 18 };
+      if (c.action === 'short_catch') return { ...c, action: 'deep_catch', label: 'Deep Catch', value: c.value + 30 };
+      if (c.action === 'deep_catch') return { ...c, action: 'checkdown_catch', label: 'Checkdown', cost: Math.max(1, c.cost - 1), value: Math.max(20, c.value - 18) };
+      return c;
+    }),
+  },
   reliable_hands: {
     key: 'reliable_hands', emoji: '🧱', name: 'Reliable Hands', cost: 4, targeted: true, eligible: untraited,
     detail: 'Give a card the Reliable trait — it waives the Busted Play penalty.',
@@ -800,6 +871,35 @@ export const FILM_TOOLS: Record<FilmToolKey, FilmTool> = {
     eligible: (c) => untraited(c) && c.side === 'catch',
     detail: 'Give a catch the Hot Route trait — it stacks with ANY quarterback.',
     apply: (run, id) => mutateCard(run, id, (c) => ({ ...c, modifier: 'hot_route' })),
+  },
+  rookie_contracts: {
+    key: 'rookie_contracts', emoji: '📄', name: 'Rookie Contracts', cost: 4, targeted: false, eligible: () => true,
+    detail: 'Cut the Play Budget cost of your two priciest cards by 1 (min 1).',
+    apply: (run) => {
+      const ids = new Set([...run.deck].filter((c) => c.cost > 1).sort((a, b) => b.cost - a.cost || b.value - a.value).slice(0, 2).map((c) => c.id));
+      return { ...run, deck: run.deck.map((c) => (ids.has(c.id) ? { ...c, cost: Math.max(1, c.cost - 1) } : c)) };
+    },
+  },
+  all_pro_tape: {
+    key: 'all_pro_tape', emoji: '⭐', name: 'All-Pro Tape', cost: 5, targeted: true, eligible: unedited,
+    detail: `Give a card the ${FB_CARD_EDITIONS.all_pro.label} edition — ${FB_CARD_EDITIONS.all_pro.description}`,
+    apply: (run, id) => applyEdition(run, id, 'all_pro'),
+  },
+  rhythm_install: {
+    key: 'rhythm_install', emoji: '🎼', name: 'Rhythm Install', cost: 5, targeted: true, eligible: unedited,
+    detail: `Give a card the ${FB_CARD_EDITIONS.in_rhythm.label} edition — ${FB_CARD_EDITIONS.in_rhythm.description}`,
+    apply: (run, id) => applyEdition(run, id, 'in_rhythm'),
+  },
+  home_run_cutup: {
+    key: 'home_run_cutup', emoji: '💣', name: 'Home Run Cut-Up', cost: 6, targeted: true,
+    eligible: (c) => unedited(c) && c.side !== 'kick',
+    detail: `Give a non-kick card the ${FB_CARD_EDITIONS.home_run.label} edition — ${FB_CARD_EDITIONS.home_run.description}`,
+    apply: (run, id) => applyEdition(run, id, 'home_run'),
+  },
+  captain_patch: {
+    key: 'captain_patch', emoji: '©', name: 'Captain Patch', cost: 6, targeted: true, eligible: unedited,
+    detail: `Give a card the ${FB_CARD_EDITIONS.captain.label} edition — ${FB_CARD_EDITIONS.captain.description}`,
+    apply: (run, id) => applyEdition(run, id, 'captain'),
   },
   // ── Safe additions ──
   depth_chart: {
@@ -830,6 +930,13 @@ export const FILM_TOOLS: Record<FilmToolKey, FilmTool> = {
     key: 'gadget_gamble', emoji: '🎲', name: 'Gadget Gamble', cost: 4, targeted: true, eligible: (c) => c.side !== 'kick', risky: true,
     detail: 'TRICK PLAY: +70 Base to one card — but it costs +1 Play Budget forever.',
     apply: (run, id) => mutateCard(run, id, (c) => ({ ...c, value: c.value + 70, cost: c.cost + 1 })),
+  },
+  trick_shot: {
+    key: 'trick_shot', emoji: '🎯', name: 'Trick Shot', cost: 5, targeted: true,
+    eligible: (c) => unedited(c) && (c.side === 'pass' || c.side === 'catch' || c.side === 'run'),
+    risky: true,
+    detail: 'TRICK PLAY: add Home Run to a skill card, but its Play Budget cost rises by 1.',
+    apply: (run, id) => mutateCard(run, id, (c) => ({ ...c, edition: 'home_run', cost: c.cost + 1 })),
   },
 };
 
@@ -893,8 +1000,9 @@ export function applyFrontOffice(run: FbRunState, key: FrontOfficeKey): FbRunSta
 }
 
 // ── Effective rule helpers (honor Front Office upgrades) ─────────────────────
-export function effectiveMaxCoordinators(run: Pick<FbRunState, 'upgrades'>): number {
-  return MAX_COORDINATORS + (run.upgrades?.includes('staff_expansion') ? 1 : 0);
+export function effectiveMaxCoordinators(run: Pick<FbRunState, 'upgrades'> & Partial<Pick<FbRunState, 'deck'>>): number {
+  const captainSlot = run.deck?.some((c) => c.edition === 'captain') ? 1 : 0;
+  return MAX_COORDINATORS + (run.upgrades?.includes('staff_expansion') ? 1 : 0) + captainSlot;
 }
 export function audiblesPerDrive(run: Pick<FbRunState, 'upgrades'>): number {
   return AUDIBLES_PER_DRIVE + (run.upgrades?.includes('extra_audible') ? 1 : 0);

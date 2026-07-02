@@ -14,6 +14,6 @@
   <rect width="128" height="128" rx="28" fill="url(#bg)"/>
   <path stroke="#ffffff" stroke-opacity=".11" stroke-width="2" d="M18 25h92M18 49h92M18 73h92M18 97h92"/>
   <path fill="#061016" stroke="#f0b429" stroke-width="5" d="M64 20 100 37v27c0 24-14 39-36 48-22-9-36-24-36-48V37z"/>
-  <path fill="url(#gold)" d="M41 62c0-17 13-30 30-30h23v14H72c-9 0-16 7-16 16s7 16 16 16h7V64H65V51h29v39H71c-17 0-30-12-30-28"/>
-  <path stroke="#fff5cf" stroke-linecap="round" stroke-width="5" d="M82 55v31"/>
+  <path fill="url(#gold)" d="M95 46H73c-10 0-18 7-18 17s8 17 18 17h22v14H72c-19 0-34-13-34-31s15-31 34-31h23z"/>
+  <path stroke="#fff5cf" stroke-linecap="round" stroke-width="5" d="M82 38v12M82 76v12"/>
 </svg>

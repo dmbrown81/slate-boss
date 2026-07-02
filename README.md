@@ -1,12 +1,24 @@
-# Gridiron / Slate Boss
+# Fourth Phase / Slate Boss
 
-Gridiron is a single-player football card roguelike inside the Slate Boss repo.
-The current headline mode is Gridiron: build a team deck, call football concepts,
-clear three drives per game, and survive a five-game season.
+Fourth Phase is the active product in this repo: a fictional single-player
+football card roguelike. Build plays from Offense, Defense, Special Teams, and
+Crowd cards; Crowd charges the Crowd Meter, a scoring play cashes it; clear
+three drive targets with a boss on the final drive. Everything is local-first,
+deterministic, and fictional — no real teams, players, money, or prizes.
 
-Classic Slate Boss, the original fictional DFS lineup simulator, has been removed
-from the active app tree. It remains recoverable from the `archive/classic-dfs-sim`
-branch and `classic-dfs-sim-2026-06-17` tag.
+- App entry: `src/App.tsx` renders `src/components/fourthPhase/FourthPhaseLab.tsx`.
+- Game logic: `src/lib/fourthPhase/*` (deck, situations, engine, jokers, meter, run).
+- Scoring contract: `points = Yards x (1 + Execution) x BigPlay`.
+- Current model-facing handoff: `docs/FOURTH_PHASE_REVIEW_BRIEF_2026-07-01.md`.
+
+Two earlier games remain in the repo but are not wired into the app:
+
+- **Callsmith / Gridiron** (season football roguelike): code under
+  `src/components/Football*` and `src/lib/footballRogue.ts` etc., still covered
+  by its own verification scripts (`smoke:gridiron`, `matchup:gridiron`,
+  `balance:gridiron`). Docs that describe it as the headline app are historical.
+- **Classic Slate Boss** (fictional DFS lineup simulator): recoverable from the
+  `archive/classic-dfs-sim` branch and `classic-dfs-sim-2026-06-17` tag.
 
 ## Run Locally
 
@@ -22,18 +34,29 @@ Open `http://127.0.0.1:5173/slate-boss/`.
 ```bash
 npm run lint
 npm run build
-npm run build:native
 npm run smoke:gridiron
-npm run balance:gridiron -- 3000
+npm run matchup:gridiron
+npm run matchup:fourthphase
+npm run balance:fourthphase -- 3000
 ```
 
-The Gridiron balance harness is the source of truth for tuning. It checks whether
-smart build choices beat random choices, whether all five team decks are viable,
-and whether losses are caused by weak builds instead of dead draws.
+The Fourth Phase balance harness is the source of truth for tuning. Its hard
+gates: synergy pilot win 75-85%, no-draft 55-65%, draft gap >= +15 win points,
+per-team spread <= 6 points, Loud House not bottom, meter tightness <= 35%.
+Use `300`/`1000` samples only while exploring; the gates are tuned for 3000
+samples and smaller runs fail on noise alone.
+
+Run `npm run balance:gridiron -- 3000` only when touching the legacy
+Callsmith/Gridiron engine or shared harness code.
+
+GitHub Actions (`.github/workflows/deploy.yml`) runs lint, build, both matchup
+proofs, the legacy smoke test, and the full Fourth Phase balance gates before
+deploying to GitHub Pages at the `/slate-boss/` base path.
 
 ## App Packaging
 
-Gridiron is now wired for installable web, iOS, and Android packaging:
+The web build is an installable PWA (manifest + service worker). For native
+shells:
 
 ```bash
 npm run icons
@@ -43,42 +66,26 @@ npm run cap:sync
 The normal `npm run build` keeps the hosted `/slate-boss/` base path. The native
 sync path uses `npm run build:native` so Capacitor gets relative asset URLs for
 the iOS and Android webviews. See `docs/APP_LAUNCH_CHECKLIST.md` for store
-account, testing, and listing guardrails.
+account, testing, and listing guardrails (written for Callsmith; the guardrails
+still apply).
 
-## Product State
+## Guardrails
 
-Gridiron is moving into productized alpha. The foundation now includes:
-
-- five team-as-deck starting identities
-- seeded season state for weather, bosses, rewards, and match draws
-- a **Front Office Funds economy** (win purse + banked interest) — the between-game transmission
-- the **War Room** shop: priced rewards, buy up to two, reroll, and skip-for-funds
-- **Player Traits** (card modifiers: Reliable, Explosive, Discounted, Clutch, Protected, Hot Route), bought via Training rewards and wired into the scoring ledger
-- an NFL/DFS research calibration layer that keeps real stats out of the shipped game while using them to tune fictional archetypes, weather frequency, traits, and boss logic
-- mobile-QB and defensive-pressure identity lanes with their own scaling coordinators, Game Plans, and per-lane balance gauge
-- a run-summary **Coach Debrief** that explains the final build and suggests the next strategic focus
-- versioned localStorage save/resume under `gridiron_run_v1` (save format v3, migrates v1/v2)
-- boss preview during War Room reward selection
-- staged scoring ledger with stage/channel/operation metadata
-- a lightweight screen render smoke test
-
-Near-term work should stay focused on app hardening and strategic depth, in order:
-Film Tools (one-use consumables) + War Room decision clarity; then coordinator
-ordering plus concept containment; then Coach Debrief 2.0 / run history and seeded
-daily challenges. Avoid backend, accounts, multiplayer, real-money features, or
-licensed IP until the alpha loop is steadier; treat native packaging as a shell
-around the web app for now.
+- Local-first only: no backend, accounts, multiplayer, analytics, payments,
+  betting or real-money language, prizes, DFS framing, or licensed IP.
+- Deterministic gameplay: seeded RNG from `src/lib/rng.ts` only; no
+  `Math.random` in gameplay paths.
+- Field position is deferred behind `docs/FOURTH_PHASE_FIELD_POSITION_GATE.md`.
+- The first screen stays playable — no landing page in front of the game.
 
 ## Useful Files
 
-- `src/lib/footballRogue.ts` - Gridiron card model, Player Traits, deck factories, scoring, bosses, and tunables.
-- `src/lib/footballRun.ts` - season state, seeded run helpers, priced rewards, training, and build identity.
-- `src/lib/gridironCalibration.ts` - read-only NFL/DFS-derived calibration constants for fictional tuning.
-- `src/lib/gridironEconomy.ts` - Front Office Funds: purse, interest, reroll/skip economy.
-- `src/lib/gridironStorage.ts` - Gridiron save/resume persistence (v3 with v1/v2 migration).
-- `src/components/FootballSeason.tsx` - season orchestration.
-- `scripts/gridironBalance.ts` - Monte Carlo balance harness.
-- `scripts/gridironSmoke.tsx` - lightweight render smoke test.
-- `docs/PROJECT_MAP.md` - current layer diagram and folder map.
-- `docs/NFL_DFS_GRIDIRON_CALIBRATION.md` - what was found in `/Users/dominicbrown/Desktop/nfl_dfs` and how it should inform Gridiron without shipping real NFL content.
-- `docs/archive/` - historical DFS and AI review briefs preserved outside the active app path.
+- `src/lib/fourthPhase/engine.ts` - deterministic scoring engine and ledger.
+- `src/lib/fourthPhase/situations.ts` - situation recognizer and priority ladder.
+- `src/lib/fourthPhase/jokers.ts` - joker definitions and scoring hooks.
+- `src/lib/fourthPhase/run.ts` - teams, bosses, targets, run codes, War Room offers.
+- `scripts/fourthPhaseMatchup.ts` - deterministic proof harness.
+- `scripts/fourthPhaseBalance.ts` - Monte Carlo balance harness with hard gates.
+- `AGENTS.md` - repo-level AI development guardrails.
+- `docs/PROJECT_MAP.md` - layer diagram and folder map (legacy-era; cross-check).
+- `docs/archive/` - historical DFS and AI review briefs outside the active app path.

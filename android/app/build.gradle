@@ -1,10 +1,10 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace = "com.slateboss.gridiron"
+    namespace = "com.slateboss.callsmith"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.slateboss.gridiron"
+        applicationId "com.slateboss.callsmith"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

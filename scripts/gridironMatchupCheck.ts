@@ -7,7 +7,7 @@
 
 import {
   scoreFootballPlay, buildTeamDeck, presentationForScheme, presentationsForScheme,
-  FB_BOSS_SCHEMES,
+  FB_BOSS_SCHEMES, FB_CARD_EDITIONS,
   type FbScoreContext, type FbBossSchemeKey, type FbCard, type FbDefensivePresentation,
 } from '../src/lib/footballRogue';
 import { conceptMatchup } from '../src/lib/gridironPlaybook';
@@ -44,7 +44,13 @@ console.log(`Ground & Pound (${carries.length} carries, concept=${gEven.concept}
 console.log(`   loaded=${gLoaded.total}  even=${gEven.total}  light=${gLight.total}`);
 assert('lower vs loaded box', gLoaded.total < gEven.total, `${gLoaded.total} < ${gEven.total}`);
 assert('neutral vs even box', gEven.concept === 'ground_pound', `concept is ${gEven.concept}`);
+assert('contains Designed Run trigger', gEven.containedConcepts.includes('designed_run'), gEven.containedConcepts.join(', '));
 assert('higher vs light box', gLight.total > gEven.total, `${gLight.total} > ${gEven.total}`);
+const readOptionGround = scoreFootballPlay(carries, {
+  coordinators: ['read_option'], environment: 'clear', bossScheme: 'balanced',
+  stacksThisMatch: 0, groundBonusThisMatch: 0, qbRunsThisMatch: 1, conceptCountsThisDrive: {},
+});
+assert('Ground & Pound satisfies run coordinator triggers', readOptionGround.ledger.some((e) => e.id === 'ro'), 'Read-Option ledger fired on contained Designed Run.');
 
 // ── Deep stack: two-high caps it, single-high opens the shot ─────────────────
 const air = buildTeamDeck('air_raid');
@@ -57,8 +63,37 @@ const sOneHigh = scoreVs(stack, 'stacked_box');   // ONE-HIGH shell
 console.log(`\nDeep stack (concept=${sEven.concept}):`);
 console.log(`   two-high=${sTwoHigh.total}  even=${sEven.total}  one-high=${sOneHigh.total}`);
 assert('is a deep stack', sEven.concept === 'double_stack_bomb', `concept is ${sEven.concept}`);
+assert('double stack contains Stack TD trigger', sEven.containedConcepts.includes('stack_td'), sEven.containedConcepts.join(', '));
 assert('lower vs two-high', sTwoHigh.total < sEven.total, `${sTwoHigh.total} < ${sEven.total}`);
 assert('higher vs single-high', sOneHigh.total > sEven.total, `${sOneHigh.total} > ${sEven.total}`);
+
+// ── Containment + editions: higher-order concepts still satisfy simpler hooks ─
+const bringBack = air.cards.find((c) => c.side === 'catch' && c.team !== qbPass.team)!;
+const shootout = [qbPass, ...sameTeamCatches, bringBack];
+const shootoutEven = scoreVs(shootout, 'balanced');
+assert('Shootout Stack detected', shootoutEven.concept === 'shootout_stack', `concept is ${shootoutEven.concept}`);
+assert('Shootout contains Stack TD trigger', shootoutEven.containedConcepts.includes('stack_td'), shootoutEven.containedConcepts.join(', '));
+assert('Shootout with two same-team catches contains Double-Stack trigger', shootoutEven.containedConcepts.includes('double_stack_bomb'), shootoutEven.containedConcepts.join(', '));
+const stackPlan = scoreFootballPlay(stack, {
+  coordinators: [], environment: 'clear', bossScheme: 'balanced',
+  stacksThisMatch: 0, groundBonusThisMatch: 0, conceptCountsThisDrive: {}, playbook: { stack_td: 1 },
+});
+assert('Stack TD Game Plan applies to Double-Stack Bomb', stackPlan.ledger.some((e) => e.id === 'pb-stack_td'), 'pb-stack_td ledger fired through containment.');
+const editionStack: FbCard[] = [
+  { ...qbPass, id: `${qbPass.id}-ap`, edition: 'all_pro' },
+  { ...sameTeamCatches[0], id: `${sameTeamCatches[0].id}-rhy`, edition: 'in_rhythm' },
+  { ...sameTeamCatches[1], id: `${sameTeamCatches[1].id}-hr`, edition: 'home_run' },
+  { ...bringBack, id: `${bringBack.id}-cap`, edition: 'captain' },
+];
+const editionResult = scoreVs(editionStack, 'balanced');
+for (const [id, label] of [
+  ['ed-all-pro', FB_CARD_EDITIONS.all_pro.label],
+  ['ed-rhythm', FB_CARD_EDITIONS.in_rhythm.label],
+  ['ed-home-run', FB_CARD_EDITIONS.home_run.label],
+  ['ed-captain', FB_CARD_EDITIONS.captain.label],
+] as const) {
+  assert(`${label} writes ledger entry`, editionResult.ledger.some((e) => e.id === id), `${id} present.`);
+}
 
 // ── Dossier ↔ engine consistency (the integrity lock) ────────────────────────
 // For every representative concept against every scheme, the dossier's verdict

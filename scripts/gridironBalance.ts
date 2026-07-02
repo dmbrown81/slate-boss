@@ -13,7 +13,7 @@ import {
 } from '../src/lib/footballRogue';
 import {
   createRun, gameTargets, generateRewards, isChampionship, SEASON_GAMES,
-  overtimeTargets, overtimeGameNumber,
+  overtimeTargets, overtimeGameNumber, runRng,
   type FbRunState, type Reward,
 } from '../src/lib/footballRun';
 import { MAX_WAR_ROOM_PURCHASES, shopCredit } from '../src/lib/gridironEconomy';
@@ -71,19 +71,19 @@ function playGame(run: FbRunState, targets: number[], environment: FbEnvironment
       const combos: number[][] = [];
       const rec = (s: number, cur: number[]) => { if (cur.length) combos.push([...cur]); if (cur.length === 4) return; for (let i = s; i < hand.length; i++) rec(i + 1, [...cur, i]); };
       rec(0, []);
-      let best: { ids: number[]; metric: number; total: number; cost: number; concept: FbConceptKey; qbRun: boolean } | null = null;
+      let best: { ids: number[]; metric: number; total: number; cost: number; concept: FbConceptKey; containedConcepts: FbConceptKey[]; qbRun: boolean } | null = null;
       let bestInLane: typeof best = null;
       for (const cmb of combos) {
         const cards = cmb.map((i) => hand[i]); const cost = cards.reduce((s, c) => s + cardCost(c), 0); if (cost > budget) continue;
-        const evalRes = scoreFootballPlay(cards, { coordinators: run.coordinators, environment, bossScheme, presentation: evalPresentation, playbook: run.playbook, bombGames: run.bombGames, keeperGames: run.keeperGames, takeawayGames: run.takeawayGames, stacksThisMatch: stacks, groundBonusThisMatch: ground, qbRunsThisMatch: qbRuns, defPlaysThisMatch: defPlays, conceptCountsThisDrive: counts, driveIndex: d, championship });
+        const evalRes = scoreFootballPlay(cards, { coordinators: run.coordinators, staffBoard: run.staffBoard, environment, bossScheme, presentation: evalPresentation, playbook: run.playbook, bombGames: run.bombGames, keeperGames: run.keeperGames, takeawayGames: run.takeawayGames, stacksThisMatch: stacks, groundBonusThisMatch: ground, qbRunsThisMatch: qbRuns, defPlaysThisMatch: defPlays, conceptCountsThisDrive: counts, driveIndex: d, championship });
         if (!evalRes.valid) continue;
         const actualRes = readMode === 'reveal'
           ? evalRes
-          : scoreFootballPlay(cards, { coordinators: run.coordinators, environment, bossScheme, presentation, playbook: run.playbook, bombGames: run.bombGames, keeperGames: run.keeperGames, takeawayGames: run.takeawayGames, stacksThisMatch: stacks, groundBonusThisMatch: ground, qbRunsThisMatch: qbRuns, defPlaysThisMatch: defPlays, conceptCountsThisDrive: counts, driveIndex: d, championship });
+          : scoreFootballPlay(cards, { coordinators: run.coordinators, staffBoard: run.staffBoard, environment, bossScheme, presentation, playbook: run.playbook, bombGames: run.bombGames, keeperGames: run.keeperGames, takeawayGames: run.takeawayGames, stacksThisMatch: stacks, groundBonusThisMatch: ground, qbRunsThisMatch: qbRuns, defPlaysThisMatch: defPlays, conceptCountsThisDrive: counts, driveIndex: d, championship });
         const metric = evalRes.total / cost;
-        const cand = { ids: cmb, metric, total: actualRes.total, cost: actualRes.cost, concept: actualRes.concept, qbRun: cards.some((c) => c.action === 'scramble' || c.action === 'qb_sneak') };
+        const cand = { ids: cmb, metric, total: actualRes.total, cost: actualRes.cost, concept: actualRes.concept, containedConcepts: actualRes.containedConcepts, qbRun: cards.some((c) => c.action === 'scramble' || c.action === 'qb_sneak') };
         if (!best || metric > best.metric) best = cand;
-        if (prefer?.has(evalRes.concept) && (!bestInLane || metric > bestInLane.metric)) bestInLane = cand;
+        if (evalRes.containedConcepts.some((c) => prefer?.has(c)) && (!bestInLane || metric > bestInLane.metric)) bestInLane = cand;
       }
       // Stay on identity, but don't refuse a vastly better off-lane play (a real
       // committed player still kicks the field goal / takes the open look). The
@@ -92,13 +92,16 @@ function playGame(run: FbRunState, targets: number[], environment: FbEnvironment
       if ((!best || (best.total < 200 && aud > 0)) && aud > 0) { aud--; const pool = shuffle([...deck, ...discard], rng); hand = pool.slice(0, HAND_SIZE); deck = pool.slice(HAND_SIZE); discard = []; continue; }
       if (!best) break;
       score += best.total; total += best.total; budget -= best.cost; executed++;
-      counts[best.concept] = (counts[best.concept] ?? 0) + 1; concepts[best.concept] = (concepts[best.concept] ?? 0) + 1;
-      if (best.concept.includes('stack')) stacks++;
-      if (best.concept === 'ground_pound') ground += 6;
+      for (const c of best.containedConcepts) {
+        counts[c] = (counts[c] ?? 0) + 1;
+        concepts[c] = (concepts[c] ?? 0) + 1;
+      }
+      if (best.containedConcepts.includes('stack_td')) stacks++;
+      if (best.containedConcepts.includes('ground_pound')) ground += 6;
       if (best.qbRun) qbRuns++;
-      if (isDefSplash(best.concept)) defPlays++;
-      if (best.concept === 'double_stack_bomb') bomb = true;
-      if (best.concept === 'qb_keeper') keeper = true;
+      if (best.containedConcepts.some(isDefSplash)) defPlays++;
+      if (best.containedConcepts.includes('double_stack_bomb')) bomb = true;
+      if (best.containedConcepts.includes('qb_keeper')) keeper = true;
       const ids = new Set(best.ids); const played = best.ids.map((i) => hand[i]); discard = [...discard, ...played]; hand = hand.filter((_, i) => !ids.has(i));
       while (hand.length < HAND_SIZE) { if (deck.length === 0) { if (!discard.length) break; deck = shuffle(discard, rng); discard = []; } hand.push(deck.shift()!); }
       if (budget < Math.min(...hand.map((c) => cardCost(c)), Infinity)) break;
@@ -223,10 +226,14 @@ function laneScore(rw: Reward, run: FbRunState, lane: Lane, gameNumber: number):
 
 // One shop visit: spend Funds per policy. Returns the run + Funds spent. The
 // shelf shrinks as items sell; the synergy family banks rather than buy junk.
-function runShop(run: FbRunState, policy: RewardPolicy, gameNumber: number, rng: RNG, lane?: Lane): { run: FbRunState; spent: number } {
+function scoutNextBoss(run: FbRunState, gameNumber: number): FbBossSchemeKey {
+  return randomBossScheme(gameNumber, isChampionship(gameNumber), runRng({ seed: run.seed, team: run.team, gameNumber }, 'boss'));
+}
+
+function runShop(run: FbRunState, policy: RewardPolicy, gameNumber: number, rng: RNG, lane?: Lane, nextBossScheme: FbBossSchemeKey = 'balanced'): { run: FbRunState; spent: number } {
   if (policy === 'none') return { run, spent: 0 };
   let r = run; let spent = 0;
-  let shelf = generateRewards(r, rng);
+  let shelf = generateRewards(r, rng, nextBossScheme);
   for (let i = 0; i < MAX_WAR_ROOM_PURCHASES; i++) {
     const affordable = shelf.filter((rw) => rw.cost <= r.funds);
     if (affordable.length === 0) break;
@@ -286,7 +293,7 @@ function playSeason(policy: RewardPolicy, team: TeamArchetype = 'balanced', seas
     if (!isChampionship(g)) {
       const credit = shopCredit(run.funds, g);
       run = { ...run, funds: run.funds + credit.total };
-      const shopped = runShop(run, policy, g, rng, lane);
+      const shopped = runShop(run, policy, g, rng, lane, scoutNextBoss(run, g + 1));
       run = shopped.run; spent += shopped.spent;
     }
   }
@@ -442,7 +449,7 @@ function playOvertimeReach(team: TeamArchetype, seasonIndex: number): { champion
     const res = playGame(run, gameTargets(env, g), env, boss, isChampionship(g), rng);
     if (!res.won) return { champion: false, round: 0, best: 0 };
     run = { ...run, bombGames: run.bombGames + (res.bomb ? 1 : 0), keeperGames: run.keeperGames + (res.keeper ? 1 : 0), takeawayGames: run.takeawayGames + (res.takeawayGame ? 1 : 0) };
-    if (!isChampionship(g)) { run = { ...run, funds: run.funds + shopCredit(run.funds, g).total }; run = runShop(run, 'synergy', g, rng).run; }
+    if (!isChampionship(g)) { run = { ...run, funds: run.funds + shopCredit(run.funds, g).total }; run = runShop(run, 'synergy', g, rng, undefined, scoutNextBoss(run, g + 1)).run; }
   }
   let round = 1, best = 0;
   while (round <= 60) {
@@ -502,7 +509,7 @@ if (process.env.GRIDIRON_DEBUG) {
         pg.push(`G${g}:${res.won ? 'W' : `L@d${res.drive}/${res.lossCause}`}`);
         if (!res.won) break;
         run = { ...run, bombGames: run.bombGames + (res.bomb ? 1 : 0), keeperGames: run.keeperGames + (res.keeper ? 1 : 0), takeawayGames: run.takeawayGames + (res.takeawayGame ? 1 : 0) };
-        if (!isChampionship(g)) { run = { ...run, funds: run.funds + shopCredit(run.funds, g).total }; run = runShop(run, policy, g, rng, lane).run; }
+        if (!isChampionship(g)) { run = { ...run, funds: run.funds + shopCredit(run.funds, g).total }; run = runShop(run, policy, g, rng, lane, scoutNextBoss(run, g + 1)).run; }
       }
       console.log(`  s${i}: ${pg.join(' ')} | coords=[${run.coordinators.join(',')}] pb=${JSON.stringify(run.playbook)}`);
     }
