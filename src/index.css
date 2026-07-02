@@ -109,6 +109,13 @@ button:focus-visible,
 }
 .fb-num { font-variant-numeric: tabular-nums; letter-spacing: -0.5px; }
 
+/* scoreboard-style digits (drive score, crowd meter) */
+.fb-led {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.5px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.001ms !important;

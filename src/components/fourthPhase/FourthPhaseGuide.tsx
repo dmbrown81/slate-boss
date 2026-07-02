@@ -91,6 +91,46 @@ function Collapsible({
   );
 }
 
+// One glyph per phase so cards read as football jobs at a glance:
+// Offense = ball, Defense = shield, Special Teams = goalpost, Crowd = noise bars.
+// Shared by the legend here and every card face in FourthPhaseLab.
+export function PhaseIcon({ phase, size = 12 }: { phase: Phase; size?: number }) {
+  const common = {
+    fill: 'none',
+    stroke: PHASE_COLOR[phase],
+    strokeWidth: 2,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+  };
+  if (phase === 'offense') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" style={{ display: 'block' }}>
+        <ellipse cx="12" cy="12" rx="10" ry="6.2" {...common} />
+        <path d="M8.5 12h7M10.5 10.3v3.4M13.5 10.3v3.4" {...common} strokeWidth={1.6} />
+      </svg>
+    );
+  }
+  if (phase === 'defense') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" style={{ display: 'block' }}>
+        <path d="M12 3l7.5 3v5.2c0 4.6-3.1 7.6-7.5 9.3C7.6 18.8 4.5 15.8 4.5 11.2V6z" {...common} />
+      </svg>
+    );
+  }
+  if (phase === 'specialTeams') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" style={{ display: 'block' }}>
+        <path d="M5 4v7M19 4v7M5 11h14M12 11v9M9.5 20h5" {...common} />
+      </svg>
+    );
+  }
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" style={{ display: 'block' }}>
+      <path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4" {...common} />
+    </svg>
+  );
+}
+
 export function PhaseLegend() {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
@@ -106,7 +146,10 @@ export function PhaseLegend() {
             textAlign: 'center',
           }}
         >
-          <div style={{ fontSize: 11, fontWeight: 950, color: PHASE_COLOR[entry.phase], letterSpacing: 0.5 }}>{entry.short}</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+            <PhaseIcon phase={entry.phase} size={11} />
+            <span style={{ fontSize: 11, fontWeight: 950, color: PHASE_COLOR[entry.phase], letterSpacing: 0.5 }}>{entry.short}</span>
+          </div>
           <div style={{ fontSize: 11, fontWeight: 900, color: FB.text, marginTop: 2 }}>{entry.job}</div>
         </div>
       ))}

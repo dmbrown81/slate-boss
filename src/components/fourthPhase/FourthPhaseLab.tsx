@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type CSSProperties, type DragEvent } from 'react';
 import { mulberry32, stringSeed } from '../../lib/rng';
 import { FB, btnGhost, btnPrimary, card, sectionLabel } from '../footballStyles';
-import { HowToPlay, SituationsPanel } from './FourthPhaseGuide';
+import { HowToPlay, PhaseIcon, SituationsPanel } from './FourthPhaseGuide';
 import {
   BASE_METER,
   BASE_METER_CAP,
@@ -835,7 +835,10 @@ export default function FourthPhaseLab({ onHome }: Props) {
           <div style={{ minWidth: 74 }} />
         )}
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 11, color: FB.gold, fontWeight: 900, letterSpacing: 1.5 }}>FOURTH PHASE</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+            <FootballGlyph size={14} />
+            <span style={{ fontSize: 11, color: FB.gold, fontWeight: 900, letterSpacing: 1.5 }}>FOURTH PHASE</span>
+          </div>
           <div style={{ fontSize: 11, color: FB.textFaint }}>{runCode}</div>
         </div>
         <button onClick={() => restart(state.team)} style={{ ...btnGhost, minWidth: 74 }}>New run</button>
@@ -867,13 +870,18 @@ export default function FourthPhaseLab({ onHome }: Props) {
         <div className="fb-yard" style={{ position: 'absolute', inset: 0, opacity: 0.38 }} />
         <div style={{ position: 'relative' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-            <div style={{ ...sectionLabel, color: '#cbbdff' }}>Crowd Meter</div>
-            <div className="fb-num" style={{ fontSize: 34, color: '#efe9ff', fontWeight: 950, lineHeight: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <PhaseIcon phase="crowd" size={13} />
+              <div style={{ ...sectionLabel, color: '#cbbdff' }}>Crowd Meter</div>
+            </div>
+            <div className="fb-led" style={{ fontSize: 34, color: '#efe9ff', fontWeight: 950, lineHeight: 1 }}>
               {formatMeter(state.meter)}
             </div>
           </div>
-          <div style={{ height: 18, borderRadius: 8, background: '#111827', border: '1px solid #2a2441', overflow: 'hidden', marginTop: 10 }}>
+          <div style={{ position: 'relative', height: 18, borderRadius: 8, background: '#111827', border: '1px solid #2a2441', overflow: 'hidden', marginTop: 10 }}>
             <div style={{ width: `${meterFill * 100}%`, height: '100%', background: 'linear-gradient(90deg,#4f9cff,#a987ff,#f4c24f)', transition: 'width 180ms ease-out' }} />
+            {/* segment ticks so the bar reads as a stadium noise meter */}
+            <div style={{ position: 'absolute', inset: 0, backgroundImage: 'repeating-linear-gradient(90deg, transparent 0px, transparent calc(6.25% - 2px), #0a0d13 calc(6.25% - 2px), #0a0d13 6.25%)' }} />
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 7, color: preview?.didCash ? FB.gold : meterHot ? '#cbbdff' : FB.textDim, fontSize: 11, fontWeight: 800 }}>
             <span style={{ color: FB.textDim }}>cap {formatMeter(state.meterCap)}</span>
@@ -886,8 +894,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
           <div>
             <div style={sectionLabel}>Drive {state.driveIndex + 1} of {FOURTH_PHASE_DRIVES}</div>
-            <div style={{ fontSize: 20, fontWeight: 950, color: FB.text, lineHeight: 1.1 }}>{state.driveScore} / {target}</div>
-            <div style={{ fontSize: 10.5, color: FB.textFaint, marginTop: 2 }}>{targetRemaining} to go · {playsLeft} plays left</div>
+            <div className="fb-led" style={{ fontSize: 20, fontWeight: 950, color: FB.text, lineHeight: 1.1 }}>{state.driveScore} / {target}</div>
           </div>
           <div style={{ textAlign: 'right' }}>
             {activeBoss === 'none' ? (
@@ -904,8 +911,24 @@ export default function FourthPhaseLab({ onHome }: Props) {
             )}
           </div>
         </div>
-        <div style={{ height: 9, borderRadius: 6, background: FB.inset, overflow: 'hidden', marginTop: 10 }}>
-          <div style={{ height: '100%', width: `${progress * 100}%`, background: 'linear-gradient(90deg,#34c771,#f0b429)' }} />
+        <FieldProgress progress={progress} />
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 7 }}>
+          <div style={{ fontSize: 10.5, color: FB.textFaint }}>{targetRemaining} to go</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            {Array.from({ length: FOURTH_PHASE_MAX_PLAYS_PER_DRIVE }).map((_, i) => (
+              <span
+                key={i}
+                style={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: 2,
+                  background: i < playsLeft ? '#34c771' : '#1c232e',
+                  border: `1px solid ${i < playsLeft ? '#1f6b44' : '#232c38'}`,
+                }}
+              />
+            ))}
+            <span style={{ fontSize: 10.5, color: FB.textFaint, marginLeft: 3 }}>{playsLeft} plays left</span>
+          </div>
         </div>
       </section>
 
@@ -1097,7 +1120,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
 
       <section style={{ marginTop: 10 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-          <div style={sectionLabel}>Jokers</div>
+          <div style={sectionLabel}>Sideline (Jokers)</div>
           <div style={{ fontSize: 11, color: FB.textFaint }}>◀ ▶ or drag to reorder</div>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 6 }}>
@@ -1233,8 +1256,9 @@ export default function FourthPhaseLab({ onHome }: Props) {
             <button
               onClick={executePlay}
               disabled={!preview}
-              style={{ ...btnPrimary, padding: '0 20px', minHeight: 48, opacity: preview ? 1 : 0.45 }}
+              style={{ ...btnPrimary, padding: '0 18px', minHeight: 48, opacity: preview ? 1 : 0.45, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7 }}
             >
+              <FootballGlyph size={15} />
               Run Play
             </button>
             <button
@@ -1332,6 +1356,46 @@ const bottomBar: CSSProperties = {
   WebkitBackdropFilter: 'blur(8px)',
 };
 
+function FootballGlyph({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={Math.round(size * 0.62)} viewBox="0 0 24 15" aria-hidden="true" style={{ display: 'block' }}>
+      <ellipse cx="12" cy="7.5" rx="11" ry="6.8" fill="#7a4a20" stroke="#3d2510" strokeWidth="1" />
+      <path d="M7.5 7.5h9" stroke="#f2ede4" strokeWidth="1.3" strokeLinecap="round" />
+      <path d="M9.3 5.8v3.4M11.2 5.5v4M13 5.5v4M14.8 5.8v3.4" stroke="#f2ede4" strokeWidth="1.1" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+// Drive progress drawn as a field: turf bands, yard lines, hash marks, a striped
+// end zone, and the ball marching toward the goal line as driveScore climbs.
+// Pure presentation — progress is the same driveScore/target ratio as before.
+function FieldProgress({ progress }: { progress: number }) {
+  const pos = Math.min(1, Math.max(0, progress));
+  return (
+    <div
+      style={{
+        position: 'relative',
+        height: 46,
+        borderRadius: 8,
+        overflow: 'hidden',
+        border: '1px solid #1d3527',
+        marginTop: 10,
+        background: 'repeating-linear-gradient(90deg, #0c1f14 0px, #0c1f14 22px, #102a1b 22px, #102a1b 44px)',
+      }}
+    >
+      <div style={{ position: 'absolute', inset: 0, backgroundImage: 'repeating-linear-gradient(90deg, rgba(255,255,255,0.13) 0px, rgba(255,255,255,0.13) 1px, transparent 1px, transparent 8.8%)' }} />
+      <div style={{ position: 'absolute', top: '32%', bottom: '32%', left: 0, right: '12%', backgroundImage: 'repeating-linear-gradient(90deg, rgba(255,255,255,0.14) 0px, rgba(255,255,255,0.14) 1px, transparent 1px, transparent 11px)', opacity: 0.35 }} />
+      <div style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: `${(pos * 88).toFixed(2)}%`, background: 'linear-gradient(90deg, rgba(52,199,113,0.10), rgba(240,180,41,0.22))', transition: 'width 400ms ease-out' }} />
+      <div style={{ position: 'absolute', top: 0, bottom: 0, right: 0, width: '12%', background: 'repeating-linear-gradient(45deg, #251f07 0px, #251f07 5px, #2e2609 5px, #2e2609 10px)', borderLeft: '2px solid rgba(240,180,41,0.85)', display: 'grid', placeItems: 'center' }}>
+        <span style={{ fontSize: 8.5, fontWeight: 950, color: FB.gold, letterSpacing: 1.2, writingMode: 'vertical-rl' }}>GOAL</span>
+      </div>
+      <div style={{ position: 'absolute', top: '50%', left: `${(2 + pos * 86).toFixed(2)}%`, transform: 'translate(-50%, -50%)', transition: 'left 400ms cubic-bezier(.2,.9,.3,1.15)', filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.65))' }}>
+        <FootballGlyph size={20} />
+      </div>
+    </div>
+  );
+}
+
 function Metric({ label, value, color, small }: { label: string; value: string; color: string; small?: boolean }) {
   return (
     <div style={{ background: FB.inset, border: `1px solid ${FB.border}`, borderRadius: 8, padding: '7px 8px' }}>
@@ -1351,6 +1415,7 @@ function HandCard({ card, selected, onClick }: { card: FourthPhaseCard; selected
         minHeight: 104,
         borderRadius: 8,
         border: `1px solid ${selected ? FB.gold : PHASE_COLOR[card.phase]}`,
+        boxShadow: `inset 0 2px 0 ${selected ? FB.gold : PHASE_COLOR[card.phase]}`,
         background: selected ? '#2a230f' : '#101722',
         color: FB.text,
         padding: 8,
@@ -1363,7 +1428,10 @@ function HandCard({ card, selected, onClick }: { card: FourthPhaseCard; selected
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 4, alignItems: 'center' }}>
         <span style={{ fontSize: 18, fontWeight: 950, color: PHASE_COLOR[card.phase] }}>{card.rank}</span>
-        <span style={{ fontSize: 9, color: FB.textFaint, fontWeight: 950 }}>{PHASE_SHORT[card.phase]}</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 9, color: FB.textFaint, fontWeight: 950 }}>
+          <PhaseIcon phase={card.phase} size={11} />
+          {PHASE_SHORT[card.phase]}
+        </span>
       </div>
       <div>
         <div style={{ fontSize: 11, color: FB.text, fontWeight: 900, lineHeight: 1.05 }}>{card.roleName}</div>
@@ -1399,6 +1467,7 @@ function MiniCard({
         minHeight: 72,
         borderRadius: 8,
         border: `1px solid ${selected ? FB.gold : PHASE_COLOR[card.phase]}`,
+        boxShadow: `inset 0 2px 0 ${selected ? FB.gold : PHASE_COLOR[card.phase]}`,
         background: '#101722',
         color: FB.text,
         padding: 7,
@@ -1406,7 +1475,10 @@ function MiniCard({
         cursor: 'grab',
       }}
     >
-      <div style={{ fontSize: 17, fontWeight: 950, color: PHASE_COLOR[card.phase] }}>{card.rank}</div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4 }}>
+        <span style={{ fontSize: 17, fontWeight: 950, color: PHASE_COLOR[card.phase] }}>{card.rank}</span>
+        <PhaseIcon phase={card.phase} size={11} />
+      </div>
       <div style={{ fontSize: 10, color: FB.text, fontWeight: 900, lineHeight: 1.05 }}>{card.roleName}</div>
       {badge && (
         <div style={{ fontSize: 7.5, color: badge.color, fontWeight: 950, letterSpacing: 0.4, marginTop: 2 }}>{badge.label}</div>
