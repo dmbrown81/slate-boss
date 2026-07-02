@@ -1,9 +1,9 @@
 import { useState, type CSSProperties, type ReactNode } from 'react';
 import { PHASE_COLOR } from '../../lib/fourthPhase';
 import type { Phase, SituationKey } from '../../lib/fourthPhase';
-import { FB, card, sectionLabel } from '../footballStyles';
+import { FP as FB, card, sectionLabel } from './fourthPhaseStyles';
 
-// The "what am I doing" layer. None of this changes game logic — it surfaces the
+// The "what am I doing" layer. None of this changes game logic. It surfaces the
 // rules the engine already enforces (the four phase jobs and the situation
 // ladder) so a new player can read the board instead of guessing.
 
@@ -15,7 +15,7 @@ interface PhaseJob {
 }
 
 const PHASE_JOBS: readonly PhaseJob[] = [
-  { phase: 'offense', short: 'OFF', job: 'Yards', detail: 'The payload — moves the ball and supplies the base score.' },
+  { phase: 'offense', short: 'OFF', job: 'Yards', detail: 'The payload. Moves the ball and supplies the base score.' },
   { phase: 'defense', short: 'DEF', job: 'Execution', detail: 'Reliability. Raises the multiplier floor, not fireworks.' },
   { phase: 'crowd', short: 'CRD', job: 'BigPlay', detail: 'Charges the Crowd Meter, then cashes it as your ceiling.' },
   { phase: 'specialTeams', short: 'ST', job: 'Fuel', detail: 'Off the equation: extra draws, money, and discounts.' },
@@ -31,16 +31,16 @@ interface SituationGuide {
 
 // Ordered the way the recognizer checks them: best shape first.
 const SITUATION_GUIDE: readonly SituationGuide[] = [
-  { key: 'complementaryFootball', name: 'Complementary Football', trigger: 'All four phases present', payoff: 'Apex — boosts every term and cashes the meter', kind: 'apex' },
+  { key: 'complementaryFootball', name: 'Complementary Football', trigger: 'All four phases present', payoff: 'Apex: boosts every term and cashes the meter', kind: 'apex' },
   { key: 'momentumShift', name: 'Momentum Shift', trigger: '2+ Offense and 2+ Defense', payoff: 'Solid score with a high floor', kind: 'score' },
   { key: 'houseCall', name: 'House Call', trigger: 'Offense + Crowd together', payoff: 'Cashes the Crowd Meter into a score', kind: 'score' },
   { key: 'pickSix', name: 'Pick Six', trigger: '2+ Defense and 1+ Offense (no Crowd)', payoff: 'Burst score and charges the meter', kind: 'score' },
-  { key: 'blackout', name: 'The Blackout', trigger: '3+ Crowd', payoff: 'No score — charges the meter hard', kind: 'charge' },
-  { key: 'fieldFlip', name: 'Field Flip', trigger: '2+ Special Teams', payoff: 'No score — draws, money, discounts', kind: 'fuel' },
+  { key: 'blackout', name: 'The Blackout', trigger: '3+ Crowd', payoff: 'No score: charges the meter hard', kind: 'charge' },
+  { key: 'fieldFlip', name: 'Field Flip', trigger: '2+ Special Teams', payoff: 'No score: draws, money, discounts', kind: 'fuel' },
   { key: 'stand', name: 'The Stand', trigger: '3+ Defense', payoff: 'Low score, very high Execution', kind: 'score' },
   { key: 'drive', name: 'The Drive', trigger: '3+ Offense', payoff: 'Score straight from Offense values', kind: 'score' },
-  { key: 'checkdown', name: 'The Checkdown', trigger: '1–2 Offense only', payoff: 'Small safe score, saves the rest of your hand', kind: 'score' },
-  { key: 'bustedPlay', name: 'Busted Play', trigger: 'No clean shape', payoff: 'Penalty — avoid this', kind: 'bust' },
+  { key: 'checkdown', name: 'The Checkdown', trigger: '1-2 Offense only', payoff: 'Small safe score, saves the rest of your hand', kind: 'score' },
+  { key: 'bustedPlay', name: 'Busted Play', trigger: 'No clean shape', payoff: 'Penalty: avoid this', kind: 'bust' },
 ];
 
 const KIND_COLOR: Record<SituationGuide['kind'], string> = {
@@ -64,7 +64,7 @@ function Collapsible({
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <section style={{ ...card(8), padding: open ? 12 : '0', marginTop: 10, overflow: 'hidden' }}>
+    <section style={{ ...card(), padding: open ? 12 : '0', marginTop: 10, overflow: 'hidden' }}>
       <button
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
@@ -148,7 +148,7 @@ export function PhaseLegend() {
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
             <PhaseIcon phase={entry.phase} size={11} />
-            <span style={{ fontSize: 11, fontWeight: 950, color: PHASE_COLOR[entry.phase], letterSpacing: 0.5 }}>{entry.short}</span>
+            <span style={{ fontSize: 11, fontWeight: 950, color: PHASE_COLOR[entry.phase], letterSpacing: 0 }}>{entry.short}</span>
           </div>
           <div style={{ fontSize: 11, fontWeight: 900, color: FB.text, marginTop: 2 }}>{entry.job}</div>
         </div>
@@ -162,7 +162,7 @@ export function HowToPlay({ defaultOpen = false }: { defaultOpen?: boolean }) {
     <Collapsible title="How to play" hint="tap to expand" defaultOpen={defaultOpen}>
       <div style={{ display: 'grid', gap: 10 }}>
         <Step n="1" head="The goal">
-          A game is <b>3 drives</b>. Each drive has a point target — hit it before you run out of plays. Clear all three to win.
+          A game is <b>3 drives</b>. Each drive has a point target. Hit it before you run out of plays. Clear all three to win.
         </Step>
         <Step n="2" head="Run a play">
           Tap up to <b>5 cards</b> from your hand, then <b>Run Play</b>. The phases you combine form a <b>Situation</b> that decides the score.
@@ -174,7 +174,7 @@ export function HowToPlay({ defaultOpen = false }: { defaultOpen?: boolean }) {
           </div>
         </Step>
         <Step n="4" head="The Crowd Meter">
-          <b>Crowd</b> cards charge the meter instead of scoring. A scoring play <b>cashes</b> it into BigPlay — so build the meter first, then cash it. Order matters: <b>cards on the left resolve first</b>, so put Crowd before Offense.
+          <b>Crowd</b> cards charge the meter instead of scoring. A scoring play <b>cashes</b> it into BigPlay. Build the meter first, then cash it. Order matters: <b>cards on the left resolve first</b>, so put Crowd before Offense.
         </Step>
       </div>
     </Collapsible>
