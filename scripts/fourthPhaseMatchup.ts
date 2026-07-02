@@ -6,9 +6,16 @@ import {
   BASE_METER,
   BASE_METER_CAP,
   SITUATION_TEST_CASES,
+  bossWarningForPlay,
+  buildPlayExplanation,
+  coachPickForWarRoom,
   createFourthPhaseDeck,
+  generateFourthPhaseWarRoomOffers,
+  isTrueCrowdBeforeOffenseCash,
   scoreFourthPhasePlay,
+  tutorialCheckdownIsValid,
   type FourthPhaseCard,
+  type FourthPhaseBossKey,
   type Phase,
 } from '../src/lib/fourthPhase';
 
@@ -177,6 +184,50 @@ const cashIndexHouseCall = scoreFourthPhasePlay([card('crowd-A'), card('offense-
 assert('cashesAtCardIndex marks the cashing Offense card', cashIndexHouseCall.cashesAtCardIndex === 1, `index ${cashIndexHouseCall.cashesAtCardIndex}`);
 const cashIndexNone = scoreFourthPhasePlay([card('offense-2')], { meter: BASE_METER, meterCap: BASE_METER_CAP });
 assert('cashesAtCardIndex is null when no cash', cashIndexNone.cashesAtCardIndex === null, `index ${cashIndexNone.cashesAtCardIndex}`);
+
+console.log('\nCoach-mode helpers:');
+assert('tutorial Checkdown accepts one clean Offense card', tutorialCheckdownIsValid([card('offense-2')], checkdown), `situation ${checkdown.situation.key}`);
+assert('tutorial Checkdown rejects extra cards', !tutorialCheckdownIsValid([card('offense-2'), card('offense-3')], scoreFourthPhasePlay([card('offense-2'), card('offense-3')], { meter: BASE_METER, meterCap: BASE_METER_CAP })), 'extra card blocked');
+assert('tutorial cash-in rejects Offense before Crowd', cashBeforeCharge.didCash && !isTrueCrowdBeforeOffenseCash([card('offense-K'), card('crowd-A')], cashBeforeCharge), `didCash=${cashBeforeCharge.didCash}, index=${cashBeforeCharge.cashesAtCardIndex}`);
+assert('tutorial cash-in accepts Crowd before Offense', isTrueCrowdBeforeOffenseCash([card('crowd-A'), card('offense-K')], chargeBeforeCash), `index=${chargeBeforeCash.cashesAtCardIndex}`);
+
+const explanation = buildPlayExplanation(parityCards, runA);
+assert('play explanation cites preview score', explanation.includes(`${runA.points} Drive`), explanation);
+assert('play explanation names cashing card', explanation.includes(card('offense-K').roleName), explanation);
+
+console.log('\nBoss warning preview helpers:');
+const bossCases: Array<{ boss: FourthPhaseBossKey; cards: FourthPhaseCard[]; repeated?: Record<string, number>; meter?: number; expected: string }> = [
+  { boss: 'stackedBox', cards: [card('offense-8')], expected: 'Stacked Box' },
+  { boss: 'noFlyZone', cards: [card('offense-8'), card('offense-9'), card('offense-10')], expected: 'No-Fly Zone' },
+  { boss: 'roadGame', cards: [card('crowd-A'), card('offense-K')], expected: 'Road Game' },
+  { boss: 'turnoverDrill', cards: [card('defense-Q'), card('offense-6')], expected: 'Turnover Drill' },
+  { boss: 'fieldPositionWar', cards: [card('specialTeams-4')], expected: 'Field Position War' },
+  { boss: 'adaptiveDc', cards: [card('offense-8'), card('offense-9'), card('offense-10')], repeated: { drive: 1 }, expected: 'Adaptive DC' },
+  { boss: 'preventDefense', cards: [card('crowd-A'), card('offense-K')], meter: BASE_METER_CAP, expected: 'Prevent Defense' },
+];
+for (const test of bossCases) {
+  const result = scoreFourthPhasePlay(test.cards, {
+    meter: test.meter ?? BASE_METER,
+    meterCap: BASE_METER_CAP,
+    boss: test.boss,
+    repeatedSituations: test.repeated ?? {},
+  });
+  const warning = bossWarningForPlay({
+    boss: test.boss,
+    result,
+    cards: test.cards,
+    repeatedSituations: test.repeated ?? {},
+  });
+  assert(`${test.boss} warning appears when applicable`, Boolean(warning?.includes(test.expected)), warning ?? 'no warning');
+}
+
+console.log('\nWar Room coach pick:');
+const coachOffers = generateFourthPhaseWarRoomOffers([{ id: 'twelfthMan' }], 20260701, 1, 'loudHouse', 'roadGame', 0, {});
+const coachPickA = coachPickForWarRoom(coachOffers, 'loudHouse', 'roadGame');
+const coachPickB = coachPickForWarRoom(coachOffers, 'loudHouse', 'roadGame');
+assert('coach pick is deterministic for identical offers', JSON.stringify(coachPickA) === JSON.stringify(coachPickB), `${JSON.stringify(coachPickA)} vs ${JSON.stringify(coachPickB)}`);
+assert('coach pick points at one visible offer', Boolean(coachPickA && coachOffers.some((offer) => offer.id === coachPickA.id)), coachPickA?.id ?? 'none');
+assert('coach pick carries a why-now reason', Boolean(coachPickA?.reason), coachPickA?.reason ?? 'none');
 
 console.log('');
 if (failures > 0) {

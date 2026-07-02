@@ -91,11 +91,36 @@ button:focus-visible,
   80% { transform: scale(1) rotate(-7deg); opacity: 1; }
   100% { transform: scale(1) rotate(-7deg); opacity: 0; }
 }
+@keyframes fp-stage-rise {
+  0% { transform: translateY(7px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+@keyframes fp-cash-flash {
+  0%, 100% { filter: none; }
+  18% { filter: brightness(1.16) saturate(1.08); }
+  46% { filter: drop-shadow(0 0 14px rgba(240,180,41,0.22)); }
+}
+@keyframes fp-big-cash {
+  0%, 100% { transform: translateX(0); filter: none; }
+  12% { transform: translateX(-2px); filter: brightness(1.12); }
+  24% { transform: translateX(2px); }
+  36% { transform: translateX(-1px); filter: drop-shadow(0 0 18px rgba(240,180,41,0.28)); }
+  48% { transform: translateX(1px); }
+}
 .fb-pop { animation: fb-pop .28s cubic-bezier(.2,.9,.3,1.2); }
 .fb-rise { animation: fb-rise .22s ease-out; }
 .fb-glow { animation: fb-glow .9s ease-out 2; }
 .fb-banner-slide { animation: fb-banner-in 1.05s ease-in-out; }
 .fb-stamp-slam { animation: fb-stamp-in 1.4s cubic-bezier(.2,.85,.2,1); }
+.fp-resolve { animation: fb-rise .22s ease-out; }
+.fp-resolve-cash { animation: fb-glow .9s ease-out 1; }
+.fp-stage {
+  opacity: 0;
+  animation: fp-stage-rise .24s ease-out forwards;
+  animation-delay: var(--fp-stage-delay, 0ms);
+}
+.fp-impact-cash { animation: fp-cash-flash .62s ease-out; }
+.fp-impact-huge { animation: fp-big-cash .72s ease-out; }
 
 /* faint yard-lines for hero/scoreboard backgrounds */
 .fb-yard {
@@ -128,7 +153,16 @@ button:focus-visible,
   .fb-rise,
   .fb-glow,
   .fb-banner-slide,
-  .fb-stamp-slam {
+  .fb-stamp-slam,
+  .fp-resolve,
+  .fp-resolve-cash,
+  .fp-stage,
+  .fp-impact-cash,
+  .fp-impact-huge {
     animation: none !important;
+  }
+
+  .fp-stage {
+    opacity: 1;
   }
 }

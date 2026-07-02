@@ -21,17 +21,24 @@ import {
   PHASE_SHORT,
   activeBossForDrive,
   applyFourthPhaseDrawStart,
+  bossWarningForPlay,
+  buildPlayExplanation,
+  buildRunShareCardData,
   cardDisplayName,
+  coachOrderCards,
+  coachPickForWarRoom,
   createFourthPhaseRun,
   discountedOfferCost,
   drawFourthPhaseCards,
   formatMeter,
   fourthPhaseRunCode,
   generateFourthPhaseWarRoomOffers,
+  isTrueCrowdBeforeOffenseCash,
   jokerDefinition,
   parseFourthPhaseRunCode,
   scoreFourthPhasePlay,
   shuffleFourthPhase,
+  tutorialCheckdownIsValid,
   type CardEdition,
   type FourthPhaseBossKey,
   type FourthPhaseBossProfile,
@@ -42,7 +49,9 @@ import {
   type FourthPhaseScoreResult,
   type FourthPhaseTeamKey,
   type FourthPhaseWarRoomOffer,
+  type CoachPick,
   type PlayerTrait,
+  type RunShareCardData,
   type SituationKey,
 } from '../../lib/fourthPhase';
 
@@ -75,6 +84,13 @@ interface FourthPhaseRunRecord {
   bestPlay: number;
   runCode: string;
   dailyLabel?: string;
+}
+
+interface PlayResolution {
+  key: number;
+  explanation: string;
+  stages: { label: string; value: string; color: string }[];
+  impact: 'normal' | 'cash' | 'huge';
 }
 
 interface FourthPhaseDailyRecord {
@@ -312,6 +328,134 @@ function makeRunRecord(state: LabState, score: number, won: boolean, bestPlay: n
   };
 }
 
+function buildLossReason(state: LabState, targetRemaining: number): string {
+  const last = state.lastPlay;
+  const boss = activeBossForDrive(state, state.driveIndex);
+  if (boss === 'adaptiveDc' && last && (state.repeatedSituations[last.situation.key] ?? 0) > 1) {
+    return `Stalled after repeating ${last.situation.label} into Adaptive DC.`;
+  }
+  if ((state.repeatedSituations.bustedPlay ?? 0) >= 2) {
+    return 'Too many busted calls left the drive behind schedule.';
+  }
+  if (last?.bust) {
+    return `${last.situation.label} broke down on the final call.`;
+  }
+  if (last && state.meter > BASE_METER + 0.25 && !last.didCash) {
+    return `Meter was hot at ${formatMeter(state.meter)} but never cashed.`;
+  }
+  if (boss !== 'none' && last?.ledger.some((entry) => entry.channel === 'boss')) {
+    return `${FOURTH_PHASE_BOSSES[boss].name} squeezed the final drive.`;
+  }
+  return `Drive Goal stayed ${targetRemaining} short.`;
+}
+
+function buildResolution(result: FourthPhaseScoreResult, explanation: string, key: number): PlayResolution {
+  const stages = [
+    { label: 'Yards', value: `${result.yards}`, color: '#5fb4ff' },
+    { label: 'Execution', value: `+${result.execution.toFixed(2)}`, color: '#ff7c93' },
+    { label: 'BigPlay', value: `x${result.bigPlay.toFixed(2)}`, color: '#f4c24f' },
+  ];
+  if (result.didCash) {
+    stages.push({ label: 'Cash', value: formatMeter(result.meterAfterCash), color: '#34c771' });
+  } else if (result.meterCharged > 0) {
+    stages.push({ label: 'Noise', value: `+${result.meterCharged.toFixed(2)}`, color: '#a987ff' });
+  }
+  stages.push({ label: 'Drive', value: `${result.points}`, color: result.didCash ? FB.gold : FB.text });
+  return {
+    key,
+    explanation,
+    stages,
+    impact: result.points >= 180 || result.bigPlay >= 4 ? 'huge' : result.didCash ? 'cash' : 'normal',
+  };
+}
+
+function renderShareCard(data: RunShareCardData): Promise<Blob> {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1080;
+  canvas.height = 1350;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return Promise.reject(new Error('Canvas unavailable'));
+
+  ctx.fillStyle = '#090c11';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#102a1b';
+  for (let x = 0; x < canvas.width; x += 96) {
+    ctx.fillRect(x, 0, 48, canvas.height);
+  }
+  ctx.fillStyle = 'rgba(240,180,41,0.16)';
+  ctx.fillRect(0, 0, canvas.width, 190);
+  ctx.fillRect(0, 1160, canvas.width, 190);
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#f4c24f';
+  ctx.font = '900 44px system-ui, -apple-system, Segoe UI, sans-serif';
+  ctx.fillText('FOURTH PHASE', 540, 96);
+
+  ctx.fillStyle = data.outcome === 'W' ? '#34c771' : '#e26d83';
+  ctx.font = '950 96px system-ui, -apple-system, Segoe UI, sans-serif';
+  ctx.fillText(data.outcome === 'W' ? 'RUN WON' : 'RUN OVER', 540, 230);
+
+  ctx.fillStyle = '#e8edf4';
+  ctx.font = '950 170px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+  ctx.fillText(String(data.score), 540, 430);
+  ctx.fillStyle = '#aeb7c6';
+  ctx.font = '800 34px system-ui, -apple-system, Segoe UI, sans-serif';
+  ctx.fillText('Drive Score', 540, 485);
+
+  const rows = [
+    ['Team', data.team],
+    ['Boss', data.boss],
+    ['Best Play', `${data.bestPlay}`],
+    ['Run Code', data.runCode],
+  ];
+  ctx.textAlign = 'left';
+  let y = 590;
+  for (const [label, value] of rows) {
+    ctx.fillStyle = '#7f8a99';
+    ctx.font = '900 28px system-ui, -apple-system, Segoe UI, sans-serif';
+    ctx.fillText(label.toUpperCase(), 130, y);
+    ctx.fillStyle = '#e8edf4';
+    ctx.font = '900 38px system-ui, -apple-system, Segoe UI, sans-serif';
+    ctx.fillText(value, 340, y);
+    y += 80;
+  }
+
+  ctx.fillStyle = '#f4c24f';
+  ctx.font = '900 34px system-ui, -apple-system, Segoe UI, sans-serif';
+  ctx.fillText(data.cashIn || 'No signature cash-in', 130, 940);
+  ctx.fillStyle = '#e8edf4';
+  ctx.font = '800 32px system-ui, -apple-system, Segoe UI, sans-serif';
+  wrapCanvasText(ctx, data.story, 130, 1010, 820, 42);
+
+  ctx.fillStyle = '#a987ff';
+  ctx.font = '900 28px system-ui, -apple-system, Segoe UI, sans-serif';
+  ctx.fillText(`Sideline: ${data.jokers.join(' / ') || 'none'}`, 130, 1210);
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error('Could not render share card'));
+    }, 'image/png');
+  });
+}
+
+function wrapCanvasText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, lineHeight: number) {
+  const words = text.split(/\s+/);
+  let line = '';
+  let currentY = y;
+  for (const word of words) {
+    const next = line ? `${line} ${word}` : word;
+    if (ctx.measureText(next).width > maxWidth && line) {
+      ctx.fillText(line, x, currentY);
+      line = word;
+      currentY += lineHeight;
+    } else {
+      line = next;
+    }
+  }
+  if (line) ctx.fillText(line, x, currentY);
+}
+
 function dragReorder<T>(items: readonly T[], fromIndex: number, toIndex: number): T[] {
   if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return [...items];
   const copy = [...items];
@@ -381,6 +525,9 @@ export default function FourthPhaseLab({ onHome }: Props) {
   const [importError, setImportError] = useState('');
   const [shareCopied, setShareCopied] = useState(false);
   const [resultCopied, setResultCopied] = useState(false);
+  const [shareCardStatus, setShareCardStatus] = useState('');
+  const [coachNudge, setCoachNudge] = useState('');
+  const [resolution, setResolution] = useState<PlayResolution | null>(null);
   const [dragCard, setDragCard] = useState<string | null>(null);
   const [dragJoker, setDragJoker] = useState<string | null>(null);
   const [ledgerExpanded, setLedgerExpanded] = useState(false);
@@ -406,6 +553,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
       /* ignore */
     }
     setTutorialStep(-1);
+    setCoachNudge('');
   }
 
   useEffect(() => {
@@ -436,18 +584,32 @@ export default function FourthPhaseLab({ onHome }: Props) {
     [handById, state.selectedIds],
   );
   const preview = selectedCards.length ? scoreFourthPhasePlay(selectedCards, buildPlayContext(state)) : null;
+  const playExplanation = preview ? buildPlayExplanation(selectedCards, preview) : 'Tap cards to build a play.';
+  const bossWarning = preview ? bossWarningForPlay({
+    boss: activeBoss,
+    result: preview,
+    cards: selectedCards,
+    repeatedSituations: state.repeatedSituations,
+  }) : null;
   const progress = Math.min(1, state.driveScore / target);
   const meterFill = Math.min(1, (state.meter - BASE_METER) / Math.max(0.1, state.meterCap - BASE_METER));
   const runCode = fourthPhaseRunCode(state.seed, state.team);
   const teamProfile = FOURTH_PHASE_TEAMS[state.team];
   const playsLeft = Math.max(0, FOURTH_PHASE_MAX_PLAYS_PER_DRIVE - state.playsThisDrive);
   const meterHot = state.meter > BASE_METER + 0.05;
+  const coachMode = tutorialStep >= 0 && state.phase === 'play';
+  const canCoachOrder = coachMode && selectedCards.some((card) => card.phase === 'crowd') && selectedCards.some((card) => card.phase === 'offense');
+  const selectedNeedsCoachOrder = Boolean(preview && canCoachOrder && !isTrueCrowdBeforeOffenseCash(selectedCards, preview));
+  const lossReason = state.phase === 'lost' ? buildLossReason(state, targetRemaining) : '';
 
   function restart(team: FourthPhaseTeamKey, seed?: number, meta?: FourthPhaseRunMeta) {
     setState(createInitialState(team, seed, meta));
     setImportError('');
     setShareCopied(false);
     setResultCopied(false);
+    setShareCardStatus('');
+    setCoachNudge('');
+    setResolution(null);
     setLedgerExpanded(false);
   }
 
@@ -488,7 +650,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
     const daily = state.dailyLabel ? ` · Daily ${state.dailyLabel}${state.dailyPractice ? ' (practice)' : ''}` : '';
     return [
       `FOURTH PHASE · ${outcome}`,
-      `${state.runScore} pts · best play ${state.bestPlay}`,
+      `${state.runScore} Drive · best play ${state.bestPlay}`,
       `${teamProfile.shortName} vs ${FOURTH_PHASE_BOSSES[state.boss].name} · ${runCode}${daily}`,
     ].join('\n');
   }
@@ -498,8 +660,47 @@ export default function FourthPhaseLab({ onHome }: Props) {
     navigator.clipboard.writeText(resultText()).then(() => setResultCopied(true)).catch(() => setResultCopied(false));
   }
 
+  async function shareRunCard() {
+    if (state.phase !== 'won' && state.phase !== 'lost') return;
+    setShareCardStatus('Building card...');
+    const payload = buildRunShareCardData({
+      outcome: state.phase === 'won' ? 'W' : 'L',
+      team: teamProfile.shortName,
+      boss: FOURTH_PHASE_BOSSES[state.boss].name,
+      score: state.runScore,
+      bestPlay: state.bestPlay,
+      runCode,
+      cashIn: state.cashIn ? `${state.cashIn.points} ${state.cashIn.situation}` : undefined,
+      jokers: state.jokers.map((joker) => jokerDefinition(joker).name),
+      story: state.phase === 'won'
+        ? `Cleared all ${FOURTH_PHASE_DRIVES} Drive Goals. ${state.cashIn?.reason ?? 'Won with clean calls and sideline help.'}`
+        : lossReason,
+    });
+    try {
+      const blob = await renderShareCard(payload);
+      const fileName = `fourth-phase-${runCode.toLowerCase()}.png`;
+      const file = new File([blob], fileName, { type: 'image/png' });
+      if (navigator.share && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: 'Fourth Phase run card', text: resultText() });
+        setShareCardStatus('Shared');
+        return;
+      }
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setShareCardStatus('Saved image');
+    } catch {
+      setShareCardStatus('Share image failed');
+    }
+  }
+
   function toggleCard(card: FourthPhaseCard) {
     if (state.phase !== 'play') return;
+    setCoachNudge('');
+    setResolution(null);
     setState((current) => {
       const exists = current.selectedIds.includes(card.id);
       if (exists) return { ...current, selectedIds: current.selectedIds.filter((id) => id !== card.id) };
@@ -531,6 +732,8 @@ export default function FourthPhaseLab({ onHome }: Props) {
   // Touch- and keyboard-accessible reorder (HTML5 drag does not fire on touch devices).
   function moveSelected(id: string, dir: -1 | 1) {
     if (state.phase !== 'play') return;
+    setResolution(null);
+    setCoachNudge('');
     setState((current) => {
       const from = current.selectedIds.indexOf(id);
       const to = from + dir;
@@ -546,6 +749,17 @@ export default function FourthPhaseLab({ onHome }: Props) {
       if (from < 0 || to < 0 || to >= current.jokers.length) return current;
       return { ...current, jokers: dragReorder(current.jokers, from, to) };
     });
+  }
+
+  function coachOrderSelected() {
+    if (!selectedCards.length) return;
+    setResolution(null);
+    setState((current) => {
+      const byId = new Map(current.hand.map((card) => [card.id, card]));
+      const selected = current.selectedIds.map((id) => byId.get(id)).filter((card): card is FourthPhaseCard => Boolean(card));
+      return { ...current, selectedIds: coachOrderCards(selected).map((card) => card.id) };
+    });
+    setCoachNudge('Coach ordered the call: Crowd first, Offense cashes.');
   }
 
   function refillHand(current: LabState, hand: FourthPhaseCard[], discardPile: FourthPhaseCard[], drawExtra: number) {
@@ -566,8 +780,19 @@ export default function FourthPhaseLab({ onHome }: Props) {
 
   function executePlay() {
     if (!preview || selectedCards.length === 0 || state.phase !== 'play') return;
+    if (tutorialStep === 0 && !tutorialCheckdownIsValid(selectedCards, preview)) {
+      setCoachNudge('Coach wants one blue OFF card first. Save the combo for the next snap.');
+      return;
+    }
+    if (tutorialStep === 1 && !isTrueCrowdBeforeOffenseCash(selectedCards, preview)) {
+      setCoachNudge('Coach stopped it: put a purple CRD card left of the blue OFF card so the crowd charges before the cash.');
+      return;
+    }
     if (tutorialStep >= 0) advanceTutorial(preview.didCash);
+    setCoachNudge('');
     setShareCopied(false);
+    setShareCardStatus('');
+    setResolution((current) => buildResolution(preview, playExplanation, (current?.key ?? 0) + 1));
     setState((current) => {
       const ids = new Set(current.selectedIds);
       const selected = current.selectedIds
@@ -652,6 +877,8 @@ export default function FourthPhaseLab({ onHome }: Props) {
 
   function redrawHand() {
     if (state.phase !== 'play' || state.discardsLeft <= 0) return;
+    setResolution(null);
+    setCoachNudge('');
     setState((current) => {
       const draw = drawFourthPhaseCards(
         current.drawPile,
@@ -824,9 +1051,22 @@ export default function FourthPhaseLab({ onHome }: Props) {
   const nextBossKey = state.phase === 'warRoom' && state.driveIndex + 1 < FOURTH_PHASE_DRIVES
     ? activeBossForDrive(state, state.driveIndex + 1)
     : 'none';
+  const warRoomCoachPick = state.phase === 'warRoom'
+    ? coachPickForWarRoom(state.draft, state.team, nextBossKey)
+    : null;
+
+  function coachCardTone(card: FourthPhaseCard): 'highlight' | 'dim' | undefined {
+    if (!coachMode) return undefined;
+    if (tutorialStep === 0) return card.phase === 'offense' ? 'highlight' : 'dim';
+    if (tutorialStep === 1) return card.phase === 'crowd' || card.phase === 'offense' ? 'highlight' : 'dim';
+    return undefined;
+  }
 
   return (
-    <div style={{ minHeight: '100svh', padding: '10px 12px 96px', background: '#090c11' }}>
+    <div
+      className={resolution?.impact === 'huge' ? 'fp-impact-huge' : resolution?.impact === 'cash' ? 'fp-impact-cash' : undefined}
+      style={{ minHeight: '100svh', padding: '10px 12px 96px', background: '#090c11' }}
+    >
       <div style={{ maxWidth: 560, margin: '0 auto' }}>
       <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
         {onHome ? (
@@ -854,6 +1094,19 @@ export default function FourthPhaseLab({ onHome }: Props) {
           </div>
           <div style={{ fontSize: 14, fontWeight: 950, color: FB.text, marginTop: 4 }}>{TUTORIAL_STEPS[tutorialStep].title}</div>
           <div style={{ fontSize: 12, color: FB.textDim, lineHeight: 1.45, marginTop: 4 }}>{TUTORIAL_STEPS[tutorialStep].body}</div>
+          {coachNudge && (
+            <div style={{ border: `1px solid ${FB.gold}`, borderRadius: 8, color: FB.gold, background: 'rgba(240,180,41,0.08)', padding: '8px 9px', marginTop: 9, fontSize: 11.5, fontWeight: 850 }}>
+              {coachNudge}
+            </div>
+          )}
+          {canCoachOrder && (
+            <button
+              onClick={coachOrderSelected}
+              style={{ ...btnGhost, width: '100%', marginTop: 9, borderColor: selectedNeedsCoachOrder ? FB.gold : FB.border, color: selectedNeedsCoachOrder ? FB.gold : FB.textDim }}
+            >
+              Coach Order · Crowd first
+            </button>
+          )}
           {TUTORIAL_STEPS[tutorialStep].cta && (
             <button onClick={finishTutorial} style={{ ...btnPrimary, width: '100%', marginTop: 10 }}>{TUTORIAL_STEPS[tutorialStep].cta}</button>
           )}
@@ -864,7 +1117,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
         <span style={{ color: FB.text, fontWeight: 900 }}>{teamProfile.name}</span> · {teamProfile.identity}
       </div>
 
-      <HowToPlay defaultOpen={false} />
+      {!coachMode && <HowToPlay defaultOpen={false} />}
 
       <section style={{ ...card(8), ...meterStyle(state.meter, state.meterCap), padding: 14, overflow: 'hidden', position: 'relative', background: 'linear-gradient(180deg,#101622,#080b11)' }}>
         <div className="fb-yard" style={{ position: 'absolute', inset: 0, opacity: 0.38 }} />
@@ -893,11 +1146,16 @@ export default function FourthPhaseLab({ onHome }: Props) {
       <section style={{ ...card(8), padding: 12, marginTop: 10 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
           <div>
-            <div style={sectionLabel}>Drive {state.driveIndex + 1} of {FOURTH_PHASE_DRIVES}</div>
+            <div style={sectionLabel}>Drive Goal {state.driveIndex + 1} of {FOURTH_PHASE_DRIVES}</div>
             <div className="fb-led" style={{ fontSize: 20, fontWeight: 950, color: FB.text, lineHeight: 1.1 }}>{state.driveScore} / {target}</div>
           </div>
           <div style={{ textAlign: 'right' }}>
-            {activeBoss === 'none' ? (
+            {coachMode ? (
+              <>
+                <div style={{ ...sectionLabel, color: '#34c771' }}>Coach Mode</div>
+                <div style={{ fontSize: 11, color: FB.textFaint, maxWidth: 210 }}>Learn the call sheet first.</div>
+              </>
+            ) : activeBoss === 'none' ? (
               <>
                 <div style={{ ...sectionLabel, color: '#d8a23a' }}>Scouting · Drive {FOURTH_PHASE_DRIVES}</div>
                 <div style={{ fontSize: 12, color: '#e8c878', fontWeight: 900 }}>{FOURTH_PHASE_BOSSES[state.boss].name}</div>
@@ -913,7 +1171,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
         </div>
         <FieldProgress progress={progress} />
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 7 }}>
-          <div style={{ fontSize: 10.5, color: FB.textFaint }}>{targetRemaining} to go</div>
+          <div style={{ fontSize: 10.5, color: FB.textFaint }}>{targetRemaining} to goal</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             {Array.from({ length: FOURTH_PHASE_MAX_PLAYS_PER_DRIVE }).map((_, i) => (
               <span
@@ -931,6 +1189,21 @@ export default function FourthPhaseLab({ onHome }: Props) {
           </div>
         </div>
       </section>
+
+      {resolution && (
+        <section key={resolution.key} className={resolution.impact === 'normal' ? 'fp-resolve' : 'fp-resolve fp-resolve-cash'} style={{ ...card(8), padding: 12, marginTop: 10, borderColor: resolution.impact === 'normal' ? FB.border : FB.gold, background: resolution.impact === 'normal' ? '#101722' : 'linear-gradient(135deg,#2a1d08,#101722)' }}>
+          <div style={{ ...sectionLabel, color: resolution.impact === 'normal' ? FB.textFaint : FB.gold }}>Play Resolution</div>
+          <div style={{ fontSize: 12, color: FB.text, fontWeight: 900, marginTop: 5 }}>{resolution.explanation}</div>
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${resolution.stages.length}, minmax(0, 1fr))`, gap: 6, marginTop: 10 }}>
+            {resolution.stages.map((stage, index) => (
+              <div key={`${stage.label}-${index}`} className="fp-stage" style={{ '--fp-stage-delay': `${index * 90}ms`, border: `1px solid ${FB.border}`, borderRadius: 8, padding: '7px 6px', background: FB.inset } as CSSProperties}>
+                <div style={{ fontSize: 9.5, color: FB.textFaint, fontWeight: 900 }}>{stage.label}</div>
+                <div className="fb-num" style={{ fontSize: 15, color: stage.color, fontWeight: 950 }}>{stage.value}</div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {state.cashIn && (
         <section style={{ ...card(8), padding: 13, marginTop: 10, borderColor: '#f4c24f', background: 'linear-gradient(135deg,#2a1d08,#12151d)' }}>
@@ -964,6 +1237,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
           onCancelReplace={cancelReplaceJoker}
           onReroll={rerollWarRoom}
           onSkip={skipWarRoom}
+          coachPick={warRoomCoachPick}
         />
       )}
 
@@ -975,10 +1249,10 @@ export default function FourthPhaseLab({ onHome }: Props) {
           <div style={{ fontSize: 12, color: FB.textDim, marginTop: 6 }}>
             {state.phase === 'won'
               ? `All ${FOURTH_PHASE_DRIVES} drives cleared against ${FOURTH_PHASE_BOSSES[state.boss].name}.`
-              : `Stalled on Drive ${state.driveIndex + 1} — ${targetRemaining} short of the target.`}
+              : lossReason}
           </div>
           <div className="fb-num" style={{ fontSize: 40, color: FB.gold, fontWeight: 950, marginTop: 8, lineHeight: 1 }}>{state.runScore}</div>
-          <div style={{ fontSize: 10.5, color: FB.textFaint, marginTop: 2 }}>total points</div>
+          <div style={{ fontSize: 10.5, color: FB.textFaint, marginTop: 2 }}>total Drive</div>
           {state.completion && localBest?.id === state.completion.id && (
             <div style={{ fontSize: 11, color: FB.gold, fontWeight: 900, marginTop: 5 }}>New local best</div>
           )}
@@ -997,6 +1271,9 @@ export default function FourthPhaseLab({ onHome }: Props) {
             <button onClick={() => restart(state.team)} style={btnPrimary}>Run it back</button>
             <button onClick={copyResult} style={{ ...btnGhost, minHeight: 48 }}>{resultCopied ? 'Copied' : 'Copy result'}</button>
           </div>
+          <button onClick={shareRunCard} style={{ ...btnGhost, width: '100%', marginTop: 8, borderColor: FB.gold, color: FB.gold }}>
+            {shareCardStatus || 'Save share card'}
+          </button>
           <button onClick={() => restart(state.team, state.seed)} style={{ ...btnGhost, width: '100%', marginTop: 8 }}>
             Replay this seed
           </button>
@@ -1005,8 +1282,11 @@ export default function FourthPhaseLab({ onHome }: Props) {
 
       <section style={{ marginTop: 10 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-          <div style={sectionLabel}>Selected Play</div>
+          <div style={sectionLabel}>Call Sheet</div>
           <div style={{ fontSize: 11, color: FB.textFaint }}>{state.selectedIds.length}/{FOURTH_PHASE_PLAY_LIMIT} · left scores first</div>
+        </div>
+        <div style={{ border: `1px solid ${preview?.didCash ? FB.gold : FB.border}`, borderRadius: 8, background: '#101722', color: preview?.didCash ? FB.gold : FB.textDim, padding: '8px 9px', fontSize: 11.5, fontWeight: 850, marginBottom: 8 }}>
+          {playExplanation}
         </div>
         <div style={{ display: 'flex', gap: 6, minHeight: 100, overflowX: 'auto', paddingBottom: 2 }}>
           {selectedCards.length === 0 ? (
@@ -1074,6 +1354,11 @@ export default function FourthPhaseLab({ onHome }: Props) {
                 Busted play — no clean shape. Penalty score and the meter bleeds.
               </div>
             )}
+            {bossWarning && (
+              <div style={{ fontSize: 11, color: FB.red, fontWeight: 900, marginTop: 8 }}>
+                {bossWarning}
+              </div>
+            )}
             {!preview.bust && preview.situation.notes[0] && (
               <div style={{ fontSize: 11, color: FB.textFaint, marginTop: 8 }}>{preview.situation.notes[0]}</div>
             )}
@@ -1084,16 +1369,16 @@ export default function FourthPhaseLab({ onHome }: Props) {
       <section style={{ marginTop: 10 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
           <div style={sectionLabel}>Hand</div>
-          <div style={{ fontSize: 11, color: FB.textFaint }}>War Room cash <span style={{ color: FB.gold, fontWeight: 900 }}>${state.money}</span></div>
+          {!coachMode && <div style={{ fontSize: 11, color: FB.textFaint }}>War Room cash <span style={{ color: FB.gold, fontWeight: 900 }}>${state.money}</span></div>}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 7 }}>
           {state.hand.map((card) => (
-            <HandCard key={card.id} card={card} selected={state.selectedIds.includes(card.id)} onClick={() => toggleCard(card)} />
+            <HandCard key={card.id} card={card} selected={state.selectedIds.includes(card.id)} tone={coachCardTone(card)} onClick={() => toggleCard(card)} />
           ))}
         </div>
       </section>
 
-      {state.lastPlay && (
+      {!coachMode && state.lastPlay && (
         <section style={{ ...card(8), padding: 12, marginTop: 10 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={sectionLabel}>Live Ledger</div>
@@ -1118,7 +1403,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
         </section>
       )}
 
-      <section style={{ marginTop: 10 }}>
+      {!coachMode && <section style={{ marginTop: 10 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
           <div style={sectionLabel}>Sideline (Jokers)</div>
           <div style={{ fontSize: 11, color: FB.textFaint }}>◀ ▶ or drag to reorder</div>
@@ -1167,13 +1452,13 @@ export default function FourthPhaseLab({ onHome }: Props) {
             );
           })}
         </div>
-      </section>
+      </section>}
 
-      <SituationsPanel activeKey={preview?.situation.key} defaultOpen={false} />
+      {!coachMode && <SituationsPanel activeKey={preview?.situation.key} defaultOpen={false} />}
 
-      <HowToPlay defaultOpen={false} />
+      {!coachMode && <HowToPlay defaultOpen={false} />}
 
-      <section style={{ ...card(8), padding: 10, marginTop: 10, marginBottom: 4 }}>
+      {!coachMode && <section style={{ ...card(8), padding: 10, marginTop: 10, marginBottom: 4 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
           <div style={sectionLabel}>Locker Room</div>
           <div style={{ fontSize: 10.5, color: FB.textFaint }}>switching team starts a new run</div>
@@ -1237,7 +1522,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
           <button onClick={importRunCode} style={{ ...btnGhost, minHeight: 38, padding: '0 12px' }}>Import</button>
         </div>
         {importError && <div style={{ fontSize: 10.5, color: FB.red, marginTop: 5 }}>{importError}</div>}
-      </section>
+      </section>}
 
       </div>
 
@@ -1250,8 +1535,13 @@ export default function FourthPhaseLab({ onHome }: Props) {
               </div>
               <div className="fb-num" style={{ fontSize: 24, color: preview?.didCash ? FB.gold : FB.text, fontWeight: 950, lineHeight: 1.05 }}>
                 {preview ? preview.points : 0}
-                <span style={{ fontSize: 11, color: FB.textFaint, fontWeight: 800 }}> pts{preview?.didCash ? ' · cashes' : ''}</span>
+                <span style={{ fontSize: 11, color: FB.textFaint, fontWeight: 800 }}> Drive{preview?.didCash ? ' · cashes' : ''}</span>
               </div>
+              {preview && (
+                <div style={{ fontSize: 10.5, color: preview.didCash ? FB.gold : FB.textFaint, fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {playExplanation}
+                </div>
+              )}
             </div>
             <button
               onClick={executePlay}
@@ -1321,12 +1611,12 @@ const cashBadge: CSSProperties = {
 
 const reorderBtn: CSSProperties = {
   flex: 1,
-  minHeight: 30,
+  minHeight: 36,
   borderRadius: 6,
   border: `1px solid ${FB.border}`,
   background: '#16202c',
   color: FB.textDim,
-  fontSize: 13,
+  fontSize: 15,
   fontWeight: 900,
   cursor: 'pointer',
   lineHeight: 1,
@@ -1405,8 +1695,10 @@ function Metric({ label, value, color, small }: { label: string; value: string; 
   );
 }
 
-function HandCard({ card, selected, onClick }: { card: FourthPhaseCard; selected: boolean; onClick: () => void }) {
+function HandCard({ card, selected, tone, onClick }: { card: FourthPhaseCard; selected: boolean; tone?: 'highlight' | 'dim'; onClick: () => void }) {
   const badge = cardBadge(card);
+  const coachHighlight = tone === 'highlight';
+  const coachDim = tone === 'dim' && !selected;
   return (
     <button
       onClick={onClick}
@@ -1414,8 +1706,10 @@ function HandCard({ card, selected, onClick }: { card: FourthPhaseCard; selected
       style={{
         minHeight: 104,
         borderRadius: 8,
-        border: `1px solid ${selected ? FB.gold : PHASE_COLOR[card.phase]}`,
-        boxShadow: `inset 0 2px 0 ${selected ? FB.gold : PHASE_COLOR[card.phase]}`,
+        border: `1px solid ${coachHighlight ? FB.gold : selected ? FB.gold : PHASE_COLOR[card.phase]}`,
+        boxShadow: coachHighlight
+          ? `inset 0 2px 0 ${PHASE_COLOR[card.phase]}, 0 0 0 2px rgba(240,180,41,0.35), 0 0 16px rgba(240,180,41,0.16)`
+          : `inset 0 2px 0 ${selected ? FB.gold : PHASE_COLOR[card.phase]}`,
         background: selected ? '#2a230f' : '#101722',
         color: FB.text,
         padding: 8,
@@ -1424,6 +1718,9 @@ function HandCard({ card, selected, onClick }: { card: FourthPhaseCard; selected
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'space-between',
+        opacity: coachDim ? 0.42 : 1,
+        transform: coachHighlight ? 'translateY(-1px)' : undefined,
+        transition: 'opacity 120ms ease-out, border-color 120ms ease-out, box-shadow 120ms ease-out, transform 120ms ease-out',
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 4, alignItems: 'center' }}>
@@ -1502,6 +1799,7 @@ function WarRoom({
   onCancelReplace,
   onReroll,
   onSkip,
+  coachPick,
 }: {
   money: number;
   discounts: number;
@@ -1517,6 +1815,7 @@ function WarRoom({
   onCancelReplace: () => void;
   onReroll: () => void;
   onSkip: () => void;
+  coachPick: CoachPick | null;
 }) {
   if (pendingDraft) {
     const incoming = pendingDraft.joker ? jokerDefinition(pendingDraft.joker) : null;
@@ -1564,7 +1863,7 @@ function WarRoom({
         </div>
       </div>
       <div style={{ fontSize: 11, color: FB.textDim, marginTop: 4 }}>
-        Next: Drive {nextDriveNumber} · target {nextTarget}
+        Next: Drive {nextDriveNumber} · Drive Goal {nextTarget}
         {nextBoss && <span style={{ color: FB.red, fontWeight: 900 }}> · {nextBoss.name} — {nextBoss.effect}</span>}
       </div>
       {discounts > 0 && (
@@ -1577,7 +1876,10 @@ function WarRoom({
           const def = offer.joker ? jokerDefinition(offer.joker) : null;
           const { cost: effectiveCost, used } = discountedOfferCost(offer.cost, discounts);
           const affordable = money >= effectiveCost;
-          const borderColor = def?.rarity === 'legendary'
+          const isCoachPick = coachPick?.id === offer.id;
+          const borderColor = isCoachPick
+            ? FB.gold
+            : def?.rarity === 'legendary'
             ? FB.gold
             : offer.kind === 'practice'
               ? '#34c771'
@@ -1590,11 +1892,12 @@ function WarRoom({
               style={{
                 borderRadius: 8,
                 border: `1px solid ${borderColor}`,
-                background: '#101722',
+                background: isCoachPick ? 'linear-gradient(135deg,#2a230f,#101722)' : '#101722',
                 color: affordable ? FB.text : FB.textFaint,
                 padding: 10,
                 textAlign: 'left',
                 cursor: affordable ? 'pointer' : 'not-allowed',
+                boxShadow: isCoachPick ? '0 0 0 1px rgba(240,180,41,0.18)' : undefined,
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
@@ -1604,6 +1907,11 @@ function WarRoom({
                   ${effectiveCost}
                 </span>
               </div>
+              {isCoachPick && (
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: `1px solid rgba(240,180,41,0.55)`, borderRadius: 999, color: FB.gold, background: 'rgba(240,180,41,0.08)', padding: '3px 7px', marginTop: 7, fontSize: 10, fontWeight: 950 }}>
+                  Coach Pick · {coachPick.reason}
+                </div>
+              )}
               <div style={{ fontSize: 11, color: FB.textDim, marginTop: 3 }}>{offer.detail}</div>
               {offer.tags.length > 0 && (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 7 }}>

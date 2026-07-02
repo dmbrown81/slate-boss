@@ -1,4 +1,5 @@
 export * from './deck';
+export * from './coach';
 export * from './engine';
 export * from './jokers';
 export * from './meter';
