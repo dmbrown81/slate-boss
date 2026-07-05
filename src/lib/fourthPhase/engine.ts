@@ -82,11 +82,11 @@ function cardTraitScore(card: FourthPhaseCard, score: MutableFourthPhaseScore, c
   }
   if (card.edition === 'inRhythm') {
     score.execution += 0.05;
-    ledger(score, { channel: 'execution', label: 'In Rhythm edition', value: '+0.05 Exec', detail: card.roleName });
+    ledger(score, { channel: 'execution', label: 'In Rhythm edition', value: '+0.05 Leverage', detail: card.roleName });
   }
   if (card.modifier === 'reliable') {
     score.execution += 0.04;
-    ledger(score, { channel: 'execution', label: 'Reliable', value: '+0.04 Exec', detail: card.roleName });
+    ledger(score, { channel: 'execution', label: 'Reliable', value: '+0.04 Leverage', detail: card.roleName });
   }
   if (card.modifier === 'explosive') {
     score.bigPlay += 0.05;
@@ -94,15 +94,15 @@ function cardTraitScore(card: FourthPhaseCard, score: MutableFourthPhaseScore, c
   }
   if (card.modifier === 'clutch' && (context.targetRemaining ?? Infinity) <= 120) {
     score.execution += 0.08;
-    ledger(score, { channel: 'execution', label: 'Clutch', value: '+0.08 Exec', detail: card.roleName });
+    ledger(score, { channel: 'execution', label: 'Clutch', value: '+0.08 Leverage', detail: card.roleName });
   }
   if (card.modifier === 'hometownHero' && score.meter >= 3) {
     score.execution += 0.1;
-    ledger(score, { channel: 'execution', label: 'Hometown Hero', value: '+0.10 Exec', detail: card.roleName });
+    ledger(score, { channel: 'execution', label: 'Hometown Hero', value: '+0.10 Leverage', detail: card.roleName });
   }
   if (card.modifier === 'lockerRoomCancer') {
     score.execution -= 0.05;
-    ledger(score, { channel: 'execution', label: 'Locker-room drag', value: '-0.05 Exec', detail: card.roleName });
+    ledger(score, { channel: 'execution', label: 'Locker-room drag', value: '-0.05 Leverage', detail: card.roleName });
   }
   if (card.modifier === 'holdout') {
     score.fuel.money -= 1;
@@ -131,7 +131,7 @@ function applyCharge(
   ledger(score, {
     channel: 'meter',
     label,
-    value: `+${total.toFixed(2)} meter`,
+    value: `+${total.toFixed(2)} momentum`,
     detail: `x${before.toFixed(2)} to x${score.meter.toFixed(2)}`,
   });
 }
@@ -142,7 +142,7 @@ function applyBossBeforeScore(score: MutableFourthPhaseScore, context: FourthPha
   score.meterCap = Math.min(score.meterCap, 2);
   score.meter = clampMeter(score.meter, score.meterCap);
   score.meterBleedRate = Math.max(score.meterBleedRate, 0.5);
-  ledger(score, { channel: 'boss', label: 'Road Game', value: 'cap x2.0', detail: 'Meter ceiling forced low.' });
+  ledger(score, { channel: 'boss', label: 'Road Game', value: 'cap x2.0', detail: 'Momentum ceiling forced low.' });
 }
 
 function applyPracticeBonus(score: MutableFourthPhaseScore, situation: SituationResult, context: FourthPhaseScoreContext) {
@@ -160,7 +160,7 @@ function applyPracticeBonus(score: MutableFourthPhaseScore, situation: Situation
       channel: 'system',
       label: 'Practice Drill',
       value: `level ${level}`,
-      detail: situation.key === 'fieldFlip' ? 'Special Teams fuel package.' : 'Crowd charge package.',
+      detail: situation.key === 'fieldFlip' ? 'Special Teams hidden-yards package.' : 'Crowd momentum package.',
     });
     return;
   }
@@ -174,7 +174,7 @@ function applyPracticeBonus(score: MutableFourthPhaseScore, situation: Situation
   ledger(score, {
     channel: 'system',
     label: 'Practice Drill',
-    value: `+${yardsBonus} Yards, +${executionBonus.toFixed(2)} Exec, +${bigPlayBonus.toFixed(2)} BP`,
+    value: `+${yardsBonus} Yards, +${executionBonus.toFixed(2)} Leverage, +${bigPlayBonus.toFixed(2)} Explosive`,
     detail: `${situation.label} level ${level}.`,
   });
 }
@@ -193,21 +193,21 @@ function applyBossAfterCards(score: MutableFourthPhaseScore, situation: Situatio
   if (context.boss === 'turnoverDrill' && situation.counts.defense > 0) {
     const penalty = situation.counts.defense * 0.12;
     score.execution -= penalty;
-    ledger(score, { channel: 'boss', label: 'Turnover Drill', value: `-${penalty.toFixed(2)} Exec`, detail: 'Defensive scoring is less reliable.' });
+    ledger(score, { channel: 'boss', label: 'Ball Security', value: `-${penalty.toFixed(2)} Leverage`, detail: 'Takeaway leverage is harder to find.' });
   }
   if (context.boss === 'fieldPositionWar' && situation.counts.specialTeams > 0) {
     score.fuel = { draw: 0, money: 0, discount: 0 };
-    ledger(score, { channel: 'boss', label: 'Field Position War', value: 'no ST fuel', detail: 'Special Teams payout is suppressed.' });
+    ledger(score, { channel: 'boss', label: 'Touchback Machine', value: 'no ST payout', detail: 'Special Teams hidden-yards payout is suppressed.' });
   }
   if (context.boss === 'adaptiveDc' && (context.repeatedSituations[situation.key] ?? 0) > 0) {
     score.yards = 0;
     score.execution = 0;
     score.bigPlay = 0;
-    ledger(score, { channel: 'boss', label: 'Adaptive DC', value: 'repeat to 0', detail: `${situation.label} was already shown this drive.` });
+    ledger(score, { channel: 'boss', label: 'Got Your Number', value: 'repeat to 0', detail: `${situation.label} was already shown this drive.` });
   }
   if (context.boss === 'preventDefense' && score.bigPlay > 2.75) {
     score.bigPlay = 2.75;
-    ledger(score, { channel: 'boss', label: 'Prevent Defense', value: 'BP cap x2.75', detail: 'Explosives are kept in front.' });
+    ledger(score, { channel: 'boss', label: 'Prevent Defense', value: 'Explosive cap x2.75', detail: 'Explosives are kept in front.' });
   }
 }
 
@@ -241,7 +241,7 @@ export function scoreFourthPhasePlay(cards: readonly FourthPhaseCard[], partialC
   score.fuel = { ...situation.fuel };
   ledger(score, { channel: 'system', label: situation.label, value: 'detected', detail: situation.notes.join(' ') });
   ledger(score, { channel: 'yards', label: 'Yards seed', value: `${score.yards}`, detail: 'Base payload.' });
-  ledger(score, { channel: 'execution', label: 'Execution seed', value: `+${score.execution.toFixed(2)}`, detail: 'Reliability floor.' });
+  ledger(score, { channel: 'execution', label: 'Leverage seed', value: `+${score.execution.toFixed(2)}`, detail: 'Short field and clean look.' });
   applyPracticeBonus(score, situation, context);
 
   for (const joker of jokerDefs(context.jokers)) {
@@ -272,7 +272,7 @@ export function scoreFourthPhasePlay(cards: readonly FourthPhaseCard[], partialC
       didCash = true;
       cashesAtCardIndex = cardIndex;
       meterAfterCash = score.meter;
-      ledger(score, { channel: 'bigPlay', label: 'Crowd cash-in', value: `x${score.meter.toFixed(2)}`, detail: `${card.roleName} breaks it open.` });
+      ledger(score, { channel: 'bigPlay', label: 'Momentum cash-in', value: `x${score.meter.toFixed(2)}`, detail: `${card.roleName} breaks it open.` });
     }
   }
 
@@ -281,7 +281,7 @@ export function scoreFourthPhasePlay(cards: readonly FourthPhaseCard[], partialC
   }
   if (score.forceMeterToCap) {
     score.meter = score.meterCap;
-    ledger(score, { channel: 'meter', label: 'Meter forced to cap', value: `x${score.meterCap.toFixed(2)}` });
+    ledger(score, { channel: 'meter', label: 'Momentum forced to cap', value: `x${score.meterCap.toFixed(2)}` });
   }
 
   for (const joker of jokerDefs(context.jokers)) {
@@ -334,7 +334,7 @@ export function scoreFourthPhasePlay(cards: readonly FourthPhaseCard[], partialC
       channel: 'meter',
       label: 'Hold cost',
       value: `x${before.toFixed(2)} to x${score.meter.toFixed(2)}`,
-      detail: 'Hot meter left uncashed.',
+      detail: 'Hot momentum left uncashed.',
     });
   }
 

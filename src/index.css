@@ -126,6 +126,27 @@ button:focus-visible,
 .fp-impact-cash { animation: fp-cash-flash .62s ease-out; }
 .fp-impact-huge { animation: fp-big-cash .72s ease-out; }
 
+/* screen-to-screen transition: title -> team select -> drive intro -> play */
+@keyframes fp-screen-in {
+  0% { transform: translateY(10px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+.fp-screen-in { animation: fp-screen-in .26s ease-out; }
+
+/* the cash-in signature moment: stamp slams in, points hold for a beat */
+@keyframes fp-stamp-pop {
+  0% { transform: scale(2.1) rotate(-6deg); opacity: 0; }
+  55% { transform: scale(0.94) rotate(-6deg); opacity: 1; }
+  100% { transform: scale(1) rotate(-6deg); opacity: 1; }
+}
+@keyframes fp-points-land {
+  0% { transform: scale(0.55); opacity: 0; }
+  62% { transform: scale(1.12); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.fp-cashed-stamp { animation: fp-stamp-pop .55s cubic-bezier(.2,.85,.3,1.1) both; }
+.fp-points-land { animation: fp-points-land .6s cubic-bezier(.2,.9,.3,1.15) .18s both; }
+
 /* faint yard-lines for hero/scoreboard backgrounds */
 .fb-yard {
   background-image: repeating-linear-gradient(
@@ -162,11 +183,16 @@ button:focus-visible,
   .fp-resolve-cash,
   .fp-stage,
   .fp-impact-cash,
-  .fp-impact-huge {
+  .fp-impact-huge,
+  .fp-cashed-stamp,
+  .fp-points-land,
+  .fp-screen-in {
     animation: none !important;
   }
 
-  .fp-stage {
+  .fp-stage,
+  .fp-cashed-stamp,
+  .fp-points-land {
     opacity: 1;
   }
 }

@@ -5,13 +5,13 @@ const ZERO_FUEL: SituationFuel = { draw: 0, money: 0, discount: 0 };
 
 export const SITUATION_LABELS: Record<SituationKey, string> = {
   checkdown: 'The Checkdown',
-  drive: 'The Drive',
-  stand: 'The Stand',
+  drive: 'Sustained Drive',
+  stand: 'Defensive Stand',
   fieldFlip: 'Field Flip',
-  blackout: 'The Blackout',
+  blackout: 'Crowd Surge',
   momentumShift: 'Momentum Shift',
-  houseCall: 'House Call',
-  pickSix: 'Pick Six',
+  houseCall: 'Shot Play',
+  pickSix: 'Sudden Change',
   complementaryFootball: 'Complementary Football',
   bustedPlay: 'Busted Play',
 };
@@ -25,12 +25,12 @@ export interface SituationTestCase {
 export const SITUATION_TEST_CASES: readonly SituationTestCase[] = [
   { label: 'single offense is a checkdown', phases: ['offense'], expected: 'checkdown' },
   { label: 'three offense cards make a drive', phases: ['offense', 'offense', 'offense'], expected: 'drive' },
-  { label: 'three defense cards make a stand', phases: ['defense', 'defense', 'defense'], expected: 'stand' },
+  { label: 'three defense cards make a defensive stand', phases: ['defense', 'defense', 'defense'], expected: 'stand' },
   { label: 'two special teams cards flip the field', phases: ['specialTeams', 'specialTeams'], expected: 'fieldFlip' },
-  { label: 'three crowd cards make a blackout', phases: ['crowd', 'crowd', 'crowd'], expected: 'blackout' },
+  { label: 'three crowd cards create a surge', phases: ['crowd', 'crowd', 'crowd'], expected: 'blackout' },
   { label: 'two offense and two defense cards shift momentum', phases: ['offense', 'defense', 'offense', 'defense'], expected: 'momentumShift' },
-  { label: 'offense plus crowd calls a house call', phases: ['crowd', 'offense'], expected: 'houseCall' },
-  { label: 'defense plus offense creates pick six pressure', phases: ['defense', 'defense', 'offense'], expected: 'pickSix' },
+  { label: 'offense plus crowd calls a shot play', phases: ['crowd', 'offense'], expected: 'houseCall' },
+  { label: 'defense plus offense creates sudden-change pressure', phases: ['defense', 'defense', 'offense'], expected: 'pickSix' },
   { label: 'all phases is apex football', phases: ['offense', 'defense', 'specialTeams', 'crowd'], expected: 'complementaryFootball' },
   { label: 'unshaped mixed hand busts', phases: ['defense', 'crowd'], expected: 'bustedPlay' },
 ];
@@ -119,9 +119,9 @@ export function recognizeFourthPhaseSituation(cards: readonly FourthPhaseCard[])
     });
   }
 
-  // House Call is a cashing situation and must outrank Pick Six: a hand that brought
-  // a Crowd card alongside Offense is here to cash the meter, even if it also has
-  // 2+ Defense. (A defense-heavy hand with no Crowd still falls through to Pick Six.)
+  // Shot Play is a cashing situation and must outrank Sudden Change: a hand that brought
+  // a Crowd card alongside Offense is here to cash momentum, even if it also has
+  // 2+ Defense. (A defense-heavy hand with no Crowd still falls through to Sudden Change.)
   if (counts.offense >= 1 && counts.crowd >= 1) {
     return result('houseCall', 86, counts, {
       yardsSeed: offense + 6,

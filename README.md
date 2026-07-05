@@ -1,9 +1,9 @@
 # Fourth Phase / Slate Boss
 
 Fourth Phase is the active product in this repo: a fictional single-player
-football card roguelike. Build plays from Offense, Defense, Special Teams, and
-Crowd cards; Crowd charges the Crowd Meter, a scoring play cashes it; clear
-three drive targets with a boss on the final drive. Everything is local-first,
+football card roguelike. Build drive series from Offense, Defense, Special
+Teams, and Crowd cards; Crowd builds Momentum, Offense cashes it; clear three
+drive targets with a boss on the final drive. Everything is local-first,
 deterministic, and fictional — no real teams, players, money, or prizes.
 
 - App entry: `src/App.tsx` renders `src/components/fourthPhase/FourthPhaseLab.tsx`.
@@ -86,6 +86,7 @@ still apply).
 - `src/lib/fourthPhase/run.ts` - teams, bosses, targets, run codes, War Room offers.
 - `scripts/fourthPhaseMatchup.ts` - deterministic proof harness.
 - `scripts/fourthPhaseBalance.ts` - Monte Carlo balance harness with hard gates.
+- `docs/FOURTH_PHASE_GAME_GUIDE_2026-07-03.md` - detailed player/instructor manual and implementation blueprint.
 - `AGENTS.md` - repo-level AI development guardrails.
 - `docs/PROJECT_MAP.md` - layer diagram and folder map (legacy-era; cross-check).
 - `docs/archive/` - historical DFS and AI review briefs outside the active app path.

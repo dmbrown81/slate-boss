@@ -1,4 +1,4 @@
-// Fourth Phase Lab — deterministic recognizer/scoring/meter proof.
+// Fourth Phase Lab — deterministic recognizer/scoring/momentum proof.
 //
 // Run: `npm run matchup:fourthphase`
 
@@ -12,6 +12,8 @@ import {
   createFourthPhaseDeck,
   generateFourthPhaseWarRoomOffers,
   isTrueCrowdBeforeOffenseCash,
+  plainPlaySummary,
+  playEffectVerb,
   scoreFourthPhasePlay,
   tutorialCheckdownIsValid,
   type FourthPhaseCard,
@@ -56,12 +58,12 @@ for (const test of SITUATION_TEST_CASES) {
 console.log('\nKnown scoring equation:');
 const checkdown = scoreFourthPhasePlay([card('offense-2')], { meter: BASE_METER, meterCap: BASE_METER_CAP });
 assert('checkdown exact score', checkdown.points === 9, `${checkdown.yards} x (1 + ${checkdown.execution}) x ${checkdown.bigPlay} = ${checkdown.points}`);
-assert('checkdown does not cash meter', !checkdown.didCash, `didCash=${checkdown.didCash}`);
+assert('checkdown does not cash momentum', !checkdown.didCash, `didCash=${checkdown.didCash}`);
 
 const chargeBeforeCash = scoreFourthPhasePlay([card('crowd-A'), card('offense-K')], { meter: BASE_METER, meterCap: BASE_METER_CAP });
 const cashBeforeCharge = scoreFourthPhasePlay([card('offense-K'), card('crowd-A')], { meter: BASE_METER, meterCap: BASE_METER_CAP });
 assert('Crowd before Offense changes score', chargeBeforeCash.points > cashBeforeCharge.points, `${chargeBeforeCash.points} > ${cashBeforeCharge.points}`);
-assert('House Call cashes the built meter', chargeBeforeCash.didCash && chargeBeforeCash.bigPlay >= 2, `BigPlay x${chargeBeforeCash.bigPlay}`);
+assert('Shot Play cashes the built momentum', chargeBeforeCash.didCash && chargeBeforeCash.bigPlay >= 2, `Explosive x${chargeBeforeCash.bigPlay}`);
 
 console.log('\nMeter and joker hooks:');
 const plainBlackout = scoreFourthPhasePlay([card('crowd-7'), card('crowd-J'), card('crowd-A')], {
@@ -73,14 +75,14 @@ const boostedBlackout = scoreFourthPhasePlay([card('crowd-7'), card('crowd-J'), 
   meterCap: BASE_METER_CAP,
   jokers: [{ id: 'twelfthMan' }],
 });
-assert('Twelfth Man boosts Crowd charge', boostedBlackout.meterAfter > plainBlackout.meterAfter, `${boostedBlackout.meterAfter.toFixed(2)} > ${plainBlackout.meterAfter.toFixed(2)}`);
+assert('Sold Out boosts Crowd momentum', boostedBlackout.meterAfter > plainBlackout.meterAfter, `${boostedBlackout.meterAfter.toFixed(2)} > ${plainBlackout.meterAfter.toFixed(2)}`);
 
 const pickSix = scoreFourthPhasePlay([card('defense-Q'), card('defense-K'), card('offense-6')], {
   meter: 1.4,
   meterCap: BASE_METER_CAP,
   jokers: [{ id: 'pickSixSpecialist' }],
 });
-assert('Pick-Six Specialist reaches cap', pickSix.meterAfter >= BASE_METER_CAP - 0.01, `meter x${pickSix.meterAfter.toFixed(2)}`);
+assert('Takeaway Artist reaches cap', pickSix.meterAfter >= BASE_METER_CAP - 0.01, `momentum x${pickSix.meterAfter.toFixed(2)}`);
 
 const complementaryPlain = scoreFourthPhasePlay([card('crowd-A'), card('offense-Q'), card('defense-J'), card('specialTeams-10')], {
   meter: BASE_METER,
@@ -130,7 +132,7 @@ assert('Closer lifts boss-drive scoring', closerBoosted.points > closerPlain.poi
 // Contract: the three displayed terms must reconcile to displayed points (tolerance covers term rounding).
 const reconciled = Math.round(complementaryGenius.yards * (1 + complementaryGenius.execution) * complementaryGenius.bigPlay);
 assert(
-  'points reconcile to Yards x (1 + Exec) x BigPlay',
+  'points reconcile to Yards x (1 + Leverage) x Explosive',
   Math.abs(complementaryGenius.points - reconciled) <= 2,
   `points=${complementaryGenius.points}, Yards ${complementaryGenius.yards} x (1 + ${complementaryGenius.execution}) x ${complementaryGenius.bigPlay} = ${reconciled}`,
 );
@@ -148,7 +150,7 @@ const repeatedDrive = scoreFourthPhasePlay([card('offense-8'), card('offense-9')
   boss: 'adaptiveDc',
   repeatedSituations: { drive: 1 },
 });
-assert('Adaptive DC zeros repeated situation', firstDrive.points > 0 && repeatedDrive.points === 0, `${firstDrive.points} then ${repeatedDrive.points}`);
+assert('Got Your Number zeros repeated situation', firstDrive.points > 0 && repeatedDrive.points === 0, `${firstDrive.points} then ${repeatedDrive.points}`);
 
 console.log('\nEdition and boss-cap fixes:');
 const plainCheck = scoreFourthPhasePlay([card('offense-5')], { meter: BASE_METER, meterCap: BASE_METER_CAP });
@@ -161,7 +163,7 @@ const roadDecibel = scoreFourthPhasePlay([card('crowd-A'), card('crowd-K'), card
   boss: 'roadGame',
   jokers: [{ id: 'decibelRecord' }],
 });
-assert('Road Game cap holds even with Decibel Record', roadDecibel.meterAfter <= 2.0001, `meter x${roadDecibel.meterAfter.toFixed(2)}`);
+assert('Road Game cap holds even with Standing Room Only', roadDecibel.meterAfter <= 2.0001, `momentum x${roadDecibel.meterAfter.toFixed(2)}`);
 
 const roadCollector = scoreFourthPhasePlay([card('crowd-A'), card('offense-Q'), card('defense-J'), card('specialTeams-10'), card('offense-K')], {
   meter: 1.8,
@@ -180,8 +182,8 @@ const runA = scoreFourthPhasePlay(parityCards, parityCtx);
 const runB = scoreFourthPhasePlay(parityCards, parityCtx);
 assert('scoring is deterministic for identical input', JSON.stringify(runA) === JSON.stringify(runB), 'two runs match byte-for-byte');
 
-const cashIndexHouseCall = scoreFourthPhasePlay([card('crowd-A'), card('offense-K')], { meter: BASE_METER, meterCap: BASE_METER_CAP });
-assert('cashesAtCardIndex marks the cashing Offense card', cashIndexHouseCall.cashesAtCardIndex === 1, `index ${cashIndexHouseCall.cashesAtCardIndex}`);
+const cashIndexShotPlay = scoreFourthPhasePlay([card('crowd-A'), card('offense-K')], { meter: BASE_METER, meterCap: BASE_METER_CAP });
+assert('cashesAtCardIndex marks the cashing Offense card', cashIndexShotPlay.cashesAtCardIndex === 1, `index ${cashIndexShotPlay.cashesAtCardIndex}`);
 const cashIndexNone = scoreFourthPhasePlay([card('offense-2')], { meter: BASE_METER, meterCap: BASE_METER_CAP });
 assert('cashesAtCardIndex is null when no cash', cashIndexNone.cashesAtCardIndex === null, `index ${cashIndexNone.cashesAtCardIndex}`);
 
@@ -192,17 +194,29 @@ assert('tutorial cash-in rejects Offense before Crowd', cashBeforeCharge.didCash
 assert('tutorial cash-in accepts Crowd before Offense', isTrueCrowdBeforeOffenseCash([card('crowd-A'), card('offense-K')], chargeBeforeCash), `index=${chargeBeforeCash.cashesAtCardIndex}`);
 
 const explanation = buildPlayExplanation(parityCards, runA);
-assert('play explanation cites preview score', explanation.includes(`${runA.points} Drive`), explanation);
-assert('play explanation names cashing card', explanation.includes(card('offense-K').roleName), explanation);
+assert('series explanation cites preview score', explanation.includes(`${runA.points} progress`), explanation);
+assert('series explanation names cashing card', explanation.includes(card('offense-K').roleName), explanation);
+
+console.log('\nEffect verbs and plain summaries (preview-as-teacher layer):');
+const fieldFlip = scoreFourthPhasePlay([card('specialTeams-4'), card('specialTeams-5')], { meter: BASE_METER, meterCap: BASE_METER_CAP });
+const bustedMix = scoreFourthPhasePlay(cardsFor(['defense', 'crowd']), { meter: BASE_METER, meterCap: BASE_METER_CAP });
+assert('cashing series verb is CASHES', playEffectVerb(chargeBeforeCash) === 'CASHES', playEffectVerb(chargeBeforeCash));
+assert('checkdown verb is SCORES', playEffectVerb(checkdown) === 'SCORES', playEffectVerb(checkdown));
+assert('crowd surge verb is BUILDS', playEffectVerb(plainBlackout) === 'BUILDS', playEffectVerb(plainBlackout));
+assert('field flip verb is SETS UP', playEffectVerb(fieldFlip) === 'SETS UP', playEffectVerb(fieldFlip));
+assert('unshaped mix verb is BAD CALL', playEffectVerb(bustedMix) === 'BAD CALL', playEffectVerb(bustedMix));
+assert('cash summary names the loop', plainPlaySummary(chargeBeforeCash).includes('cashed'), plainPlaySummary(chargeBeforeCash));
+assert('blackout summary tells player to cash soon', plainPlaySummary(plainBlackout).includes('Cash it'), plainPlaySummary(plainBlackout));
+assert('bust summary names the bleed', plainPlaySummary(bustedMix).includes('bled'), plainPlaySummary(bustedMix));
 
 console.log('\nBoss warning preview helpers:');
 const bossCases: Array<{ boss: FourthPhaseBossKey; cards: FourthPhaseCard[]; repeated?: Record<string, number>; meter?: number; expected: string }> = [
   { boss: 'stackedBox', cards: [card('offense-8')], expected: 'Stacked Box' },
   { boss: 'noFlyZone', cards: [card('offense-8'), card('offense-9'), card('offense-10')], expected: 'No-Fly Zone' },
   { boss: 'roadGame', cards: [card('crowd-A'), card('offense-K')], expected: 'Road Game' },
-  { boss: 'turnoverDrill', cards: [card('defense-Q'), card('offense-6')], expected: 'Turnover Drill' },
-  { boss: 'fieldPositionWar', cards: [card('specialTeams-4')], expected: 'Field Position War' },
-  { boss: 'adaptiveDc', cards: [card('offense-8'), card('offense-9'), card('offense-10')], repeated: { drive: 1 }, expected: 'Adaptive DC' },
+  { boss: 'turnoverDrill', cards: [card('defense-Q'), card('offense-6')], expected: 'Ball Security' },
+  { boss: 'fieldPositionWar', cards: [card('specialTeams-4')], expected: 'Touchback Machine' },
+  { boss: 'adaptiveDc', cards: [card('offense-8'), card('offense-9'), card('offense-10')], repeated: { drive: 1 }, expected: 'Got Your Number' },
   { boss: 'preventDefense', cards: [card('crowd-A'), card('offense-K')], meter: BASE_METER_CAP, expected: 'Prevent Defense' },
 ];
 for (const test of bossCases) {
@@ -235,4 +249,4 @@ if (failures > 0) {
   process.exit(1);
 }
 
-console.log('Fourth Phase matchup passed: situations, equation, meter order, expanded jokers, and boss pivots hold.');
+console.log('Fourth Phase matchup passed: situations, equation, momentum order, expanded jokers, and boss pivots hold.');

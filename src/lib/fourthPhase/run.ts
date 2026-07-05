@@ -76,21 +76,21 @@ export const FOURTH_PHASE_TEAMS: Record<FourthPhaseTeamKey, FourthPhaseTeamProfi
     name: 'Harbor Bruisers',
     shortName: 'Black & Blue',
     signatureJoker: 'pickSixSpecialist',
-    identity: 'Defense and hidden yards build the floor off-meter.',
+    identity: 'Defense and hidden yards build the floor without needing a hot crowd.',
   },
   loudHouse: {
     key: 'loudHouse',
-    name: 'Summit Noise',
-    shortName: 'Loud House',
+    name: 'Summit Stampede',
+    shortName: 'Stampede',
     signatureJoker: 'twelfthMan',
-    identity: 'Crowd charges fast, but Base must be drafted carefully.',
+    identity: 'The crowd swings momentum fast, but the base offense has to be drafted carefully.',
   },
   specialTeamsChaos: {
     key: 'specialTeamsChaos',
     name: 'River City Sparks',
     shortName: 'ST Chaos',
     signatureJoker: 'fieldGeneral',
-    identity: 'Fuel, draw, and money create odd scoring windows.',
+    identity: 'Hidden yards, draw, and money create odd scoring windows.',
   },
 };
 
@@ -104,11 +104,11 @@ export const FOURTH_PHASE_BOSSES: Record<FourthPhaseBossKey, FourthPhaseBossProf
   none: { key: 'none', name: 'Open Field', effect: 'No boss pressure.' },
   stackedBox: { key: 'stackedBox', name: 'Stacked Box', effect: 'Offense Yards are cut in half.' },
   noFlyZone: { key: 'noFlyZone', name: 'No-Fly Zone', effect: 'Only two Offense cards are clean.' },
-  roadGame: { key: 'roadGame', name: 'Road Game', effect: 'Meter cap forced to x2.0 with heavier bleed.' },
-  turnoverDrill: { key: 'turnoverDrill', name: 'Turnover Drill', effect: 'Defense subtracts Execution.' },
-  fieldPositionWar: { key: 'fieldPositionWar', name: 'Field Position War', effect: 'Special Teams gives no fuel.' },
-  adaptiveDc: { key: 'adaptiveDc', name: 'Adaptive DC', effect: 'Repeated situations score 0.' },
-  preventDefense: { key: 'preventDefense', name: 'Prevent Defense', effect: 'BigPlay is capped.' },
+  roadGame: { key: 'roadGame', name: 'Road Game', effect: 'Momentum cap forced to x2.0 with heavier bleed.' },
+  turnoverDrill: { key: 'turnoverDrill', name: 'Ball Security', effect: 'Defense creates less leverage.' },
+  fieldPositionWar: { key: 'fieldPositionWar', name: 'Touchback Machine', effect: 'Special Teams hidden-yards payout is suppressed.' },
+  adaptiveDc: { key: 'adaptiveDc', name: 'Got Your Number', effect: 'Repeated situations score 0.' },
+  preventDefense: { key: 'preventDefense', name: 'Prevent Defense', effect: 'Explosive multiplier is capped.' },
 };
 
 const BOSS_KEYS: readonly FourthPhaseBossKey[] = [
@@ -120,6 +120,19 @@ const BOSS_KEYS: readonly FourthPhaseBossKey[] = [
   'adaptiveDc',
   'preventDefense',
 ];
+
+const FOURTH_PHASE_TEAM_CODES: Record<FourthPhaseTeamKey, string> = {
+  balanced: 'BAL',
+  airRaid: 'AIR',
+  smashmouth: 'SMA',
+  blackAndBlue: 'BLA',
+  loudHouse: 'STA',
+  specialTeamsChaos: 'STC',
+};
+
+const FOURTH_PHASE_LEGACY_TEAM_CODES: Partial<Record<string, FourthPhaseTeamKey>> = {
+  LOU: 'loudHouse',
+};
 
 export interface FourthPhaseRunSeed {
   seed: number;
@@ -133,21 +146,22 @@ export interface FourthPhaseRunSeed {
   meter: MeterState;
 }
 
-export function fourthPhaseRunCode(seed: number, team: FourthPhaseTeamKey): string {
-  const teamCode = FOURTH_PHASE_TEAMS[team].shortName.replace(/[^A-Z0-9]/gi, '').slice(0, 3).toUpperCase();
-  return `FP-${teamCode}-${seed.toString(36).toUpperCase()}`;
+export function fourthPhaseRunCode(seed: number, team: FourthPhaseTeamKey, stake = 1): string {
+  const teamCode = FOURTH_PHASE_TEAM_CODES[team];
+  const base = `FP-${teamCode}-${seed.toString(36).toUpperCase()}`;
+  return stake > 1 ? `${base}-S${stake}` : base;
 }
 
-export function parseFourthPhaseRunCode(code: string): { seed: number; team: FourthPhaseTeamKey } | null {
-  const match = code.trim().toUpperCase().match(/^FP-([A-Z0-9]{2,3})-([A-Z0-9]+)$/);
+export function parseFourthPhaseRunCode(code: string): { seed: number; team: FourthPhaseTeamKey; stake: number } | null {
+  const match = code.trim().toUpperCase().match(/^FP-([A-Z0-9]{2,3})-([A-Z0-9]+)(?:-S([0-9]))?$/);
   if (!match) return null;
-  const [, teamCode, seedCode] = match;
-  const team = (Object.keys(FOURTH_PHASE_TEAMS) as FourthPhaseTeamKey[]).find(
-    (key) => FOURTH_PHASE_TEAMS[key].shortName.replace(/[^A-Z0-9]/gi, '').slice(0, 3).toUpperCase() === teamCode,
+  const [, teamCode, seedCode, stakeCode] = match;
+  const team = FOURTH_PHASE_LEGACY_TEAM_CODES[teamCode] ?? (Object.keys(FOURTH_PHASE_TEAM_CODES) as FourthPhaseTeamKey[]).find(
+    (key) => FOURTH_PHASE_TEAM_CODES[key] === teamCode,
   );
   const seed = Number.parseInt(seedCode, 36);
   if (!team || !Number.isFinite(seed)) return null;
-  return { seed, team };
+  return { seed, team, stake: Math.max(1, Number.parseInt(stakeCode ?? '1', 10) || 1) };
 }
 
 export function randomFourthPhaseBoss(seed: number, team: FourthPhaseTeamKey): FourthPhaseBossKey {
@@ -229,11 +243,11 @@ const PRACTICE_KEYS: readonly SituationKey[] = [
 
 function bossTag(boss: FourthPhaseBossKey): string | null {
   if (boss === 'roadGame') return 'fixes Road Game';
-  if (boss === 'fieldPositionWar') return 'answers Field Position War';
+  if (boss === 'fieldPositionWar') return 'answers Touchback Machine';
   if (boss === 'noFlyZone') return 'answers No-Fly Zone';
   if (boss === 'stackedBox') return 'answers Stacked Box';
-  if (boss === 'turnoverDrill') return 'answers Turnover Drill';
-  if (boss === 'adaptiveDc') return 'answers Adaptive DC';
+  if (boss === 'turnoverDrill') return 'answers Ball Security';
+  if (boss === 'adaptiveDc') return 'answers Got Your Number';
   if (boss === 'preventDefense') return 'answers Prevent Defense';
   return null;
 }
@@ -293,17 +307,17 @@ function practiceKeyFor(team: FourthPhaseTeamKey, boss: FourthPhaseBossKey, seed
 // Concrete numbers only — this string is the shop's promise, so it must mirror
 // applyPracticeBonus in engine.ts exactly (+5 Yards / +0.03 Exec per level;
 // +0.12 BP per level on cashing situations, +0.05 otherwise; utility packages
-// for Field Flip and The Blackout).
+// for Field Flip and Crowd Surge).
 function practiceDrillDetail(situation: SituationKey, level: number): string {
   if (situation === 'fieldFlip') {
     return `Level ${level}: Field Flip also pays +${level} draw and +$${level * 2}.`;
   }
   if (situation === 'blackout') {
-    return `Level ${level}: The Blackout also charges +${(level * 0.15).toFixed(2)} meter.`;
+    return `Level ${level}: Crowd Surge also charges +${(level * 0.15).toFixed(2)} momentum.`;
   }
   const cashes = situation === 'houseCall' || situation === 'complementaryFootball';
   const bigPlay = level * (cashes ? 0.12 : 0.05);
-  return `Level ${level}: ${SITUATION_LABELS[situation]} gains +${level * 5} Yards, +${(level * 0.03).toFixed(2)} Exec, +${bigPlay.toFixed(2)} BP.`;
+  return `Level ${level}: ${SITUATION_LABELS[situation]} gains +${level * 5} Yards, +${(level * 0.03).toFixed(2)} Leverage, +${bigPlay.toFixed(2)} Explosive.`;
 }
 
 export function generateFourthPhaseWarRoomOffers(
@@ -341,6 +355,6 @@ export function generateFourthPhaseWarRoomOffers(
   return [...jokerOffers, drill];
 }
 
-export function activeBossForDrive(run: Pick<FourthPhaseRunSeed, 'boss'>, driveIndex: number): FourthPhaseBossKey {
-  return driveIndex >= 2 ? run.boss : 'none';
+export function activeBossForDrive(run: Pick<FourthPhaseRunSeed, 'boss'>, driveIndex: number, bossFromDrive = 2): FourthPhaseBossKey {
+  return driveIndex >= bossFromDrive ? run.boss : 'none';
 }

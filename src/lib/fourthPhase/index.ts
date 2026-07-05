@@ -5,4 +5,5 @@ export * from './jokers';
 export * from './meter';
 export * from './run';
 export * from './situations';
+export * from './stakes';
 export * from './types';

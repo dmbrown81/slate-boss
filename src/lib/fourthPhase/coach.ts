@@ -44,6 +44,49 @@ export function coachOrderCards(cards: readonly FourthPhaseCard[]): FourthPhaseC
   return [...cards].sort((a, b) => COACH_PHASE_ORDER[a.phase] - COACH_PHASE_ORDER[b.phase]);
 }
 
+/**
+ * One verb that names what the selected series actually does. This is the preview's
+ * headline: a cold player should know whether a call cashes, scores, charges,
+ * sets up the next call, or busts before they know any situation names.
+ */
+export type PlayEffectVerb = 'CASHES' | 'SCORES' | 'BUILDS' | 'SETS UP' | 'BAD CALL';
+
+export function playEffectVerb(result: FourthPhaseScoreResult): PlayEffectVerb {
+  if (result.bust) return 'BAD CALL';
+  if (result.didCash) return 'CASHES';
+  if (result.situation.utility && result.meterCharged > 0.2 && result.points === 0) return 'BUILDS';
+  if (result.situation.utility && (result.fuel.draw > 0 || result.fuel.money > 0 || result.fuel.discount > 0) && result.points === 0) return 'SETS UP';
+  return 'SCORES';
+}
+
+/**
+ * One plain-English sentence for the collapsed ledger: what the last play did and
+ * what to do about it. The full math stays one tap away.
+ */
+export function plainPlaySummary(result: FourthPhaseScoreResult): string {
+  if (result.bust) {
+    return `No clean shape. The series broke down and momentum bled to ${formatMeter(result.meterAfter)}.`;
+  }
+  if (result.didCash) {
+    return `Momentum cashed into Explosive x${result.bigPlay.toFixed(2)} for ${result.points}. That is the loop.`;
+  }
+  if (result.situation.key === 'blackout') {
+    return `Crowd built momentum to ${formatMeter(result.meterAfter)}. Cash it with Offense soon.`;
+  }
+  if (result.situation.key === 'fieldFlip') {
+    const parts = [
+      result.fuel.draw ? `+${result.fuel.draw} draw` : '',
+      result.fuel.money ? `+$${result.fuel.money}` : '',
+      result.fuel.discount ? `+${result.fuel.discount} discount` : '',
+    ].filter(Boolean).join(', ');
+    return `Special Teams flipped field position: ${parts || 'setup'} for the next call.`;
+  }
+  if (result.meterAfter < result.meterBefore - 0.05) {
+    return `${result.situation.label} scored ${result.points}, but hot momentum bled to ${formatMeter(result.meterAfter)}. Cash it with Offense.`;
+  }
+  return `${result.situation.label} scored ${result.points} safe points.`;
+}
+
 export function isTrueCrowdBeforeOffenseCash(cards: readonly FourthPhaseCard[], result: FourthPhaseScoreResult): boolean {
   if (!result.didCash || result.cashesAtCardIndex === null) return false;
   return cards.slice(0, result.cashesAtCardIndex).some((card) => card.phase === 'crowd');
@@ -54,34 +97,34 @@ export function tutorialCheckdownIsValid(cards: readonly FourthPhaseCard[], resu
 }
 
 export function buildPlayExplanation(cards: readonly FourthPhaseCard[], result: FourthPhaseScoreResult): string {
-  if (!cards.length) return 'Tap cards to build a play.';
-  if (result.bust) return `Broken call -> ${result.points} Drive and the meter bleeds.`;
+  if (!cards.length) return 'Tap cards to build a series.';
+  if (result.bust) return `Broken call -> ${result.points} progress and momentum bleeds.`;
 
   if (result.didCash && result.cashesAtCardIndex !== null) {
     const cashCard = cards[result.cashesAtCardIndex];
     const crowdBefore = cards.slice(0, result.cashesAtCardIndex).filter((card) => card.phase === 'crowd');
     const opener = crowdBefore.length > 0
-      ? `Crowd builds ${formatMeter(result.meterAfterCash)}`
+      ? `Crowd builds ${formatMeter(result.meterAfterCash)} momentum`
       : `Offense cashes cold at ${formatMeter(result.meterAfterCash)}`;
-    return `${opener} -> ${cashCard.roleName} cashes -> ${result.points} Drive`;
+    return `${opener} -> ${cashCard.roleName} cashes -> ${result.points} progress`;
   }
 
   if (result.situation.key === 'fieldFlip') {
     const fuel = [`+${result.fuel.draw} draw`, result.fuel.money ? `+$${result.fuel.money}` : '', result.fuel.discount ? `+${result.fuel.discount} discount` : '']
       .filter(Boolean)
       .join(', ');
-    return `Special Teams flips field -> ${fuel || 'tempo'} -> next snap`;
+    return `Special Teams flips the field -> ${fuel || 'setup'} -> next call`;
   }
 
   if (result.situation.key === 'blackout') {
-    return `Crowd blackout charges to ${formatMeter(result.meterAfter)} -> cash it soon`;
+    return `Crowd surge builds to ${formatMeter(result.meterAfter)} -> cash it soon`;
   }
 
   if (result.fuel.draw || result.fuel.money || result.fuel.discount) {
-    return `${result.situation.label} fuels the drive -> ${result.points} Drive`;
+    return `${result.situation.label} sets up the drive -> ${result.points} progress`;
   }
 
-  return `${result.situation.label} -> ${result.yards} Yards x Exec x BigPlay -> ${result.points} Drive`;
+  return `${result.situation.label} -> ${result.yards} Yards x Leverage x Explosive -> ${result.points} progress`;
 }
 
 export function bossWarningForPlay({ boss, result, cards, repeatedSituations = {} }: BossWarningInput): string | null {
@@ -91,10 +134,10 @@ export function bossWarningForPlay({ boss, result, cards, repeatedSituations = {
   const specialTeamsCount = cards.filter((card) => card.phase === 'specialTeams').length;
 
   if (boss === 'adaptiveDc' && (repeatedSituations[result.situation.key] ?? 0) > 0) {
-    return 'Adaptive DC: repeat call will score 0.';
+    return 'Got Your Number: repeat call will score 0.';
   }
   if (boss === 'roadGame' && (result.didCash || result.meterAfter > 1.25 || cards.some((card) => card.phase === 'crowd'))) {
-    return 'Road Game: meter is capped at x2.0 and bleeds harder.';
+    return 'Road Game: momentum is capped at x2.0 and bleeds harder.';
   }
   if (boss === 'noFlyZone' && offenseCount > 2) {
     return 'No-Fly Zone: extra Offense loses Yards after two clean cards.';
@@ -103,13 +146,13 @@ export function bossWarningForPlay({ boss, result, cards, repeatedSituations = {
     return 'Stacked Box: Offense Yards are cut in half.';
   }
   if (boss === 'turnoverDrill' && defenseCount > 0) {
-    return 'Turnover Drill: Defense lowers Execution on this play.';
+    return 'Ball Security: red Defense cards create less leverage on this series.';
   }
   if (boss === 'fieldPositionWar' && specialTeamsCount > 0) {
-    return 'Field Position War: Special Teams fuel is suppressed.';
+    return 'Touchback Machine: Special Teams hidden-yards payout is suppressed.';
   }
   if (boss === 'preventDefense' && result.bigPlay >= 2.7) {
-    return 'Prevent Defense: BigPlay is capped at x2.75.';
+    return 'Prevent Defense: Explosive is capped at x2.75.';
   }
   return null;
 }

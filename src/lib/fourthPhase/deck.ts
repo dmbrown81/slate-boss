@@ -1,4 +1,5 @@
 import { mulberry32, stringSeed, type RNG } from '../rng';
+import { crowdChargeForRank } from './meter';
 import {
   PHASES,
   RANKS,
@@ -43,64 +44,64 @@ const RANK_TIER: Record<Rank, CardTier> = {
 
 const ROLE_NAMES: Record<Phase, Record<Rank, string>> = {
   offense: {
-    '2': 'Boundary Blocker',
+    '2': 'QB Sneak',
     '3': 'Slot Motion',
     '4': 'Quick Out',
     '5': 'RPO Keep',
     '6': 'Power Back',
     '7': 'Deep Over',
-    '8': 'Tempo Quarterback',
+    '8': 'No-Huddle',
     '9': 'Red-Zone Target',
-    '10': 'Vertical Shot',
-    J: 'Play-Action Ace',
+    '10': 'Shot Play',
+    J: 'Play Action',
     Q: 'Chain Mover',
     K: 'Feature Back',
     A: 'Franchise Quarterback',
   },
   defense: {
-    '2': 'Nickel Fit',
+    '2': 'Run Fit',
     '3': 'Edge Set',
     '4': 'Rally Tackle',
     '5': 'Robber Drop',
     '6': 'A-Gap Mug',
     '7': 'Press Corner',
-    '8': 'Heat Check',
-    '9': 'Red-Zone Wall',
-    '10': 'Turnover Punch',
-    J: 'Coverage Captain',
+    '8': 'Zero Blitz',
+    '9': 'Third-Down Stop',
+    '10': 'Strip Sack',
+    J: 'Coverage Disguise',
     Q: 'Ball Hawk',
-    K: 'Pocket Wrecker',
-    A: 'Field General',
+    K: 'Sack Artist',
+    A: 'Green Dot',
   },
   specialTeams: {
-    '2': 'Coverage Wedge',
-    '3': 'Pooch Angle',
-    '4': 'Gun Team',
-    '5': 'Punt Pin',
+    '2': 'Coverage Lane',
+    '3': 'Pooch Kick',
+    '4': 'Gunner',
+    '5': 'Coffin Corner',
     '6': 'Return Lane',
-    '7': 'Hands Unit',
-    '8': 'Fake Threat',
-    '9': 'Long Snap Clock',
-    '10': 'Field Flip',
-    J: 'Kicker Nerve',
+    '7': 'Hands Team',
+    '8': 'Fake Punt',
+    '9': 'Directional Punt',
+    '10': 'Pin Deep',
+    J: 'Automatic',
     Q: 'Return Captain',
     K: 'Hidden Yards',
-    A: 'Specialist Ace',
+    A: 'The Weapon',
   },
   crowd: {
     '2': 'Student Section',
-    '3': 'Third-Down Hum',
-    '4': 'Band Cue',
+    '3': 'Pregame Buzz',
+    '4': 'Drumline',
     '5': 'Towel Wave',
-    '6': 'Goal-Line Noise',
-    '7': 'Night Kickoff',
+    '6': 'On Their Feet',
+    '7': 'Under the Lights',
     '8': 'Whiteout',
-    '9': 'Sideline Surge',
-    '10': 'Stadium Pulse',
-    J: 'Decibel Spike',
-    Q: 'Home Stand',
-    K: 'Rivalry Roar',
-    A: 'Twelfth Man',
+    '9': 'Deafening',
+    '10': 'Third-Down Roar',
+    J: 'Hostile Environment',
+    Q: 'Homecoming',
+    K: 'Rivalry Week',
+    A: 'Home Field',
   },
 };
 
@@ -124,6 +125,30 @@ export const PHASE_COLOR: Record<Phase, string> = {
   specialTeams: '#f4c24f',
   crowd: '#a987ff',
 };
+
+/**
+ * The job each phase does, in the player's mental model. Card faces and legends
+ * lead with these instead of the bare football noun — "Defense" alone reads as
+ * "stops the other team", which is not what red cards do here.
+ */
+export const PHASE_JOB: Record<Phase, string> = {
+  offense: 'Gain Yards',
+  defense: 'Leverage',
+  specialTeams: 'Hidden Yards',
+  crowd: 'Momentum',
+};
+
+/**
+ * What this specific card contributes when it resolves, phrased so a card face
+ * teaches its own job. Offense states its yardage payload, Crowd states its exact
+ * meter charge, Defense/ST state the resource they feed.
+ */
+export function cardContributionLabel(card: FourthPhaseCard): string {
+  if (card.phase === 'offense') return `+${card.value} Yards`;
+  if (card.phase === 'crowd') return `+${crowdChargeForRank(card.rank).toFixed(1)} momentum`;
+  if (card.phase === 'defense') return 'Leverage';
+  return 'Hidden Yards';
+}
 
 export function createFourthPhaseDeck(): FourthPhaseCard[] {
   const cards: FourthPhaseCard[] = [];

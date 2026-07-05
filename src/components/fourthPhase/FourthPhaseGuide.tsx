@@ -15,10 +15,10 @@ interface PhaseJob {
 }
 
 const PHASE_JOBS: readonly PhaseJob[] = [
-  { phase: 'offense', short: 'OFF', job: 'Yards', detail: 'The payload. Moves the ball and supplies the base score.' },
-  { phase: 'defense', short: 'DEF', job: 'Execution', detail: 'Reliability. Raises the multiplier floor, not fireworks.' },
-  { phase: 'crowd', short: 'CRD', job: 'BigPlay', detail: 'Charges the Crowd Meter, then cashes it as your ceiling.' },
-  { phase: 'specialTeams', short: 'ST', job: 'Fuel', detail: 'Off the equation: extra draws, money, and discounts.' },
+  { phase: 'offense', short: 'OFF', job: 'Gain Yards', detail: 'The payload. Moves the ball, supplies the base score, and cashes momentum.' },
+  { phase: 'defense', short: 'DEF', job: 'Leverage', detail: 'Stops, pressure, and takeaways create short fields and cleaner scoring chances.' },
+  { phase: 'crowd', short: 'CRD', job: 'Momentum', detail: 'The fourth phase. The crowd builds momentum; Offense cashes it.' },
+  { phase: 'specialTeams', short: 'ST', job: 'Hidden Yards', detail: 'Field flips, return units, and specialists create draw, money, and discounts.' },
 ];
 
 interface SituationGuide {
@@ -31,14 +31,14 @@ interface SituationGuide {
 
 // Ordered the way the recognizer checks them: best shape first.
 const SITUATION_GUIDE: readonly SituationGuide[] = [
-  { key: 'complementaryFootball', name: 'Complementary Football', trigger: 'All four phases present', payoff: 'Apex: boosts every term and cashes the meter', kind: 'apex' },
+  { key: 'complementaryFootball', name: 'Complementary Football', trigger: 'All four phases present', payoff: 'Apex: boosts every term and cashes momentum', kind: 'apex' },
   { key: 'momentumShift', name: 'Momentum Shift', trigger: '2+ Offense and 2+ Defense', payoff: 'Solid score with a high floor', kind: 'score' },
-  { key: 'houseCall', name: 'House Call', trigger: 'Offense + Crowd together', payoff: 'Cashes the Crowd Meter into a score', kind: 'score' },
-  { key: 'pickSix', name: 'Pick Six', trigger: '2+ Defense and 1+ Offense (no Crowd)', payoff: 'Burst score and charges the meter', kind: 'score' },
-  { key: 'blackout', name: 'The Blackout', trigger: '3+ Crowd', payoff: 'No score: charges the meter hard', kind: 'charge' },
+  { key: 'houseCall', name: 'Shot Play', trigger: 'Offense + Crowd together', payoff: 'Cashes momentum into a score', kind: 'score' },
+  { key: 'pickSix', name: 'Sudden Change', trigger: '2+ Defense and 1+ Offense (no Crowd)', payoff: 'Takeaway leverage turns into a fast score', kind: 'score' },
+  { key: 'blackout', name: 'Crowd Surge', trigger: '3+ Crowd', payoff: 'No score: builds momentum hard', kind: 'charge' },
   { key: 'fieldFlip', name: 'Field Flip', trigger: '2+ Special Teams', payoff: 'No score: draws, money, discounts', kind: 'fuel' },
-  { key: 'stand', name: 'The Stand', trigger: '3+ Defense', payoff: 'Low score, very high Execution', kind: 'score' },
-  { key: 'drive', name: 'The Drive', trigger: '3+ Offense', payoff: 'Score straight from Offense values', kind: 'score' },
+  { key: 'stand', name: 'Defensive Stand', trigger: '3+ Defense', payoff: 'Low score, very high leverage', kind: 'score' },
+  { key: 'drive', name: 'Sustained Drive', trigger: '3+ Offense', payoff: 'Score straight from Offense values', kind: 'score' },
   { key: 'checkdown', name: 'The Checkdown', trigger: '1-2 Offense only', payoff: 'Small safe score, saves the rest of your hand', kind: 'score' },
   { key: 'bustedPlay', name: 'Busted Play', trigger: 'No clean shape', payoff: 'Penalty: avoid this', kind: 'bust' },
 ];
@@ -162,19 +162,22 @@ export function HowToPlay({ defaultOpen = false }: { defaultOpen?: boolean }) {
     <Collapsible title="How to play" hint="tap to expand" defaultOpen={defaultOpen}>
       <div style={{ display: 'grid', gap: 10 }}>
         <Step n="1" head="The goal">
-          A game is <b>3 drives</b>. Each drive has a point target. Hit it before you run out of plays. Clear all three to win.
+          A game is <b>3 drives</b>. Each drive has a target. Hit it before you run out of calls. Clear all three to win.
         </Step>
-        <Step n="2" head="Run a play">
-          Tap up to <b>5 cards</b> from your hand, then <b>Run Play</b>. The phases you combine form a <b>Situation</b> that decides the score.
+        <Step n="2" head="Call a series">
+          Tap up to <b>5 cards</b> from your hand, then <b>Run Series</b>. The phases you combine form a <b>Situation</b> that decides the score.
         </Step>
         <Step n="3" head="The four phases">
           <div style={{ marginTop: 6 }}><PhaseLegend /></div>
           <div style={{ marginTop: 8, fontSize: 11.5, color: FB.textDim, fontFamily: 'inherit' }}>
-            Score = <b style={{ color: '#5fb4ff' }}>Yards</b> × (1 + <b style={{ color: '#ff7c93' }}>Execution</b>) × <b style={{ color: '#f4c24f' }}>BigPlay</b>
+            Score = <b style={{ color: '#5fb4ff' }}>Yards</b> × (1 + <b style={{ color: '#ff7c93' }}>Leverage</b>) × <b style={{ color: '#f4c24f' }}>Explosive</b>
+          </div>
+          <div style={{ marginTop: 6 }}>
+            Coaches talk about winning all three phases. Here, the crowd is the fourth. <b style={{ color: '#ff7c93' }}>Defense</b> creates takeaways and short fields: cleaner chances, bigger scores.
           </div>
         </Step>
-        <Step n="4" head="The Crowd Meter">
-          <b>Crowd</b> cards charge the meter instead of scoring. A scoring play <b>cashes</b> it into BigPlay. Build the meter first, then cash it. Order matters: <b>cards on the left resolve first</b>, so put Crowd before Offense.
+        <Step n="4" head="Momentum">
+          <b>Crowd</b> cards build momentum instead of moving the ball. A scoring series <b>cashes</b> it into an explosive play. Build momentum first, then cash it. Order matters: <b>cards on the left resolve first</b>, so put Crowd before Offense.
         </Step>
       </div>
     </Collapsible>
