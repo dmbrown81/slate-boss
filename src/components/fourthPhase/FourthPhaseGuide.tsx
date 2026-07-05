@@ -179,6 +179,9 @@ export function HowToPlay({ defaultOpen = false }: { defaultOpen?: boolean }) {
         <Step n="4" head="Momentum">
           <b>Crowd</b> cards build momentum instead of moving the ball. A scoring series <b>cashes</b> it into an explosive play. Build momentum first, then cash it. Order matters: <b>cards on the left resolve first</b>, so put Crowd before Offense.
         </Step>
+        <Step n="5" head="Play script">
+          Some calls become stronger in football order. A <b>Run</b> before <b>Play Action</b>, a <b>Takeaway</b> before a <b>Shot</b>, or three calls from one formation can light up a combo in the preview.
+        </Step>
       </div>
     </Collapsible>
   );

@@ -24,8 +24,10 @@ import {
   buildRunShareCardData,
   cardContributionLabel,
   cardDisplayName,
+  cardPlayChips,
   coachOrderCards,
   coachPickForWarRoom,
+  comboLedgerEntries,
   createFourthPhaseRun,
   discountedOfferCost,
   drawFourthPhaseCards,
@@ -673,6 +675,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
   const preview = selectedCards.length ? scoreFourthPhasePlay(selectedCards, buildPlayContext(state)) : null;
   const playExplanation = preview ? buildPlayExplanation(selectedCards, preview) : 'Tap cards to build a series.';
   const previewVerb = preview ? playEffectVerb(preview) : null;
+  const previewCombos = preview ? comboLedgerEntries(preview) : [];
   // Would the coach's order (Crowd -> Defense -> ST -> Offense) score more than the
   // player's current order? Same scoring path as preview/execution, so the promised
   // delta is exact.
@@ -875,7 +878,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
       const selected = current.selectedIds.map((id) => byId.get(id)).filter((card): card is FourthPhaseCard => Boolean(card));
       return { ...current, selectedIds: coachOrderCards(selected).map((card) => card.id) };
     });
-    setCoachNudge('Coach ordered the series: Crowd first, Offense cashes.');
+    setCoachNudge('Coach ordered the script: setup first, then the call that cashes it.');
   }
 
   function refillHand(current: LabState, hand: FourthPhaseCard[], discardPile: FourthPhaseCard[], drawExtra: number) {
@@ -1339,7 +1342,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
           {justUnlocked.map((team) => (
             <UnlockBanner
               key={team}
-              title={`New team unlocked: ${FOURTH_PHASE_TEAMS[team].name}`}
+              title={`New playbook unlocked: ${FOURTH_PHASE_TEAMS[team].shortName}`}
               detail={FOURTH_PHASE_TEAMS[team].identity}
               color={FB.gold}
             />
@@ -1495,6 +1498,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
         <div style={{ border: `1px solid ${preview?.didCash ? FB.gold : FB.border}`, borderRadius: 8, background: '#101722', color: preview?.didCash ? FB.gold : FB.textDim, padding: '8px 9px', fontSize: 11.5, fontWeight: 850, marginBottom: 8 }}>
           {playExplanation}
         </div>
+        {previewCombos.length > 0 && <ComboChips entries={previewCombos} />}
         <div style={{ display: 'flex', gap: 6, minHeight: 100, overflowX: 'auto', paddingBottom: 2 }}>
           {selectedCards.length === 0 ? (
             <div style={{ ...emptyWide }}>Select up to five cards</div>
@@ -1629,7 +1633,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
             <div style={{ display: 'grid', gap: 6, marginTop: 8 }}>
               {state.lastPlay.ledger.map((entry, index) => (
                 <div key={`${entry.label}-${index}`} style={{ display: 'grid', gridTemplateColumns: '92px 76px 1fr', gap: 6, fontSize: 11, color: FB.textDim }}>
-                  <span style={{ color: entry.channel === 'joker' ? '#cbbdff' : entry.channel === 'boss' ? FB.red : FB.textFaint, fontWeight: 900 }}>{entry.label}</span>
+                  <span style={{ color: entry.channel === 'combo' ? FB.gold : entry.channel === 'joker' ? '#cbbdff' : entry.channel === 'boss' ? FB.red : FB.textFaint, fontWeight: 900 }}>{entry.label}</span>
                   <span className="fb-num" style={{ color: FB.text, fontWeight: 900 }}>{entry.value}</span>
                   <span>{entry.detail}</span>
                 </div>
@@ -2093,6 +2097,32 @@ function EffectVerbChip({ verb }: { verb: ReturnType<typeof playEffectVerb> }) {
   );
 }
 
+function ComboChips({ entries }: { entries: ReturnType<typeof comboLedgerEntries> }) {
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, margin: '-2px 0 8px' }}>
+      {entries.map((entry, index) => (
+        <span
+          key={`${entry.label}-${index}`}
+          title={entry.detail}
+          style={{
+            border: `1px solid rgba(242,189,61,0.7)`,
+            borderRadius: FP_RADIUS.badge,
+            color: FB.gold,
+            background: 'rgba(242,189,61,0.08)',
+            fontSize: 9,
+            fontWeight: 950,
+            letterSpacing: 0,
+            padding: '2px 6px',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {entry.label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 // "After this: 120 to clear, 5 calls left" — the preview answers the objective,
 // not just the score.
 function AfterThisLine({ points, targetRemaining, playsLeft }: { points: number; targetRemaining: number; playsLeft: number }) {
@@ -2126,6 +2156,7 @@ const CARD_SURFACE: Record<FourthPhaseCard['phase'], string> = {
 
 function HandCard({ card, selected, tone, onClick }: { card: FourthPhaseCard; selected: boolean; tone?: 'highlight' | 'dim'; onClick: () => void }) {
   const badge = cardBadge(card);
+  const chips = cardPlayChips(card);
   const coachHighlight = tone === 'highlight';
   const coachDim = tone === 'dim' && !selected;
   return (
@@ -2165,6 +2196,15 @@ function HandCard({ card, selected, tone, onClick }: { card: FourthPhaseCard; se
       </div>
       <div>
         <div style={{ fontSize: 11.5, color: FB.text, fontWeight: 950, lineHeight: 1.08 }}>{card.roleName}</div>
+        {chips.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 5 }}>
+            {chips.map((chip) => (
+              <span key={chip} style={{ border: `1px solid ${PHASE_COLOR[card.phase]}`, borderRadius: FP_RADIUS.badge, color: FB.textDim, fontSize: 7.5, fontWeight: 950, padding: '1px 4px', background: 'rgba(7,11,16,0.36)' }}>
+                {chip}
+              </span>
+            ))}
+          </div>
+        )}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4, marginTop: 5 }}>
           <span style={{ fontSize: 9.5, color: PHASE_COLOR[card.phase], fontWeight: 900 }}>{cardContributionLabel(card)}</span>
           <span className="fb-num" style={{ fontSize: 12, color: FB.gold, fontWeight: 950 }}>{card.value}</span>
@@ -2189,6 +2229,7 @@ function MiniCard({
   onClick: () => void;
 }) {
   const badge = cardBadge(card);
+  const chips = cardPlayChips(card);
   return (
     <button
       {...dragProps}
@@ -2213,6 +2254,15 @@ function MiniCard({
         <PhaseIcon phase={card.phase} size={11} />
       </div>
       <div style={{ fontSize: 10, color: FB.text, fontWeight: 900, lineHeight: 1.05 }}>{card.roleName}</div>
+      {chips.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 3 }}>
+          {chips.map((chip) => (
+            <span key={chip} style={{ color: FB.textDim, fontSize: 7.2, fontWeight: 950, border: `1px solid ${PHASE_COLOR[card.phase]}`, borderRadius: FP_RADIUS.badge, padding: '1px 3px', background: 'rgba(7,11,16,0.32)' }}>
+              {chip}
+            </span>
+          ))}
+        </div>
+      )}
       <div style={{ fontSize: 8.5, color: PHASE_COLOR[card.phase], fontWeight: 900, marginTop: 2 }}>{cardContributionLabel(card)}</div>
       {badge && (
         <div style={{ fontSize: 7.5, color: badge.color, fontWeight: 950, letterSpacing: 0, marginTop: 2 }}>{badge.label}</div>
@@ -2544,7 +2594,7 @@ function TeamSelectScreen({
       <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
         <button onClick={onBack} style={{ ...btnGhost, minWidth: 74 }}>Back</button>
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 11, color: FB.gold, fontWeight: 900 }}>CHOOSE YOUR TEAM</div>
+          <div style={{ fontSize: 11, color: FB.gold, fontWeight: 900 }}>CHOOSE YOUR PLAYBOOK</div>
           <div style={{ fontSize: 10.5, color: FB.textFaint }}>then pick a stake</div>
         </div>
         <div style={{ minWidth: 74 }} />
@@ -2561,7 +2611,7 @@ function TeamSelectScreen({
             return (
               <div key={key} style={{ ...card(), padding: 11, opacity: 0.62, borderStyle: 'dashed' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
-                  <span style={{ fontSize: 13, color: FB.textDim, fontWeight: 950 }}>{profile.name}</span>
+                  <span style={{ fontSize: 13, color: FB.textDim, fontWeight: 950 }}>{profile.shortName}</span>
                   <span style={{ fontSize: 10, color: FB.textFaint, fontWeight: 950, letterSpacing: 0.6 }}>LOCKED</span>
                 </div>
                 <div style={{ fontSize: 11, color: FB.textFaint, marginTop: 4, lineHeight: 1.35 }}>
@@ -2587,14 +2637,14 @@ function TeamSelectScreen({
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
-                <span style={{ fontSize: 13, fontWeight: 950, color: selected ? FB.gold : FB.text }}>{profile.name}</span>
+                <span style={{ fontSize: 13, fontWeight: 950, color: selected ? FB.gold : FB.text }}>{profile.shortName}</span>
                 <span style={{ display: 'inline-flex', gap: 5, alignItems: 'center' }}>
                   {bestStake > 0 && (
                     <span style={{ fontSize: 9, fontWeight: 950, color: fourthPhaseStake(bestStake).color }}>
                       ✓ {fourthPhaseStake(bestStake).shortName.toUpperCase()}
                     </span>
                   )}
-                  <span style={{ fontSize: 10, color: FB.textFaint, fontWeight: 900 }}>{profile.shortName}</span>
+                  <span style={{ fontSize: 10, color: FB.textFaint, fontWeight: 900 }}>{profile.name}</span>
                 </span>
               </div>
               <div style={{ fontSize: 11, color: FB.textDim, marginTop: 4, lineHeight: 1.35 }}>{profile.identity}</div>

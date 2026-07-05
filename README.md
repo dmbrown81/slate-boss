@@ -1,8 +1,10 @@
 # Fourth Phase / Slate Boss
 
 Fourth Phase is the active product in this repo: a fictional single-player
-football card roguelike. Build drive series from Offense, Defense, Special
-Teams, and Crowd cards; Crowd builds Momentum, Offense cashes it; clear three
+football card roguelike. Build drive series from play-call cards across
+Offense, Defense, Special Teams, and Crowd; football sequencing like Run into
+Play Action, Takeaway into Shot, and same-formation scripts creates readable
+bonuses while Crowd still builds Momentum and Offense cashes it. Clear three
 drive targets with a boss on the final drive. Everything is local-first,
 deterministic, and fictional — no real teams, players, money, or prizes.
 

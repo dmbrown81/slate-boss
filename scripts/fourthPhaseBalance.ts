@@ -24,6 +24,7 @@ import {
   meterTightness,
   scoreFourthPhasePlay,
   shuffleFourthPhase,
+  type ScoreLedgerEntry,
   type FourthPhaseCard,
   type FourthPhaseJokerId,
   type FourthPhaseJokerState,
@@ -55,6 +56,9 @@ interface SimResult {
   peakMeter: number;
   tightPlays: number;
   plays: number;
+  comboFires: number;
+  comboPlays: number;
+  comboClears: number;
   team: FourthPhaseTeamKey;
 }
 
@@ -62,6 +66,10 @@ interface Candidate {
   ids: number[];
   result: FourthPhaseScoreResult;
   objective: number;
+}
+
+function comboEntries(result: FourthPhaseScoreResult): ScoreLedgerEntry[] {
+  return result.ledger.filter((entry) => entry.channel === 'combo');
 }
 
 const sampleCount = Number(process.argv[2] ?? 300);
@@ -345,6 +353,9 @@ function simulateGame(team: FourthPhaseTeamKey, seed: number, policy: Policy): S
   let peakMeter = meter;
   let tightPlays = 0;
   let plays = 0;
+  let comboFires = 0;
+  let comboPlays = 0;
+  let comboClears = 0;
 
   for (let driveIndex = 0; driveIndex < run.targets.length; driveIndex += 1) {
     const boss = activeBossForDrive(run, driveIndex);
@@ -415,11 +426,17 @@ function simulateGame(team: FourthPhaseTeamKey, seed: number, policy: Policy): S
       repeatedSituations[candidate.result.situation.key] = (repeatedSituations[candidate.result.situation.key] ?? 0) + 1;
       cardsPlayedThisDrive += 1;
       plays += 1;
+      const combos = comboEntries(candidate.result).length;
+      comboFires += combos;
+      if (combos > 0) {
+        comboPlays += 1;
+        if (candidate.result.points >= targetRemaining) comboClears += 1;
+      }
       if (meterTightness(meter, meterCap) >= 0.9) tightPlays += 1;
     }
 
     if (driveScore < run.targets[driveIndex]) {
-      return { won: false, score: totalScore, failDrive: driveIndex + 1, endingMoney: money, peakScore, peakMeter, tightPlays, plays, team };
+      return { won: false, score: totalScore, failDrive: driveIndex + 1, endingMoney: money, peakScore, peakMeter, tightPlays, plays, comboFires, comboPlays, comboClears, team };
     }
 
     money += 5 + driveIndex * 2;
@@ -432,7 +449,7 @@ function simulateGame(team: FourthPhaseTeamKey, seed: number, policy: Policy): S
     }
   }
 
-  return { won: true, score: totalScore, failDrive: 0, endingMoney: money, peakScore, peakMeter, tightPlays, plays, team };
+  return { won: true, score: totalScore, failDrive: 0, endingMoney: money, peakScore, peakMeter, tightPlays, plays, comboFires, comboPlays, comboClears, team };
 }
 
 function summarize(label: string, results: readonly SimResult[]) {
@@ -441,7 +458,10 @@ function summarize(label: string, results: readonly SimResult[]) {
   const endingMoney = results.map((result) => result.endingMoney);
   const tightPlays = results.reduce((sum, result) => sum + result.tightPlays, 0);
   const plays = results.reduce((sum, result) => sum + result.plays, 0);
-  console.log(`${label.padEnd(9)} win=${((wins / results.length) * 100).toFixed(1)}% fail=${(((results.length - wins) / results.length) * 100).toFixed(1)}% median=${median(scores).toFixed(0)} p90=${percentile(scores, 0.9).toFixed(0)} p99=${percentile(scores, 0.99).toFixed(0)} peak=${percentile(results.map((result) => result.peakScore), 0.99).toFixed(0)} money_med=${median(endingMoney).toFixed(0)} tight=${plays ? ((tightPlays / plays) * 100).toFixed(1) : '0.0'}%`);
+  const comboFires = results.reduce((sum, result) => sum + result.comboFires, 0);
+  const comboPlays = results.reduce((sum, result) => sum + result.comboPlays, 0);
+  const comboClears = results.reduce((sum, result) => sum + result.comboClears, 0);
+  console.log(`${label.padEnd(9)} win=${((wins / results.length) * 100).toFixed(1)}% fail=${(((results.length - wins) / results.length) * 100).toFixed(1)}% median=${median(scores).toFixed(0)} p90=${percentile(scores, 0.9).toFixed(0)} p99=${percentile(scores, 0.99).toFixed(0)} peak=${percentile(results.map((result) => result.peakScore), 0.99).toFixed(0)} money_med=${median(endingMoney).toFixed(0)} tight=${plays ? ((tightPlays / plays) * 100).toFixed(1) : '0.0'}% combo_plays=${plays ? ((comboPlays / plays) * 100).toFixed(1) : '0.0'}% combo_clears=${plays ? ((comboClears / plays) * 100).toFixed(1) : '0.0'}% combo_fires=${comboFires}`);
 }
 
 console.log(`Fourth Phase balance harness -- ${sampleCount} simulated lab games per policy`);

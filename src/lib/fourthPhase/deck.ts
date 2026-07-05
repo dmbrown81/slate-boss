@@ -45,32 +45,32 @@ const RANK_TIER: Record<Rank, CardTier> = {
 const ROLE_NAMES: Record<Phase, Record<Rank, string>> = {
   offense: {
     '2': 'QB Sneak',
-    '3': 'Slot Motion',
-    '4': 'Quick Out',
-    '5': 'RPO Keep',
-    '6': 'Power Back',
-    '7': 'Deep Over',
-    '8': 'No-Huddle',
-    '9': 'Red-Zone Target',
-    '10': 'Shot Play',
-    J: 'Play Action',
-    Q: 'Chain Mover',
-    K: 'Feature Back',
-    A: 'Franchise Quarterback',
+    '3': 'Bubble Motion',
+    '4': 'Stick Quick',
+    '5': 'Zone Read RPO',
+    '6': 'Inside Zone',
+    '7': 'Mesh Crossers',
+    '8': 'Tempo Drive',
+    '9': 'Red-Zone Fade',
+    '10': 'Four Verts',
+    J: 'Play Action Boot',
+    Q: 'Y-Cross',
+    K: 'Duo',
+    A: 'Deep Choice',
   },
   defense: {
-    '2': 'Run Fit',
+    '2': '4-3 Run Fit',
     '3': 'Edge Set',
     '4': 'Rally Tackle',
-    '5': 'Robber Drop',
+    '5': 'Robber Coverage',
     '6': 'A-Gap Mug',
-    '7': 'Press Corner',
+    '7': 'Press Man',
     '8': 'Zero Blitz',
-    '9': 'Third-Down Stop',
+    '9': 'Sim Pressure',
     '10': 'Strip Sack',
     J: 'Coverage Disguise',
     Q: 'Ball Hawk',
-    K: 'Sack Artist',
+    K: 'Edge Pressure',
     A: 'Green Dot',
   },
   specialTeams: {
@@ -103,6 +103,96 @@ const ROLE_NAMES: Record<Phase, Record<Rank, string>> = {
     K: 'Rivalry Week',
     A: 'Home Field',
   },
+};
+
+const PLAY_TAGS: Record<Phase, Record<Rank, string[]>> = {
+  offense: {
+    '2': ['formation:iForm', 'concept:qbSneak', 'kind:run'],
+    '3': ['formation:trips', 'concept:bubble', 'kind:pass', 'kind:quickGame', 'setup:space', 'setup:motion'],
+    '4': ['formation:trips', 'concept:stick', 'kind:pass', 'kind:quickGame', 'setup:space'],
+    '5': ['formation:pistol', 'concept:zoneRead', 'kind:run', 'kind:rpo', 'setup:optionStress'],
+    '6': ['formation:ace', 'concept:insideZone', 'kind:run', 'family:zoneRun'],
+    '7': ['formation:bunch', 'concept:mesh', 'kind:pass', 'kind:quickGame', 'setup:space'],
+    '8': ['formation:trips', 'concept:tempo', 'kind:pass', 'kind:quickGame', 'setup:tempo'],
+    '9': ['formation:singleback', 'concept:fade', 'kind:pass', 'kind:shot', 'result:explosive'],
+    '10': ['formation:trips', 'concept:fourVerts', 'kind:pass', 'kind:shot', 'result:explosive'],
+    J: ['formation:singleback', 'concept:boot', 'kind:pass', 'kind:playAction', 'kind:shot'],
+    Q: ['formation:trips', 'concept:yCross', 'kind:pass', 'kind:shot', 'setup:space'],
+    K: ['formation:ace', 'concept:duo', 'kind:run', 'family:gapRun'],
+    A: ['formation:empty', 'concept:choice', 'kind:pass', 'kind:shot', 'result:explosive'],
+  },
+  defense: {
+    '2': ['formation:4-3', 'concept:runFit', 'kind:coverage', 'defense:runFit'],
+    '3': ['formation:4-3', 'concept:edgeSet', 'kind:coverage', 'defense:runFit'],
+    '4': ['formation:4-3', 'concept:rally', 'kind:coverage', 'defense:zone'],
+    '5': ['formation:4-2-5', 'concept:robber', 'kind:coverage', 'kind:disguise', 'defense:zone'],
+    '6': ['formation:4-2-5', 'concept:aGapMug', 'kind:pressure', 'defense:blitz'],
+    '7': ['formation:4-2-5', 'concept:pressMan', 'kind:coverage', 'defense:man'],
+    '8': ['formation:4-2-5', 'concept:zeroBlitz', 'kind:pressure', 'defense:blitz'],
+    '9': ['formation:4-2-5', 'concept:simPressure', 'kind:pressure', 'kind:disguise', 'defense:zone'],
+    '10': ['formation:4-2-5', 'concept:stripSack', 'kind:pressure', 'kind:takeaway', 'setup:shortField'],
+    J: ['formation:quarters', 'concept:disguise', 'kind:coverage', 'kind:disguise', 'defense:shell'],
+    Q: ['formation:quarters', 'concept:ballHawk', 'kind:coverage', 'kind:takeaway', 'setup:shortField'],
+    K: ['formation:3-4', 'concept:edgePressure', 'kind:pressure', 'defense:blitz'],
+    A: ['formation:quarters', 'concept:greenDot', 'kind:coverage', 'kind:takeaway', 'defense:shell'],
+  },
+  specialTeams: {
+    '2': ['unit:coverage'],
+    '3': ['unit:kickoff', 'setup:fieldFlip'],
+    '4': ['unit:coverage'],
+    '5': ['unit:punt', 'setup:pinDeep'],
+    '6': ['unit:return'],
+    '7': ['unit:hands'],
+    '8': ['unit:fake', 'setup:conversion'],
+    '9': ['unit:punt', 'setup:fieldFlip'],
+    '10': ['unit:punt', 'setup:shortField'],
+    J: ['unit:kicker'],
+    Q: ['unit:return'],
+    K: ['unit:fieldPosition', 'setup:fieldFlip'],
+    A: ['unit:weapon'],
+  },
+  crowd: {
+    '2': ['venue:studentSection'],
+    '3': ['venue:pregame'],
+    '4': ['venue:drumline'],
+    '5': ['venue:towelWave'],
+    '6': ['venue:noise'],
+    '7': ['venue:lights'],
+    '8': ['venue:whiteout'],
+    '9': ['venue:noise'],
+    '10': ['venue:thirdDown'],
+    J: ['venue:hostile'],
+    Q: ['venue:homecoming'],
+    K: ['venue:rivalry'],
+    A: ['venue:homeField'],
+  },
+};
+
+const TAG_CHIP_LABELS: Record<string, string> = {
+  'formation:iForm': 'I-FORM',
+  'formation:singleback': 'SINGLE',
+  'formation:pistol': 'PISTOL',
+  'formation:trips': 'TRIPS',
+  'formation:bunch': 'BUNCH',
+  'formation:empty': 'EMPTY',
+  'formation:ace': 'ACE',
+  'formation:4-3': '4-3',
+  'formation:4-2-5': '4-2-5',
+  'formation:3-4': '3-4',
+  'formation:quarters': 'QUARTERS',
+  'kind:run': 'RUN',
+  'kind:pass': 'PASS',
+  'kind:rpo': 'RPO',
+  'kind:playAction': 'PLAY ACTION',
+  'kind:quickGame': 'QUICK',
+  'kind:shot': 'SHOT',
+  'kind:pressure': 'PRESSURE',
+  'kind:coverage': 'COVERAGE',
+  'kind:takeaway': 'TAKEAWAY',
+  'kind:disguise': 'DISGUISE',
+  'setup:tempo': 'TEMPO',
+  'setup:shortField': 'SHORT FIELD',
+  'setup:space': 'SPACE',
 };
 
 export const PHASE_LABEL: Record<Phase, string> = {
@@ -150,6 +240,35 @@ export function cardContributionLabel(card: FourthPhaseCard): string {
   return 'Hidden Yards';
 }
 
+export function hasCardTag(card: FourthPhaseCard, tag: string): boolean {
+  return card.tags.includes(tag);
+}
+
+export function cardTagsWithPrefix(card: FourthPhaseCard, prefix: string): string[] {
+  return card.tags.filter((tag) => tag.startsWith(prefix));
+}
+
+export function tagChipLabel(tag: string): string {
+  return TAG_CHIP_LABELS[tag] ?? tag.split(':').at(-1)?.replace(/([a-z])([A-Z])/g, '$1 $2').toUpperCase() ?? tag.toUpperCase();
+}
+
+export function cardPlayChips(card: FourthPhaseCard): string[] {
+  const priority = card.tags.filter((tag) => (
+    tag.startsWith('formation:')
+    || tag === 'kind:playAction'
+    || tag === 'kind:rpo'
+    || tag === 'kind:shot'
+    || tag === 'kind:takeaway'
+    || tag === 'kind:pressure'
+    || tag === 'kind:run'
+    || tag === 'kind:quickGame'
+    || tag === 'kind:coverage'
+    || tag === 'setup:tempo'
+    || tag === 'setup:shortField'
+  ));
+  return priority.slice(0, 2).map(tagChipLabel);
+}
+
 export function createFourthPhaseDeck(): FourthPhaseCard[] {
   const cards: FourthPhaseCard[] = [];
   for (const phase of PHASES) {
@@ -161,7 +280,7 @@ export function createFourthPhaseDeck(): FourthPhaseCard[] {
         value: RANK_VALUE[rank],
         tier: RANK_TIER[rank],
         roleName: ROLE_NAMES[phase][rank],
-        tags: [phase, RANK_TIER[rank]],
+        tags: [phase, RANK_TIER[rank], ...PLAY_TAGS[phase][rank]],
       });
     }
   }

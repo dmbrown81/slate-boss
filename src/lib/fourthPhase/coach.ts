@@ -1,4 +1,5 @@
 import { formatMeter } from './meter';
+import { hasCardTag } from './deck';
 import { jokerDefinition } from './jokers';
 import type {
   FourthPhaseBossKey,
@@ -6,6 +7,7 @@ import type {
   FourthPhaseScoreResult,
   FourthPhaseTeamKey,
   FourthPhaseWarRoomOffer,
+  ScoreLedgerEntry,
   SituationKey,
 } from './types';
 
@@ -15,6 +17,20 @@ const COACH_PHASE_ORDER: Record<FourthPhaseCard['phase'], number> = {
   specialTeams: 2,
   offense: 3,
 };
+
+function coachOrderWeight(card: FourthPhaseCard): number {
+  const base = COACH_PHASE_ORDER[card.phase] * 20;
+  if (card.phase === 'defense') {
+    if (hasCardTag(card, 'kind:coverage') || hasCardTag(card, 'kind:disguise')) return base;
+    if (hasCardTag(card, 'kind:pressure') || hasCardTag(card, 'kind:takeaway')) return base + 2;
+  }
+  if (card.phase === 'offense') {
+    if (hasCardTag(card, 'kind:run') || hasCardTag(card, 'kind:rpo')) return base;
+    if (hasCardTag(card, 'kind:playAction')) return base + 2;
+    if (hasCardTag(card, 'kind:shot')) return base + 4;
+  }
+  return base + 8;
+}
 
 export interface BossWarningInput {
   boss: FourthPhaseBossKey;
@@ -41,7 +57,7 @@ export interface RunShareCardData {
 }
 
 export function coachOrderCards(cards: readonly FourthPhaseCard[]): FourthPhaseCard[] {
-  return [...cards].sort((a, b) => COACH_PHASE_ORDER[a.phase] - COACH_PHASE_ORDER[b.phase]);
+  return [...cards].sort((a, b) => coachOrderWeight(a) - coachOrderWeight(b));
 }
 
 /**
@@ -59,13 +75,29 @@ export function playEffectVerb(result: FourthPhaseScoreResult): PlayEffectVerb {
   return 'SCORES';
 }
 
+export function comboLedgerEntries(result: FourthPhaseScoreResult): ScoreLedgerEntry[] {
+  return result.ledger.filter((entry) => entry.channel === 'combo');
+}
+
+function comboLead(result: FourthPhaseScoreResult): string {
+  const combos = comboLedgerEntries(result);
+  if (!combos.length) return '';
+  const [first] = combos;
+  const extra = combos.length > 1 ? ` +${combos.length - 1} more` : '';
+  return `${first.label}${extra}: ${first.value}`;
+}
+
 /**
  * One plain-English sentence for the collapsed ledger: what the last play did and
  * what to do about it. The full math stays one tap away.
  */
 export function plainPlaySummary(result: FourthPhaseScoreResult): string {
+  const combo = comboLead(result);
   if (result.bust) {
     return `No clean shape. The series broke down and momentum bled to ${formatMeter(result.meterAfter)}.`;
+  }
+  if (combo) {
+    return `${combo}. ${result.situation.label} scored ${result.points}.`;
   }
   if (result.didCash) {
     return `Momentum cashed into Explosive x${result.bigPlay.toFixed(2)} for ${result.points}. That is the loop.`;
@@ -99,6 +131,11 @@ export function tutorialCheckdownIsValid(cards: readonly FourthPhaseCard[], resu
 export function buildPlayExplanation(cards: readonly FourthPhaseCard[], result: FourthPhaseScoreResult): string {
   if (!cards.length) return 'Tap cards to build a series.';
   if (result.bust) return `Broken call -> ${result.points} progress and momentum bleeds.`;
+
+  const combo = comboLead(result);
+  if (combo) {
+    return `${combo} -> ${result.points} progress`;
+  }
 
   if (result.didCash && result.cashesAtCardIndex !== null) {
     const cashCard = cards[result.cashesAtCardIndex];

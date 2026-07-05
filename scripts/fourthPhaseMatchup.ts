@@ -9,6 +9,7 @@ import {
   bossWarningForPlay,
   buildPlayExplanation,
   coachPickForWarRoom,
+  comboLedgerEntries,
   createFourthPhaseDeck,
   generateFourthPhaseWarRoomOffers,
   isTrueCrowdBeforeOffenseCash,
@@ -64,6 +65,44 @@ const chargeBeforeCash = scoreFourthPhasePlay([card('crowd-A'), card('offense-K'
 const cashBeforeCharge = scoreFourthPhasePlay([card('offense-K'), card('crowd-A')], { meter: BASE_METER, meterCap: BASE_METER_CAP });
 assert('Crowd before Offense changes score', chargeBeforeCash.points > cashBeforeCharge.points, `${chargeBeforeCash.points} > ${cashBeforeCharge.points}`);
 assert('Shot Play cashes the built momentum', chargeBeforeCash.didCash && chargeBeforeCash.bigPlay >= 2, `Explosive x${chargeBeforeCash.bigPlay}`);
+
+console.log('\nFootball call sequencing combos:');
+const runToPlayAction = scoreFourthPhasePlay([card('offense-6'), card('offense-J')], {
+  meter: BASE_METER,
+  meterCap: BASE_METER_CAP,
+});
+const playActionCold = scoreFourthPhasePlay([card('offense-J'), card('offense-6')], {
+  meter: BASE_METER,
+  meterCap: BASE_METER_CAP,
+});
+assert('Run sets up Play Action when ordered', runToPlayAction.points > playActionCold.points, `${runToPlayAction.points} > ${playActionCold.points}`);
+assert('Run -> Play Action writes a combo ledger entry', comboLedgerEntries(runToPlayAction).some((entry) => entry.label === 'Run Sets Up Play Action'), comboLedgerEntries(runToPlayAction).map((entry) => entry.label).join(', '));
+
+const shortFieldShot = scoreFourthPhasePlay([card('defense-10'), card('defense-Q'), card('offense-10')], {
+  meter: BASE_METER,
+  meterCap: BASE_METER_CAP,
+});
+const shotBeforeTakeaway = scoreFourthPhasePlay([card('offense-10'), card('defense-10'), card('defense-Q')], {
+  meter: BASE_METER,
+  meterCap: BASE_METER_CAP,
+});
+assert('Takeaway creates a Short Field Shot when ordered', shortFieldShot.points > shotBeforeTakeaway.points, `${shortFieldShot.points} > ${shotBeforeTakeaway.points}`);
+assert('Short Field Shot writes a combo ledger entry', comboLedgerEntries(shortFieldShot).some((entry) => entry.label === 'Short Field Shot'), comboLedgerEntries(shortFieldShot).map((entry) => entry.label).join(', '));
+
+const scriptedTrips = scoreFourthPhasePlay([card('offense-3'), card('offense-4'), card('offense-8')], {
+  meter: BASE_METER,
+  meterCap: BASE_METER_CAP,
+});
+const unscriptedDrive = scoreFourthPhasePlay([
+  card('offense-3'),
+  card('offense-4'),
+  { ...card('offense-8'), tags: card('offense-8').tags.filter((tag) => tag !== 'formation:trips') },
+], {
+  meter: BASE_METER,
+  meterCap: BASE_METER_CAP,
+});
+assert('Same-formation calls create a Scripted Series', scriptedTrips.points > unscriptedDrive.points, `${scriptedTrips.points} > ${unscriptedDrive.points}`);
+assert('Scripted Series writes a combo ledger entry', comboLedgerEntries(scriptedTrips).some((entry) => entry.label === 'Scripted Series'), comboLedgerEntries(scriptedTrips).map((entry) => entry.label).join(', '));
 
 console.log('\nMeter and joker hooks:');
 const plainBlackout = scoreFourthPhasePlay([card('crowd-7'), card('crowd-J'), card('crowd-A')], {

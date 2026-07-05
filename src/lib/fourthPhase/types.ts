@@ -135,7 +135,7 @@ export type FourthPhaseBossKey =
   | 'adaptiveDc'
   | 'preventDefense';
 
-export type ScoreChannel = 'yards' | 'execution' | 'bigPlay' | 'meter' | 'fuel' | 'boss' | 'joker' | 'system';
+export type ScoreChannel = 'yards' | 'execution' | 'bigPlay' | 'meter' | 'fuel' | 'boss' | 'joker' | 'combo' | 'system';
 
 export interface ScoreLedgerEntry {
   channel: ScoreChannel;

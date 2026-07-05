@@ -53,44 +53,44 @@ export const FOURTH_PHASE_TEAMS: Record<FourthPhaseTeamKey, FourthPhaseTeamProfi
   balanced: {
     key: 'balanced',
     name: 'Ironwood Engineers',
-    shortName: 'Balanced',
+    shortName: 'Pro Style',
     signatureJoker: 'theGenius',
-    identity: 'All four phases are live from snap one.',
+    identity: 'Balanced script: run game, quick game, play action, and all four phases are live.',
   },
   airRaid: {
     key: 'airRaid',
     name: 'Canyon Comets',
     shortName: 'Air Raid',
     signatureJoker: 'hurryUp',
-    identity: 'Offense and Crowd can explode, but the floor is thinner.',
+    identity: 'Pass-heavy spacing: Mesh, Y-Cross, Four Verts, and a thinner run-game floor.',
   },
   smashmouth: {
     key: 'smashmouth',
     name: 'Foundry Maulers',
-    shortName: 'Smashmouth',
+    shortName: 'Power',
     signatureJoker: 'silentCount',
-    identity: 'Low-rank Offense and Special Teams grind out safe value.',
+    identity: 'Run-first body blows: Inside Zone, Duo, and Play Action are the backbone.',
   },
   blackAndBlue: {
     key: 'blackAndBlue',
     name: 'Harbor Bruisers',
-    shortName: 'Black & Blue',
+    shortName: 'Pressure',
     signatureJoker: 'pickSixSpecialist',
-    identity: 'Defense and hidden yards build the floor without needing a hot crowd.',
+    identity: 'Defense-first package: pressure and takeaways create short-field shots.',
   },
   loudHouse: {
     key: 'loudHouse',
     name: 'Summit Stampede',
-    shortName: 'Stampede',
+    shortName: 'Spread',
     signatureJoker: 'twelfthMan',
-    identity: 'The crowd swings momentum fast, but the base offense has to be drafted carefully.',
+    identity: 'Tempo spacing: quick game and crowd momentum turn clean scripts explosive.',
   },
   specialTeamsChaos: {
     key: 'specialTeamsChaos',
     name: 'River City Sparks',
-    shortName: 'ST Chaos',
+    shortName: 'Multiple',
     signatureJoker: 'fieldGeneral',
-    identity: 'Hidden yards, draw, and money create odd scoring windows.',
+    identity: 'Oddball answers: hidden yards, field flips, and mixed scripts open strange windows.',
   },
 };
 
@@ -172,7 +172,7 @@ export function randomFourthPhaseBoss(seed: number, team: FourthPhaseTeamKey): F
 export function fourthPhaseTargets(team: FourthPhaseTeamKey, seed: number): [number, number, number] {
   const rng = mulberry32(stringSeed(`fourth-phase-targets:${seed}:${team}`));
   const bump = Math.floor(rng() * 10);
-  if (team === 'airRaid') return [296 + bump, 576 + bump, 978 + bump];
+  if (team === 'airRaid') return [282 + bump, 548 + bump, 930 + bump];
   if (team === 'smashmouth') return [232 + bump, 456 + bump, 778 + bump];
   if (team === 'blackAndBlue') return [262 + bump, 512 + bump, 870 + bump];
   if (team === 'loudHouse') return [208 + bump, 408 + bump, 694 + bump];

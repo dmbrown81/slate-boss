@@ -9,6 +9,7 @@ import {
   clampMeter,
   crowdChargeForRank,
 } from './meter';
+import { cardTagsWithPrefix, hasCardTag, tagChipLabel } from './deck';
 import { baseMutableScore, jokerDefinition, type JokerHookContext, type MutableFourthPhaseScore } from './jokers';
 import { recognizeFourthPhaseSituation } from './situations';
 import type {
@@ -107,6 +108,69 @@ function cardTraitScore(card: FourthPhaseCard, score: MutableFourthPhaseScore, c
   if (card.modifier === 'holdout') {
     score.fuel.money -= 1;
     ledger(score, { channel: 'fuel', label: 'Holdout upkeep', value: '-$1', detail: card.roleName });
+  }
+}
+
+function previousCard(cards: readonly FourthPhaseCard[], index: number): FourthPhaseCard | null {
+  return index > 0 ? cards[index - 1] ?? null : null;
+}
+
+function isRunSetup(card: FourthPhaseCard | null): boolean {
+  return Boolean(card && (hasCardTag(card, 'kind:run') || hasCardTag(card, 'kind:option')));
+}
+
+function createsShortField(card: FourthPhaseCard | null): boolean {
+  return Boolean(card && (hasCardTag(card, 'kind:takeaway') || hasCardTag(card, 'setup:shortField')));
+}
+
+function applyScriptedSeriesCombo(cards: readonly FourthPhaseCard[], score: MutableFourthPhaseScore, situation: SituationResult) {
+  if (situation.bust) return;
+  const counts = new Map<string, number>();
+  for (const card of cards) {
+    for (const tag of cardTagsWithPrefix(card, 'formation:')) {
+      counts.set(tag, (counts.get(tag) ?? 0) + 1);
+    }
+  }
+  const scripted = [...counts.entries()].find(([, count]) => count >= 3);
+  if (!scripted) return;
+  const [formation] = scripted;
+  score.yards += 1;
+  score.execution += 0.01;
+  ledger(score, {
+    channel: 'combo',
+    label: 'Scripted Series',
+    value: '+1 Yards, +0.01 Leverage',
+    detail: `${tagChipLabel(formation)} x3 keeps the call sheet married together.`,
+  });
+}
+
+function applyCallSequenceCombo(
+  cards: readonly FourthPhaseCard[],
+  cardIndex: number,
+  score: MutableFourthPhaseScore,
+) {
+  const card = cards[cardIndex];
+  const prev = previousCard(cards, cardIndex);
+  if (card.phase === 'offense' && hasCardTag(card, 'kind:playAction') && isRunSetup(prev)) {
+    score.yards += 2;
+    score.execution += 0.02;
+    ledger(score, {
+      channel: 'combo',
+      label: 'Run Sets Up Play Action',
+      value: '+2 Yards, +0.02 Leverage',
+      detail: `${prev?.roleName} pulls the defense up; ${card.roleName} comes open.`,
+    });
+  }
+
+  if (card.phase === 'offense' && hasCardTag(card, 'kind:shot') && createsShortField(prev)) {
+    score.yards += 2;
+    score.bigPlay += 0.02;
+    ledger(score, {
+      channel: 'combo',
+      label: 'Short Field Shot',
+      value: '+2 Yards, +0.02 Explosive',
+      detail: `${prev?.roleName} creates sudden change; ${card.roleName} attacks it.`,
+    });
   }
 }
 
@@ -243,6 +307,7 @@ export function scoreFourthPhasePlay(cards: readonly FourthPhaseCard[], partialC
   ledger(score, { channel: 'yards', label: 'Yards seed', value: `${score.yards}`, detail: 'Base payload.' });
   ledger(score, { channel: 'execution', label: 'Leverage seed', value: `+${score.execution.toFixed(2)}`, detail: 'Short field and clean look.' });
   applyPracticeBonus(score, situation, context);
+  applyScriptedSeriesCombo(cards, score, situation);
 
   for (const joker of jokerDefs(context.jokers)) {
     joker.hooks.onSituationDetected?.(hookContext(cards, situation, context, score));
@@ -254,6 +319,7 @@ export function scoreFourthPhasePlay(cards: readonly FourthPhaseCard[], partialC
   for (let cardIndex = 0; cardIndex < cards.length; cardIndex += 1) {
     const card = cards[cardIndex];
     cardTraitScore(card, score, context);
+    applyCallSequenceCombo(cards, cardIndex, score);
     if (card.phase === 'crowd') {
       applyCharge(cards, situation, context, score, crowdChargeForRank(card.rank), 'crowdCard', card.roleName);
     } else if (card.edition === 'crowdFavorite') {
