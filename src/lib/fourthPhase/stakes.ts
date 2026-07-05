@@ -85,6 +85,8 @@ export interface FourthPhaseProgress {
   bestSeries: number;
   /** Highest stake level won per team; absent or 0 means no win yet. */
   stakeWins: Partial<Record<FourthPhaseTeamKey, number>>;
+  /** Id of the last run folded in, so re-applying the same completion is a no-op. */
+  lastRunId?: string;
 }
 
 export const EMPTY_FOURTH_PHASE_PROGRESS: FourthPhaseProgress = {
@@ -96,6 +98,7 @@ export const EMPTY_FOURTH_PHASE_PROGRESS: FourthPhaseProgress = {
 };
 
 export interface FourthPhaseRunOutcome {
+  id: string;
   team: FourthPhaseTeamKey;
   stake: number;
   won: boolean;
@@ -104,6 +107,7 @@ export interface FourthPhaseRunOutcome {
 }
 
 export function recordFourthPhaseResult(progress: FourthPhaseProgress, outcome: FourthPhaseRunOutcome): FourthPhaseProgress {
+  if (progress.lastRunId === outcome.id) return progress;
   const stakeWins = { ...progress.stakeWins };
   if (outcome.won) {
     stakeWins[outcome.team] = Math.max(stakeWins[outcome.team] ?? 0, outcome.stake);
@@ -114,6 +118,7 @@ export function recordFourthPhaseResult(progress: FourthPhaseProgress, outcome: 
     drivesCleared: progress.drivesCleared + Math.max(0, outcome.drivesCleared),
     bestSeries: Math.max(progress.bestSeries, outcome.bestSeries),
     stakeWins,
+    lastRunId: outcome.id,
   };
 }
 

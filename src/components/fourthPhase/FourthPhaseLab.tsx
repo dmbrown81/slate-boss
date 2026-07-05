@@ -591,8 +591,6 @@ export default function FourthPhaseLab({ onHome }: Props) {
   const [runStarted, setRunStarted] = useState(false);
   const [pickTeam, setPickTeam] = useState<FourthPhaseTeamKey>('balanced');
   const [pickStake, setPickStake] = useState(1);
-  const [career, setCareer] = useState<FourthPhaseProgress>(() => readJson(FP_PROGRESS_KEY, EMPTY_FOURTH_PHASE_PROGRESS));
-  const [justUnlocked, setJustUnlocked] = useState<FourthPhaseTeamKey[]>([]);
   const [importCode, setImportCode] = useState('');
   const [importError, setImportError] = useState('');
   const [shareCopied, setShareCopied] = useState(false);
@@ -622,25 +620,32 @@ export default function FourthPhaseLab({ onHome }: Props) {
     setCoachNudge('');
   }
 
-  // A finished run writes three things at once: run history, the daily streak,
-  // and the career progress record that drives team unlocks and stake ladders.
-  // Diffing progress before/after lets the summary screen announce fresh unlocks.
-  useEffect(() => {
-    if (!state.completion) return;
-    saveFourthPhaseCompletion(state.completion, state.dailyPractice);
-    const before = readJson(FP_PROGRESS_KEY, EMPTY_FOURTH_PHASE_PROGRESS);
-    const after = recordFourthPhaseResult(before, {
+  // The career record (team unlocks, stake ladders) is derived during render:
+  // stored progress plus the current completion, if any. recordFourthPhaseResult
+  // is idempotent per run id, so it does not matter whether the stored record
+  // already includes this completion. Diffing before/after yields the fresh
+  // unlocks the summary screen announces.
+  const { career, justUnlocked } = useMemo(() => {
+    const stored = readJson(FP_PROGRESS_KEY, EMPTY_FOURTH_PHASE_PROGRESS);
+    if (!state.completion) return { career: stored, justUnlocked: [] as FourthPhaseTeamKey[] };
+    const after = recordFourthPhaseResult(stored, {
+      id: state.completion.id,
       team: state.completion.team,
       stake: state.completion.stake ?? 1,
       won: state.completion.won,
       drivesCleared: state.completion.won ? FOURTH_PHASE_DRIVES : state.driveIndex,
       bestSeries: state.completion.bestPlay,
     });
-    writeJson(FP_PROGRESS_KEY, after);
-    setCareer(after);
-    setJustUnlocked(newlyUnlockedTeams(before, after));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.completion, state.dailyPractice]);
+    return { career: after, justUnlocked: newlyUnlockedTeams(stored, after) };
+  }, [state.completion, state.driveIndex]);
+
+  // A finished run persists to external storage only: run history, the daily
+  // streak, and the derived career record above.
+  useEffect(() => {
+    if (!state.completion) return;
+    saveFourthPhaseCompletion(state.completion, state.dailyPractice);
+    writeJson(FP_PROGRESS_KEY, career);
+  }, [state.completion, state.dailyPractice, career]);
 
   const daily = fourthPhaseDailySeed();
   const storedDailyRecord = loadFourthPhaseDaily();
@@ -709,7 +714,6 @@ export default function FourthPhaseLab({ onHome }: Props) {
     setTutorialStep(tutorial ? 0 : -1);
     setRunStarted(true);
     setScreen('game');
-    setJustUnlocked([]);
     setImportError('');
     setShareCopied(false);
     setResultCopied(false);
