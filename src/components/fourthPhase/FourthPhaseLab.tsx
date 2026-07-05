@@ -1,6 +1,23 @@
 import { useEffect, useMemo, useState, type CSSProperties, type DragEvent, type ReactNode } from 'react';
 import { mulberry32, stringSeed } from '../../lib/rng';
-import { FP as FB, FP_RADIUS, btnGhost, btnPrimary, card, sectionLabel, statTile } from './fourthPhaseStyles';
+import {
+  FP as FB,
+  FP_FONT_HEAD,
+  FP_RADIUS,
+  FP_STOCK,
+  FP_WOOD,
+  PHASE_BAND,
+  PHASE_INK,
+  PHASE_SERIES,
+  btnGhost,
+  btnPrimary,
+  card,
+  foilFace,
+  sectionLabel,
+  statTile,
+  stockFace,
+  tapeLabel,
+} from './fourthPhaseStyles';
 import { HowToPlay, PhaseIcon, SituationsPanel } from './FourthPhaseGuide';
 import {
   BASE_METER,
@@ -15,7 +32,6 @@ import {
   FOURTH_PHASE_TEAMS,
   FOURTH_PHASE_WAR_ROOM_BUY_LIMIT,
   FOURTH_PHASE_WAR_ROOM_REROLL_COST,
-  PHASE_COLOR,
   PHASE_SHORT,
   activeBossForDrive,
   applyFourthPhaseDrawStart,
@@ -444,18 +460,18 @@ function renderShareCard(data: RunShareCardData): Promise<Blob> {
   const ctx = canvas.getContext('2d');
   if (!ctx) return Promise.reject(new Error('Canvas unavailable'));
 
-  ctx.fillStyle = '#090c11';
+  ctx.fillStyle = '#141821';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = '#102a1b';
   for (let x = 0; x < canvas.width; x += 96) {
     ctx.fillRect(x, 0, 48, canvas.height);
   }
-  ctx.fillStyle = 'rgba(240,180,41,0.16)';
+  ctx.fillStyle = 'rgba(217,164,65,0.16)';
   ctx.fillRect(0, 0, canvas.width, 190);
   ctx.fillRect(0, 1160, canvas.width, 190);
 
   ctx.textAlign = 'center';
-  ctx.fillStyle = '#f4c24f';
+  ctx.fillStyle = '#d9a441';
   ctx.font = '900 44px system-ui, -apple-system, Segoe UI, sans-serif';
   ctx.fillText('FOURTH PHASE', 540, 96);
 
@@ -488,7 +504,7 @@ function renderShareCard(data: RunShareCardData): Promise<Blob> {
     y += 80;
   }
 
-  ctx.fillStyle = '#f4c24f';
+  ctx.fillStyle = '#d9a441';
   ctx.font = '900 34px system-ui, -apple-system, Segoe UI, sans-serif';
   ctx.fillText(data.cashIn || 'No signature cash-in', 130, 940);
   ctx.fillStyle = '#e8edf4';
@@ -562,23 +578,34 @@ function meterStyle(meter: number, cap: number): CSSProperties {
 }
 
 // Editions and traits change the math (deck.ts / engine.ts); the card face must
-// say so or big numbers look like hidden rolls.
+// say so or big numbers look like hidden rolls. Badge colors are dark "ink"
+// tones because they print on light card stock.
 const EDITION_BADGE: Record<CardEdition, { label: string; color: string }> = {
-  allPro: { label: 'ALL-PRO', color: '#f4c24f' },
-  inRhythm: { label: 'RHYTHM', color: '#5fb4ff' },
-  homeRun: { label: 'HOME RUN', color: '#f4c24f' },
-  crowdFavorite: { label: 'CROWD FAV', color: '#a987ff' },
+  allPro: { label: 'ALL-PRO', color: '#8a6a1e' },
+  inRhythm: { label: 'RHYTHM', color: '#1f4d7d' },
+  homeRun: { label: 'HOME RUN', color: '#8a6a1e' },
+  crowdFavorite: { label: 'CROWD FAV', color: '#54408c' },
 };
 
 const TRAIT_BADGE: Record<PlayerTrait, { label: string; color: string }> = {
-  reliable: { label: 'RELIABLE', color: '#34c771' },
-  explosive: { label: 'EXPLOSIVE', color: '#f4c24f' },
-  clutch: { label: 'CLUTCH', color: '#34c771' },
-  hometownHero: { label: 'HOMETOWN', color: '#a987ff' },
-  injuryProne: { label: 'FRAGILE', color: '#e26d83' },
-  lockerRoomCancer: { label: 'DRAMA', color: '#e26d83' },
-  agingVet: { label: 'AGING VET', color: '#e26d83' },
-  holdout: { label: 'HOLDOUT', color: '#e26d83' },
+  reliable: { label: 'RELIABLE', color: '#1e6b40' },
+  explosive: { label: 'EXPLOSIVE', color: '#8a6a1e' },
+  clutch: { label: 'CLUTCH', color: '#1e6b40' },
+  hometownHero: { label: 'HOMETOWN', color: '#54408c' },
+  injuryProne: { label: 'FRAGILE', color: '#8a2f3e' },
+  lockerRoomCancer: { label: 'DRAMA', color: '#8a2f3e' },
+  agingVet: { label: 'AGING VET', color: '#8a2f3e' },
+  holdout: { label: 'HOLDOUT', color: '#8a2f3e' },
+};
+
+/** Accent used for each playbook's patch/emblem on the select screen. */
+const TEAM_ACCENT: Record<FourthPhaseTeamKey, string> = {
+  balanced: '#d9a441',
+  airRaid: '#62b7ff',
+  smashmouth: '#d97f4a',
+  blackAndBlue: '#e2637a',
+  loudHouse: '#ad91ff',
+  specialTeamsChaos: '#49d17e',
 };
 
 function cardBadge(card: FourthPhaseCard): { label: string; color: string } | null {
@@ -1388,7 +1415,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
       <GameHeader runCode={runCode} stakeLevel={state.stake} onTitle={() => setScreen('title')} onNewRun={() => setScreen('teams')} />
 
       {tutorialStep >= 0 && tutorialStep < TUTORIAL_STEPS.length && (
-        <section style={{ ...card(), padding: 13, marginBottom: 10, borderColor: FB.gold, background: 'linear-gradient(135deg,#1d2a17,#0d1118)' }}>
+        <section style={{ ...card(), padding: 13, marginBottom: 10, borderColor: FB.gold, background: 'linear-gradient(135deg,#232a15,#151922)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
             <div style={{ ...sectionLabel, color: FB.gold }}>Coach step {tutorialStep + 1}/{TUTORIAL_STEPS.length}</div>
             <button onClick={finishTutorial} style={{ background: 'transparent', border: 'none', color: FB.textFaint, fontSize: 11, fontWeight: 800, cursor: 'pointer' }}>
@@ -1441,7 +1468,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
       />
 
       {resolution && (
-        <section key={resolution.key} className={resolution.impact === 'normal' ? 'fp-resolve' : 'fp-resolve fp-resolve-cash'} style={{ ...card(), padding: 12, marginTop: 10, borderColor: resolution.impact === 'normal' ? FB.border : FB.gold, background: resolution.impact === 'normal' ? '#101722' : 'linear-gradient(135deg,#2a1d08,#101722)' }}>
+        <section key={resolution.key} className={resolution.impact === 'normal' ? 'fp-resolve' : 'fp-resolve fp-resolve-cash'} style={{ ...card(), padding: 12, marginTop: 10, borderColor: resolution.impact === 'normal' ? FB.border : FB.gold, background: resolution.impact === 'normal' ? FB.panelSoft : 'linear-gradient(135deg,#2e2410,#171c26)' }}>
           <div style={{ ...sectionLabel, color: resolution.impact === 'normal' ? FB.textFaint : FB.gold }}>Series Result</div>
           <div style={{ fontSize: 12, color: FB.text, fontWeight: 900, marginTop: 5 }}>{resolution.explanation}</div>
           <div style={{ display: 'grid', gridTemplateColumns: `repeat(${resolution.stages.length}, minmax(0, 1fr))`, gap: 6, marginTop: 10 }}>
@@ -1458,7 +1485,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
       {state.cashIn && (
         <section
           key={`${state.cashIn.points}:${state.cashIn.situation}:${state.cashIn.reason}`}
-          style={{ ...card(), padding: 13, marginTop: 10, borderColor: FB.gold, background: 'linear-gradient(135deg,#2b2109,#111820)', overflow: 'hidden' }}
+          style={{ ...card(), padding: 13, marginTop: 10, borderColor: FB.gold, background: 'linear-gradient(135deg,#33260e,#1b202b)', overflow: 'hidden' }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 10 }}>
             <div>
@@ -1492,17 +1519,15 @@ export default function FourthPhaseLab({ onHome }: Props) {
 
       <section style={{ marginTop: 10 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-          <div style={sectionLabel}>Call Sheet</div>
+          <div style={sectionLabel}>Call Script</div>
           <div style={{ fontSize: 11, color: FB.textFaint }}>{state.selectedIds.length}/{FOURTH_PHASE_PLAY_LIMIT}. Left scores first.</div>
         </div>
-        <div style={{ border: `1px solid ${preview?.didCash ? FB.gold : FB.border}`, borderRadius: 8, background: '#101722', color: preview?.didCash ? FB.gold : FB.textDim, padding: '8px 9px', fontSize: 11.5, fontWeight: 850, marginBottom: 8 }}>
+        <div style={{ border: `1px solid ${preview?.didCash ? FB.gold : FB.border}`, borderRadius: 8, background: FB.panelSoft, color: preview?.didCash ? FB.gold : FB.textDim, padding: '8px 9px', fontSize: 11.5, fontWeight: 850, marginBottom: 8 }}>
           {playExplanation}
         </div>
         {previewCombos.length > 0 && <ComboChips entries={previewCombos} />}
-        <div style={{ display: 'flex', gap: 6, minHeight: 100, overflowX: 'auto', paddingBottom: 2 }}>
-          {selectedCards.length === 0 ? (
-            <div style={{ ...emptyWide }}>Select up to five cards</div>
-          ) : selectedCards.map((card, index) => (
+        <div style={{ display: 'flex', gap: 6, minHeight: 100, overflowX: 'auto', padding: '8px 0 2px' }}>
+          {selectedCards.map((card, index) => (
             <div key={card.id} style={{ display: 'flex', gap: 6 }}>
               {index > 0 && (
                 <div aria-hidden="true" style={{ alignSelf: 'center', color: FB.textFaint, fontSize: 13, fontWeight: 900, marginTop: -20 }}>→</div>
@@ -1540,6 +1565,17 @@ export default function FourthPhaseLab({ onHome }: Props) {
                 </button>
               </div>
               </div>
+            </div>
+          ))}
+          {Array.from({ length: Math.max(0, FOURTH_PHASE_PLAY_LIMIT - selectedCards.length) }).map((_, index) => (
+            <div
+              key={`sleeve-${index}`}
+              className="fp-sleeve"
+              style={{ minWidth: 86, alignSelf: 'stretch', minHeight: 100, marginLeft: selectedCards.length + index > 0 ? 19 : 0 }}
+            >
+              <span style={{ fontFamily: FP_FONT_HEAD, fontSize: 9.5, fontWeight: 900, letterSpacing: 1.4 }}>
+                CALL {selectedCards.length + index + 1}
+              </span>
             </div>
           ))}
         </div>
@@ -1811,17 +1847,6 @@ const reorderBtn: CSSProperties = {
   lineHeight: 1,
 };
 
-const emptyWide: CSSProperties = {
-  minHeight: 72,
-  minWidth: '100%',
-  border: `1px dashed ${FB.border}`,
-  borderRadius: FP_RADIUS.card,
-  display: 'grid',
-  placeItems: 'center',
-  color: FB.textFaint,
-  fontSize: 12,
-};
-
 const bottomBar: CSSProperties = {
   position: 'fixed',
   left: 0,
@@ -1829,11 +1854,23 @@ const bottomBar: CSSProperties = {
   bottom: 0,
   zIndex: 40,
   padding: '10px 12px calc(10px + env(safe-area-inset-bottom))',
-  background: 'rgba(8,11,16,0.94)',
+  background: 'rgba(19,23,32,0.95)',
   borderTop: `1px solid ${FB.border}`,
   backdropFilter: 'blur(8px)',
   WebkitBackdropFilter: 'blur(8px)',
 };
+
+// Fictional team-patch emblem: a stitched shield with a monogram. Pure
+// decoration for playbook inserts and the binder cover — no real-team marks.
+function PatchEmblem({ accent, initials, size = 44 }: { accent: string; initials: string; size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden="true" style={{ display: 'block' }}>
+      <path d="M24 3l17 5v14c0 11-7.2 18.6-17 23C14.2 40.6 7 33 7 22V8z" fill="#1d2129" stroke={accent} strokeWidth="2" />
+      <path d="M24 7.4l13.4 4V22c0 8.9-5.7 15.2-13.4 19C16.3 37.2 10.6 30.9 10.6 22V11.4z" fill="none" stroke={accent} strokeWidth="1" opacity="0.55" strokeDasharray="2.5 2" />
+      <text x="24" y="28" textAnchor="middle" fontSize="13" fontWeight="900" fill={accent} fontFamily={FP_FONT_HEAD}>{initials}</text>
+    </svg>
+  );
+}
 
 function FootballGlyph({ size = 16 }: { size?: number }) {
   return (
@@ -1954,7 +1991,7 @@ function GameStatusPanel({
         : 'Open field. No boss pressure.';
 
   return (
-    <section style={{ ...card(), ...meterStyle(meter, meterCap), padding: 12, overflow: 'hidden', position: 'relative', background: 'linear-gradient(180deg,#101722,#080b11)', marginTop: 2 }}>
+    <section style={{ ...card(), ...meterStyle(meter, meterCap), padding: 12, overflow: 'hidden', position: 'relative', background: 'linear-gradient(180deg,#1a1f2a,#10141c)', marginTop: 2 }}>
       <div className="fb-yard" style={{ position: 'absolute', inset: 0, opacity: 0.32 }} />
       <div style={{ position: 'relative', display: 'grid', gap: 10 }}>
         <ObjectiveHeader
@@ -1996,11 +2033,11 @@ function GameStatusPanel({
                 <PhaseIcon phase="crowd" size={12} />
                 <div style={{ ...sectionLabel, color: meterWillCash ? FB.gold : '#cbbdff' }}>Momentum</div>
               </div>
-              <div className="fb-led" style={{ fontSize: 27, color: meterWillCash ? FB.gold : '#efe9ff', fontWeight: 950, lineHeight: 1 }}>
+              <div className="fb-led" style={{ fontSize: 22, color: meterWillCash ? FB.gold : '#efe9ff', fontWeight: 950, lineHeight: 1 }}>
                 {formatMeter(meter)}
               </div>
             </div>
-            <div style={{ position: 'relative', height: 15, borderRadius: FP_RADIUS.card, background: '#111827', border: '1px solid #2a2441', overflow: 'hidden', marginTop: 9 }}>
+            <div style={{ position: 'relative', height: 15, borderRadius: FP_RADIUS.card, background: '#181420', border: '1px solid #322b48', overflow: 'hidden', marginTop: 9 }}>
               <div style={{ width: `${meterFill * 100}%`, height: '100%', background: 'linear-gradient(90deg,#4f9cff,#ad91ff,#f2bd3d)', transition: 'width 180ms ease-out' }} />
               <div style={{ position: 'absolute', inset: 0, backgroundImage: 'repeating-linear-gradient(90deg, transparent 0px, transparent calc(6.25% - 2px), #0a0d13 calc(6.25% - 2px), #0a0d13 6.25%)' }} />
             </div>
@@ -2097,24 +2134,16 @@ function EffectVerbChip({ verb }: { verb: ReturnType<typeof playEffectVerb> }) {
   );
 }
 
+// Combo badges styled as stickers slapped on the binder page.
 function ComboChips({ entries }: { entries: ReturnType<typeof comboLedgerEntries> }) {
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, margin: '-2px 0 8px' }}>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, margin: '-2px 0 8px' }}>
       {entries.map((entry, index) => (
         <span
           key={`${entry.label}-${index}`}
+          className="fp-sticker"
           title={entry.detail}
-          style={{
-            border: `1px solid rgba(242,189,61,0.7)`,
-            borderRadius: FP_RADIUS.badge,
-            color: FB.gold,
-            background: 'rgba(242,189,61,0.08)',
-            fontSize: 9,
-            fontWeight: 950,
-            letterSpacing: 0,
-            padding: '2px 6px',
-            whiteSpace: 'nowrap',
-          }}
+          style={{ fontSize: 9, letterSpacing: 0.5, whiteSpace: 'nowrap', transform: `rotate(${index % 2 === 0 ? -1 : 0.8}deg)` }}
         >
           {entry.label}
         </span>
@@ -2147,16 +2176,54 @@ function Metric({ label, value, color, small }: { label: string; value: string; 
   );
 }
 
-const CARD_SURFACE: Record<FourthPhaseCard['phase'], string> = {
-  offense: 'linear-gradient(180deg,#122033,#0d141f)',
-  defense: 'linear-gradient(180deg,#281620,#0d141f)',
-  specialTeams: 'linear-gradient(180deg,#281f0d,#0d141f)',
-  crowd: 'linear-gradient(180deg,#1d1832,#0d141f)',
-};
+// Trading-card face frame: off-white stock (foil edge on editions), plus a
+// gold collector ring when selected. Shared by hand cards and call-script cards.
+function cardFaceFrame(card: FourthPhaseCard, selected: boolean, ring: boolean): CSSProperties {
+  const base = card.edition ? foilFace() : stockFace();
+  return {
+    ...base,
+    ...(ring
+      ? {
+        borderColor: card.edition ? 'transparent' : FB.gold,
+        boxShadow: '0 0 0 2px rgba(217,164,65,0.5), 0 8px 16px -10px rgba(0,0,0,0.65)',
+        transform: 'translateY(-2px)',
+      }
+      : { boxShadow: '0 3px 8px -5px rgba(0,0,0,0.55)' }),
+    outline: selected && !ring ? `2px solid ${FB.gold}` : undefined,
+  };
+}
+
+const CARD_BAND_TEXT = '#f6f2e8';
+
+// The colored header band that makes "blue Offense card" readable at a glance.
+function CardBand({ card, rankSize = 16 }: { card: FourthPhaseCard; rankSize?: number }) {
+  return (
+    <div style={{ background: PHASE_BAND[card.phase], display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4, padding: '3px 7px' }}>
+      <span className="fb-num" style={{ fontSize: rankSize, fontWeight: 950, color: CARD_BAND_TEXT, lineHeight: 1 }}>{card.rank}</span>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 8.5, color: CARD_BAND_TEXT, fontWeight: 950, letterSpacing: 0.6 }}>
+        <PhaseIcon phase={card.phase} size={10} color={CARD_BAND_TEXT} />
+        {PHASE_SHORT[card.phase]}
+      </span>
+    </div>
+  );
+}
+
+function CardChips({ card, size = 7.5 }: { card: FourthPhaseCard; size?: number }) {
+  const chips = cardPlayChips(card);
+  if (!chips.length) return null;
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 4 }}>
+      {chips.map((chip) => (
+        <span key={chip} style={{ border: `1px solid ${PHASE_INK[card.phase]}`, borderRadius: FP_RADIUS.badge, color: PHASE_INK[card.phase], fontSize: size, fontWeight: 950, padding: '1px 4px', background: 'rgba(255,255,255,0.4)' }}>
+          {chip}
+        </span>
+      ))}
+    </div>
+  );
+}
 
 function HandCard({ card, selected, tone, onClick }: { card: FourthPhaseCard; selected: boolean; tone?: 'highlight' | 'dim'; onClick: () => void }) {
   const badge = cardBadge(card);
-  const chips = cardPlayChips(card);
   const coachHighlight = tone === 'highlight';
   const coachDim = tone === 'dim' && !selected;
   return (
@@ -2165,53 +2232,39 @@ function HandCard({ card, selected, tone, onClick }: { card: FourthPhaseCard; se
       title={cardDisplayName(card)}
       aria-pressed={selected}
       style={{
-        minHeight: 112,
-        borderRadius: FP_RADIUS.card,
-        border: `1px solid ${coachHighlight ? FB.gold : selected ? FB.gold : PHASE_COLOR[card.phase]}`,
-        boxShadow: coachHighlight
-          ? `inset 0 3px 0 ${PHASE_COLOR[card.phase]}, 0 0 0 2px rgba(242,189,61,0.34), 0 10px 22px -18px rgba(242,189,61,0.55)`
-          : selected
-            ? `inset 0 3px 0 ${FB.gold}, 0 8px 18px -16px rgba(242,189,61,0.55)`
-            : `inset 0 3px 0 ${PHASE_COLOR[card.phase]}`,
-        background: selected ? 'linear-gradient(180deg,#2b230e,#111820)' : CARD_SURFACE[card.phase],
-        color: FB.text,
-        padding: 8,
+        ...cardFaceFrame(card, selected, selected || coachHighlight),
+        minHeight: 118,
+        padding: 0,
         textAlign: 'left',
         cursor: 'pointer',
         display: 'flex',
         flexDirection: 'column',
-        justifyContent: 'space-between',
         opacity: coachDim ? 0.42 : 1,
-        transform: coachHighlight || selected ? 'translateY(-1px)' : undefined,
-        transition: 'opacity 120ms ease-out, border-color 120ms ease-out, box-shadow 120ms ease-out, transform 120ms ease-out',
+        transition: 'opacity 120ms ease-out, box-shadow 120ms ease-out, transform 120ms ease-out',
         overflow: 'hidden',
       }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 4, alignItems: 'center' }}>
-        <span className="fb-num" style={{ fontSize: 20, fontWeight: 950, color: PHASE_COLOR[card.phase], lineHeight: 1 }}>{card.rank}</span>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 8.5, color: FB.textDim, fontWeight: 950, border: `1px solid ${PHASE_COLOR[card.phase]}`, borderRadius: FP_RADIUS.badge, padding: '2px 4px', background: 'rgba(7,11,16,0.56)' }}>
-          <PhaseIcon phase={card.phase} size={11} />
-          {PHASE_SHORT[card.phase]}
-        </span>
-      </div>
-      <div>
-        <div style={{ fontSize: 11.5, color: FB.text, fontWeight: 950, lineHeight: 1.08 }}>{card.roleName}</div>
-        {chips.length > 0 && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 5 }}>
-            {chips.map((chip) => (
-              <span key={chip} style={{ border: `1px solid ${PHASE_COLOR[card.phase]}`, borderRadius: FP_RADIUS.badge, color: FB.textDim, fontSize: 7.5, fontWeight: 950, padding: '1px 4px', background: 'rgba(7,11,16,0.36)' }}>
-                {chip}
-              </span>
-            ))}
+      <CardBand card={card} />
+      <div className="fp-grain" style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '6px 7px 4px' }}>
+        <div>
+          <div style={{ fontFamily: FP_FONT_HEAD, fontSize: 12, fontWeight: 900, color: FP_STOCK.ink, lineHeight: 1.05, textTransform: 'uppercase', letterSpacing: 0.3, wordBreak: 'break-word' }}>
+            {card.roleName}
           </div>
-        )}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4, marginTop: 5 }}>
-          <span style={{ fontSize: 9.5, color: PHASE_COLOR[card.phase], fontWeight: 900 }}>{cardContributionLabel(card)}</span>
-          <span className="fb-num" style={{ fontSize: 12, color: FB.gold, fontWeight: 950 }}>{card.value}</span>
+          <CardChips card={card} />
         </div>
-        {badge && (
-          <div style={{ display: 'inline-flex', border: `1px solid ${badge.color}`, borderRadius: FP_RADIUS.badge, color: badge.color, fontSize: 7.5, fontWeight: 950, letterSpacing: 0, marginTop: 4, padding: '1px 4px', background: 'rgba(7,11,16,0.42)' }}>{badge.label}</div>
-        )}
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4, marginTop: 5 }}>
+            <span style={{ fontSize: 9, color: PHASE_INK[card.phase], fontWeight: 900, minWidth: 0 }}>{cardContributionLabel(card)}</span>
+            <span className="fb-num" style={{ fontSize: 11.5, color: FP_STOCK.ink, fontWeight: 950, flexShrink: 0 }}>{card.value}</span>
+          </div>
+          {badge && (
+            <div style={{ display: 'inline-flex', border: `1px solid ${badge.color}`, borderRadius: FP_RADIUS.badge, color: badge.color, fontSize: 7.5, fontWeight: 950, marginTop: 3, padding: '1px 4px', background: 'rgba(255,255,255,0.45)' }}>{badge.label}</div>
+          )}
+          <div style={{ borderTop: `1px solid ${FP_STOCK.line}`, marginTop: 4, paddingTop: 2, display: 'flex', justifyContent: 'space-between', fontSize: 6.8, color: FP_STOCK.inkSoft, fontWeight: 800, letterSpacing: 0.6 }}>
+            <span>FP-{card.rank}</span>
+            <span>SERIES {PHASE_SERIES[card.phase]}</span>
+          </div>
+        </div>
       </div>
     </button>
   );
@@ -2229,7 +2282,6 @@ function MiniCard({
   onClick: () => void;
 }) {
   const badge = cardBadge(card);
-  const chips = cardPlayChips(card);
   return (
     <button
       {...dragProps}
@@ -2237,36 +2289,28 @@ function MiniCard({
       title={cardDisplayName(card)}
       aria-pressed={selected}
       style={{
+        ...cardFaceFrame(card, selected, selected),
         minWidth: 86,
-        minHeight: 72,
-        borderRadius: FP_RADIUS.card,
-        border: `1px solid ${selected ? FB.gold : PHASE_COLOR[card.phase]}`,
-        boxShadow: `inset 0 2px 0 ${selected ? FB.gold : PHASE_COLOR[card.phase]}`,
-        background: selected ? 'linear-gradient(180deg,#2b230e,#111820)' : CARD_SURFACE[card.phase],
-        color: FB.text,
-        padding: 7,
+        minHeight: 76,
+        padding: 0,
         textAlign: 'left',
         cursor: 'grab',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
       }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4 }}>
-        <span style={{ fontSize: 17, fontWeight: 950, color: PHASE_COLOR[card.phase] }}>{card.rank}</span>
-        <PhaseIcon phase={card.phase} size={11} />
-      </div>
-      <div style={{ fontSize: 10, color: FB.text, fontWeight: 900, lineHeight: 1.05 }}>{card.roleName}</div>
-      {chips.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 3 }}>
-          {chips.map((chip) => (
-            <span key={chip} style={{ color: FB.textDim, fontSize: 7.2, fontWeight: 950, border: `1px solid ${PHASE_COLOR[card.phase]}`, borderRadius: FP_RADIUS.badge, padding: '1px 3px', background: 'rgba(7,11,16,0.32)' }}>
-              {chip}
-            </span>
-          ))}
+      <CardBand card={card} rankSize={13} />
+      <div className="fp-grain" style={{ flex: 1, padding: '4px 6px 4px' }}>
+        <div style={{ fontFamily: FP_FONT_HEAD, fontSize: 10.5, fontWeight: 900, color: FP_STOCK.ink, lineHeight: 1.05, textTransform: 'uppercase', letterSpacing: 0.2, wordBreak: 'break-word' }}>
+          {card.roleName}
         </div>
-      )}
-      <div style={{ fontSize: 8.5, color: PHASE_COLOR[card.phase], fontWeight: 900, marginTop: 2 }}>{cardContributionLabel(card)}</div>
-      {badge && (
-        <div style={{ fontSize: 7.5, color: badge.color, fontWeight: 950, letterSpacing: 0, marginTop: 2 }}>{badge.label}</div>
-      )}
+        <CardChips card={card} size={7} />
+        <div style={{ fontSize: 8.5, color: PHASE_INK[card.phase], fontWeight: 900, marginTop: 3 }}>{cardContributionLabel(card)}</div>
+        {badge && (
+          <div style={{ fontSize: 7.5, color: badge.color, fontWeight: 950, marginTop: 2 }}>{badge.label}</div>
+        )}
+      </div>
     </button>
   );
 }
@@ -2308,7 +2352,7 @@ function WarRoom({
     const incoming = pendingDraft.joker ? jokerDefinition(pendingDraft.joker) : null;
     if (!incoming) return null;
     return (
-      <section style={{ ...card(), padding: 12, marginTop: 10, borderColor: FB.gold, background: 'linear-gradient(180deg,#1b170b,#0d1118)' }}>
+      <section className="fp-grain" style={{ ...card(), padding: 12, marginTop: 10, borderColor: FP_WOOD.edge, background: FP_WOOD.table }}>
         <div style={{ ...sectionLabel, color: FB.gold }}>Sideline full</div>
         <div style={{ fontSize: 15, color: FB.text, fontWeight: 950, marginTop: 3 }}>Release one for {incoming.name}</div>
         <div style={{ fontSize: 10.5, color: FB.textFaint, marginTop: 3 }}>The new joker takes the slot you pick.</div>
@@ -2322,7 +2366,7 @@ function WarRoom({
                 style={{
                   borderRadius: FP_RADIUS.card,
                   border: `1px solid ${FB.red}`,
-                  background: CARD_SURFACE.defense,
+                  background: FB.panelRaised,
                   color: FB.text,
                   padding: 10,
                   textAlign: 'left',
@@ -2346,7 +2390,7 @@ function WarRoom({
     ? [...draft].sort((a, b) => Number(b.id === coachPick.id) - Number(a.id === coachPick.id))
     : draft;
   return (
-    <section style={{ ...card(), padding: 12, marginTop: 10, borderColor: FB.gold, background: 'linear-gradient(180deg,#1b170b,#0d1118)' }}>
+    <section className="fp-grain" style={{ ...card(), padding: 12, marginTop: 10, borderColor: FP_WOOD.edge, background: FP_WOOD.table, boxShadow: 'inset 0 1px 0 rgba(255,226,166,0.07)' }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 10, alignItems: 'start' }}>
         <div>
           <div style={{ ...sectionLabel, color: FB.gold }}>War Room</div>
@@ -2378,53 +2422,53 @@ function WarRoom({
           Special Teams discount: -$1 per token on an offer ({discounts} banked, max -$2 each)
         </div>
       )}
-      <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
-        {orderedDraft.map((offer) => {
+      <div style={{ display: 'grid', gap: 9, marginTop: 10 }}>
+        {orderedDraft.map((offer, offerIndex) => {
           const def = offer.joker ? jokerDefinition(offer.joker) : null;
           const { cost: effectiveCost, used } = discountedOfferCost(offer.cost, discounts);
           const affordable = money >= effectiveCost;
           const isCoachPick = coachPick?.id === offer.id;
-          const borderColor = isCoachPick
-            ? FB.gold
-            : def?.rarity === 'legendary'
-            ? FB.gold
-            : offer.kind === 'practice'
-              ? '#34c771'
-              : '#36445a';
+          const isPractice = offer.kind === 'practice';
+          // Jokers are premium inserts on card stock; practice drills are the
+          // coach's note cards. Rarity shows as the left accent stripe.
+          const stripe = def?.rarity === 'legendary' ? FB.gold : def?.rarity === 'rare' ? '#7a5fc0' : isPractice ? '#8a8156' : FP_STOCK.line;
           return (
             <button
               key={offer.id}
               onClick={() => onDraft(offer)}
               disabled={!affordable}
+              className="fp-grain"
               style={{
-                borderRadius: FP_RADIUS.card,
-                border: `1px solid ${borderColor}`,
-                background: isCoachPick ? 'linear-gradient(135deg,#2b230e,#111820)' : offer.kind === 'practice' ? 'linear-gradient(180deg,#0f2418,#0d141f)' : '#101722',
-                color: affordable ? FB.text : FB.textFaint,
+                ...(def?.rarity === 'legendary' ? foilFace() : stockFace()),
+                ...(isPractice ? { background: '#efe4b8' } : null),
+                borderColor: def?.rarity === 'legendary' ? 'transparent' : isCoachPick ? FB.gold : isPractice ? '#cfc08a' : FP_STOCK.line,
                 padding: 10,
                 textAlign: 'left',
                 cursor: affordable ? 'pointer' : 'not-allowed',
-                opacity: affordable ? 1 : 0.58,
-                boxShadow: isCoachPick ? '0 0 0 1px rgba(242,189,61,0.18)' : undefined,
+                opacity: affordable ? 1 : 0.55,
+                transform: isPractice ? `rotate(${offerIndex % 2 === 0 ? -0.4 : 0.4}deg)` : undefined,
+                boxShadow: isCoachPick
+                  ? `inset 3px 0 0 ${stripe}, 0 0 0 2px rgba(217,164,65,0.5), 0 4px 10px -6px rgba(0,0,0,0.6)`
+                  : `inset 3px 0 0 ${stripe}, 0 4px 10px -6px rgba(0,0,0,0.6)`,
               }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
-                <span style={{ fontSize: 13, fontWeight: 950 }}>{offer.label}</span>
-                <span style={{ fontSize: 11, color: FB.gold, fontWeight: 950 }}>
-                  {used > 0 && <s style={{ color: FB.textFaint, marginRight: 4 }}>${offer.cost}</s>}
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline' }}>
+                <span className="fp-head" style={{ fontSize: 13.5, fontWeight: 900, color: FP_STOCK.ink, letterSpacing: 0.5 }}>{offer.label}</span>
+                <span className="fb-num" style={{ fontSize: 11.5, color: '#8a6a1e', fontWeight: 950, whiteSpace: 'nowrap' }}>
+                  {used > 0 && <s style={{ color: FP_STOCK.inkSoft, marginRight: 4 }}>${offer.cost}</s>}
                   ${effectiveCost}
                 </span>
               </div>
               {isCoachPick && (
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: `1px solid rgba(240,180,41,0.55)`, borderRadius: 999, color: FB.gold, background: 'rgba(240,180,41,0.08)', padding: '3px 7px', marginTop: 7, fontSize: 10, fontWeight: 950 }}>
-                  Coach Pick: {coachPick.reason}
+                <div className="fp-sticker" style={{ fontSize: 9.5, marginTop: 6 }}>
+                  COACH PICK: {coachPick.reason}
                 </div>
               )}
-              <div style={{ fontSize: 11, color: FB.textDim, marginTop: 3 }}>{offer.detail}</div>
+              <div style={{ fontSize: 11, color: '#45413a', marginTop: 4, lineHeight: 1.35 }}>{offer.detail}</div>
               {offer.tags.length > 0 && (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 7 }}>
                   {offer.tags.map((tag) => (
-                    <span key={tag} style={{ border: `1px solid ${FB.border}`, borderRadius: 5, color: '#cbbdff', fontSize: 9.5, fontWeight: 900, padding: '2px 5px' }}>
+                    <span key={tag} style={{ border: `1px solid ${FP_STOCK.line}`, borderRadius: 5, color: FP_STOCK.inkSoft, fontSize: 9.5, fontWeight: 900, padding: '2px 5px', background: 'rgba(255,255,255,0.35)' }}>
                       {tag}
                     </span>
                   ))}
@@ -2480,10 +2524,10 @@ function GameHeader({ runCode, stakeLevel, onTitle, onNewRun }: { runCode: strin
       <div style={{ textAlign: 'center' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
           <FootballGlyph size={14} />
-          <span style={{ fontSize: 11, color: FB.gold, fontWeight: 900, letterSpacing: 0 }}>FOURTH PHASE</span>
+          <span className="fp-head" style={{ fontSize: 12, color: FB.gold, fontWeight: 900, letterSpacing: 2 }}>Fourth Phase</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 2 }}>
-          <span style={{ fontSize: 11, color: FB.textFaint }}>{runCode}</span>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 3 }}>
+          <span style={{ ...tapeLabel, fontSize: 9 }}>{runCode}</span>
           <StakeBadge level={stakeLevel} />
         </div>
       </div>
@@ -2526,15 +2570,33 @@ function TitleScreen({
 }) {
   return (
     <div style={{ display: 'grid', gap: 10, minHeight: 'calc(100svh - 140px)', alignContent: 'center' }}>
-      <div style={{ textAlign: 'center', marginBottom: 10 }}>
-        <div style={{ display: 'flex', justifyContent: 'center' }}>
-          <FootballGlyph size={52} />
+      {/* Binder cover: worn leather, stitched border, card-set logo */}
+      <div
+        className="fp-grain"
+        style={{
+          background: FP_WOOD.leather,
+          border: `1px solid ${FP_WOOD.edge}`,
+          borderRadius: 14,
+          padding: 10,
+          marginBottom: 8,
+          boxShadow: 'inset 0 1px 0 rgba(255,226,166,0.08), 0 14px 30px -18px rgba(0,0,0,0.85)',
+        }}
+      >
+        <div style={{ border: `1px dashed ${FP_WOOD.stitch}`, borderRadius: 9, padding: '22px 14px 18px', textAlign: 'center' }}>
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
+            <PatchEmblem accent={FB.gold} initials="FP" size={58} />
+          </div>
+          <div className="fp-head" style={{ fontSize: 40, fontWeight: 900, color: FB.gold, letterSpacing: 5, marginTop: 12, lineHeight: 1, textShadow: '0 1px 0 rgba(0,0,0,0.6)' }}>
+            Fourth Phase
+          </div>
+          <div className="fp-head" style={{ fontSize: 11, color: FB.textDim, fontWeight: 800, letterSpacing: 3, marginTop: 7 }}>
+            A football playbook roguelike
+          </div>
+          <div style={{ fontSize: 12, color: FB.textDim, fontWeight: 800, marginTop: 12 }}>
+            <span style={{ color: '#5fb4ff' }}>Offense</span> · <span style={{ color: '#ff7c93' }}>Defense</span> · <span style={{ color: FB.gold }}>Special Teams</span> · <span style={{ color: '#a987ff' }}>Crowd</span>
+          </div>
+          <div style={{ fontSize: 11, color: FB.textFaint, marginTop: 4 }}>Clear three drives. Beat the boss defense.</div>
         </div>
-        <div style={{ fontSize: 36, fontWeight: 950, color: FB.gold, letterSpacing: 2, marginTop: 12, lineHeight: 1 }}>FOURTH PHASE</div>
-        <div style={{ fontSize: 12.5, color: FB.textDim, fontWeight: 800, marginTop: 8 }}>
-          <span style={{ color: '#5fb4ff' }}>Offense</span> · <span style={{ color: '#ff7c93' }}>Defense</span> · <span style={{ color: FB.gold }}>Special Teams</span> · <span style={{ color: '#a987ff' }}>Crowd</span>
-        </div>
-        <div style={{ fontSize: 11, color: FB.textFaint, marginTop: 3 }}>A football roguelike. Clear three drives. Beat the boss defense.</div>
       </div>
       {canContinue && (
         <button onClick={onContinue} style={{ ...btnPrimary, minHeight: 52 }}>Continue run</button>
@@ -2542,10 +2604,11 @@ function TitleScreen({
       <button onClick={onPlay} style={canContinue ? { ...btnGhost, minHeight: 52, fontSize: 14, color: FB.text } : { ...btnPrimary, minHeight: 52 }}>
         {canContinue ? 'New run' : 'Play'}
       </button>
-      <button onClick={onDaily} style={{ ...btnGhost, minHeight: 48, borderColor: '#4e426f', color: '#cbbdff', fontSize: 13 }}>
+      <button onClick={onDaily} style={{ ...btnGhost, minHeight: 48, borderColor: '#5b4a86', color: '#cbbdff', fontSize: 13 }}>
         {todayDailyDone ? `Daily ${dailyLabel} | practice (streak ${dailyStreak})` : `Daily Challenge | ${dailyLabel}`}
       </button>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginTop: 4 }}>
+      <div style={{ ...sectionLabel, marginTop: 4 }}>Collection</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginTop: -4 }}>
         <Metric label="Career wins" value={`${wins}`} color={FB.green} />
         <Metric label="Local best" value={localBest != null ? `${localBest}` : '—'} color={FB.gold} />
         <Metric label="Daily streak" value={`${dailyStreak}`} color="#cbbdff" />
@@ -2607,49 +2670,60 @@ function TeamSelectScreen({
           const selected = key === pickTeam;
           const bestStake = progress.stakeWins[key] ?? 0;
           const signature = jokerDefinition({ id: profile.signatureJoker });
+          const accent = TEAM_ACCENT[key];
+          const initials = profile.shortName.split(/[\s&]+/).filter(Boolean).map((word) => word[0]).join('').slice(0, 2).toUpperCase();
           if (!unlock.unlocked) {
+            // Locked playbooks read as empty binder slots waiting for the insert.
             return (
-              <div key={key} style={{ ...card(), padding: 11, opacity: 0.62, borderStyle: 'dashed' }}>
+              <div key={key} className="fp-sleeve" style={{ display: 'block', padding: '11px 12px', minHeight: 68 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
-                  <span style={{ fontSize: 13, color: FB.textDim, fontWeight: 950 }}>{profile.shortName}</span>
-                  <span style={{ fontSize: 10, color: FB.textFaint, fontWeight: 950, letterSpacing: 0.6 }}>LOCKED</span>
+                  <span className="fp-head" style={{ fontSize: 13, color: FB.textFaint, fontWeight: 900, letterSpacing: 1 }}>{profile.shortName}</span>
+                  <span className="fp-head" style={{ fontSize: 9.5, color: FB.textFaint, fontWeight: 900, letterSpacing: 1 }}>Empty slot</span>
                 </div>
-                <div style={{ fontSize: 11, color: FB.textFaint, marginTop: 4, lineHeight: 1.35 }}>
+                <div style={{ fontSize: 11, color: FB.textFaint, marginTop: 5, lineHeight: 1.35 }}>
                   {unlock.requirement}
                   {unlock.progressLabel ? <span style={{ color: FB.textDim, fontWeight: 850 }}> ({unlock.progressLabel})</span> : null}
                 </div>
               </div>
             );
           }
+          // Unlocked playbooks are premium insert cards: patch, scheme title,
+          // playbook nickname, identity line, and the signature joker sticker.
           return (
             <button
               key={key}
               onClick={() => onPickTeam(key)}
               style={{
-                ...card(),
-                padding: 11,
+                ...stockFace(12),
+                padding: 0,
                 textAlign: 'left',
                 cursor: 'pointer',
-                color: FB.text,
-                borderColor: selected ? FB.gold : FB.border,
-                background: selected ? 'linear-gradient(135deg,#241d0b,#101722)' : FB.panel,
-                boxShadow: selected ? '0 0 0 1px rgba(242,189,61,0.25)' : undefined,
+                overflow: 'hidden',
+                borderColor: selected ? FB.gold : FP_STOCK.line,
+                boxShadow: selected
+                  ? `inset 4px 0 0 ${accent}, 0 0 0 2px rgba(217,164,65,0.5), 0 10px 20px -14px rgba(0,0,0,0.7)`
+                  : `inset 4px 0 0 ${accent}, 0 3px 10px -6px rgba(0,0,0,0.6)`,
               }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
-                <span style={{ fontSize: 13, fontWeight: 950, color: selected ? FB.gold : FB.text }}>{profile.shortName}</span>
-                <span style={{ display: 'inline-flex', gap: 5, alignItems: 'center' }}>
-                  {bestStake > 0 && (
-                    <span style={{ fontSize: 9, fontWeight: 950, color: fourthPhaseStake(bestStake).color }}>
-                      ✓ {fourthPhaseStake(bestStake).shortName.toUpperCase()}
-                    </span>
-                  )}
-                  <span style={{ fontSize: 10, color: FB.textFaint, fontWeight: 900 }}>{profile.name}</span>
-                </span>
-              </div>
-              <div style={{ fontSize: 11, color: FB.textDim, marginTop: 4, lineHeight: 1.35 }}>{profile.identity}</div>
-              <div style={{ fontSize: 10, color: '#cbbdff', fontWeight: 850, marginTop: 5 }}>
-                Signature joker: {signature.name} — {signature.effect}
+              <div className="fp-grain" style={{ display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr)', gap: 10, padding: '11px 12px', alignItems: 'start' }}>
+                <PatchEmblem accent={accent} initials={initials} size={44} />
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
+                    <span className="fp-head" style={{ fontSize: 16, fontWeight: 900, color: FP_STOCK.ink, letterSpacing: 1 }}>{profile.shortName}</span>
+                    {bestStake > 0 && (
+                      <span style={{ fontSize: 9, fontWeight: 950, color: '#1e6b40', whiteSpace: 'nowrap' }}>
+                        ✓ {fourthPhaseStake(bestStake).shortName.toUpperCase()}
+                      </span>
+                    )}
+                  </div>
+                  <div className="fp-head" style={{ fontSize: 10, color: FP_STOCK.inkSoft, fontWeight: 900, letterSpacing: 1.6, marginTop: 1 }}>
+                    {profile.name}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#45413a', marginTop: 4, lineHeight: 1.35 }}>{profile.identity}</div>
+                  <div className="fp-sticker" style={{ fontSize: 9, marginTop: 7, lineHeight: 1.3 }}>
+                    SIGNATURE INSERT: {signature.name} — {signature.effect}
+                  </div>
+                </div>
               </div>
             </button>
           );
@@ -2712,7 +2786,7 @@ function TeamSelectScreen({
               minHeight: 38,
               borderRadius: FP_RADIUS.control,
               border: `1px solid ${importError ? FB.red : FB.border}`,
-              background: '#0e151d',
+              background: FB.inset,
               color: FB.text,
               padding: '0 10px',
               fontSize: 12,
@@ -2762,9 +2836,11 @@ function DriveIntroScreen({
 }) {
   return (
     <div style={{ display: 'grid', gap: 10, minHeight: 'calc(100svh - 190px)', alignContent: 'center' }}>
-      <section style={{ ...card(), padding: 16, textAlign: 'center', borderColor: boss ? FB.red : FB.gold, background: 'linear-gradient(180deg,#101722,#080b11)' }}>
+      <section style={{ ...card(), padding: 16, textAlign: 'center', borderColor: boss ? FB.red : FB.gold, background: 'linear-gradient(180deg,#1a1f2a,#10141c)' }}>
         {dailyLabel && (
-          <div style={{ fontSize: 10.5, color: '#cbbdff', fontWeight: 950, letterSpacing: 0.8, marginBottom: 6 }}>DAILY CHALLENGE {dailyLabel}</div>
+          <div style={{ marginBottom: 8 }}>
+            <span style={{ ...tapeLabel, fontSize: 9.5 }}>DAILY CHALLENGE {dailyLabel}</span>
+          </div>
         )}
         <div style={{ ...sectionLabel, color: FB.textFaint }}>Drive</div>
         <div className="fb-num" style={{ fontSize: 56, color: FB.text, fontWeight: 950, lineHeight: 0.95 }}>

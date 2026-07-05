@@ -94,10 +94,10 @@ function Collapsible({
 // One glyph per phase so cards read as football jobs at a glance:
 // Offense = ball, Defense = shield, Special Teams = goalpost, Crowd = noise bars.
 // Shared by the legend here and every card face in FourthPhaseLab.
-export function PhaseIcon({ phase, size = 12 }: { phase: Phase; size?: number }) {
+export function PhaseIcon({ phase, size = 12, color }: { phase: Phase; size?: number; color?: string }) {
   const common = {
     fill: 'none',
-    stroke: PHASE_COLOR[phase],
+    stroke: color ?? PHASE_COLOR[phase],
     strokeWidth: 2,
     strokeLinecap: 'round' as const,
     strokeLinejoin: 'round' as const,

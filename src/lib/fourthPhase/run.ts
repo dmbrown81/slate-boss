@@ -49,45 +49,48 @@ export interface FourthPhaseTeamProfile {
   identity: string;
 }
 
+// Playbooks are named like coaching philosophies, not fake franchises: the
+// shortName is the scheme on the binder tab, the name is the nickname coaches
+// use for the whole approach. All fictional, no real-team or licensed IP.
 export const FOURTH_PHASE_TEAMS: Record<FourthPhaseTeamKey, FourthPhaseTeamProfile> = {
   balanced: {
     key: 'balanced',
-    name: 'Ironwood Engineers',
+    name: 'The Complete Game',
     shortName: 'Pro Style',
     signatureJoker: 'theGenius',
     identity: 'Balanced script: run game, quick game, play action, and all four phases are live.',
   },
   airRaid: {
     key: 'airRaid',
-    name: 'Canyon Comets',
+    name: 'The Aerial Show',
     shortName: 'Air Raid',
     signatureJoker: 'hurryUp',
     identity: 'Pass-heavy spacing: Mesh, Y-Cross, Four Verts, and a thinner run-game floor.',
   },
   smashmouth: {
     key: 'smashmouth',
-    name: 'Foundry Maulers',
+    name: 'Ground & Pound',
     shortName: 'Power',
     signatureJoker: 'silentCount',
     identity: 'Run-first body blows: Inside Zone, Duo, and Play Action are the backbone.',
   },
   blackAndBlue: {
     key: 'blackAndBlue',
-    name: 'Harbor Bruisers',
+    name: 'The Junkyard',
     shortName: 'Pressure',
     signatureJoker: 'pickSixSpecialist',
     identity: 'Defense-first package: pressure and takeaways create short-field shots.',
   },
   loudHouse: {
     key: 'loudHouse',
-    name: 'Summit Stampede',
+    name: 'Home Field Advantage',
     shortName: 'Spread',
     signatureJoker: 'twelfthMan',
     identity: 'Tempo spacing: quick game and crowd momentum turn clean scripts explosive.',
   },
   specialTeamsChaos: {
     key: 'specialTeamsChaos',
-    name: 'River City Sparks',
+    name: 'The Hidden Game',
     shortName: 'Multiple',
     signatureJoker: 'fieldGeneral',
     identity: 'Oddball answers: hidden yards, field flips, and mixed scripts open strange windows.',

@@ -8,8 +8,8 @@
   "display": "standalone",
   "display_override": ["fullscreen", "standalone"],
   "orientation": "portrait-primary",
-  "background_color": "#090c11",
-  "theme_color": "#090c11",
+  "background_color": "#131720",
+  "theme_color": "#131720",
   "categories": ["games", "sports", "entertainment"],
   "prefer_related_applications": false,
   "icons": [
