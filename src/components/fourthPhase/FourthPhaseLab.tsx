@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState, type CSSProperties, type DragEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type ReactNode } from 'react';
 import { mulberry32, stringSeed } from '../../lib/rng';
+import { loadFeelPrefs, playFeel, saveFeelPrefs, type FourthPhaseFeelEvent } from './fpFeedback';
 import {
   FP as FB,
   FP_FONT_HEAD,
@@ -631,6 +632,43 @@ export default function FourthPhaseLab({ onHome }: Props) {
   const [dragJoker, setDragJoker] = useState<string | null>(null);
   const [ledgerExpanded, setLedgerExpanded] = useState(false);
   const [tutorialStep, setTutorialStep] = useState<number>(-1);
+  const [feel, setFeel] = useState(loadFeelPrefs);
+
+  function feelEvent(event: FourthPhaseFeelEvent) {
+    playFeel(event, feel);
+  }
+
+  function toggleSound() {
+    setFeel((current) => {
+      const next = { ...current, sound: !current.sound };
+      saveFeelPrefs(next);
+      if (next.sound) playFeel('card_tap', next);
+      return next;
+    });
+  }
+
+  function toggleHaptics() {
+    setFeel((current) => {
+      const next = { ...current, haptics: !current.haptics };
+      saveFeelPrefs(next);
+      if (next.haptics) playFeel('run_series', { sound: false, haptics: true });
+      return next;
+    });
+  }
+
+  // Drive clears, wins, and losses all resolve inside executePlay's state
+  // update, so the ceremony cue keys off the observed phase transition —
+  // one place, every path (plays, war-room skips, imports) covered.
+  const prevPhaseRef = useRef<LabPhase>(state.phase);
+  useEffect(() => {
+    const prev = prevPhaseRef.current;
+    prevPhaseRef.current = state.phase;
+    if (prev === state.phase) return;
+    if (state.phase === 'warRoom') playFeel('drive_clear', feel);
+    else if (state.phase === 'won') playFeel('win', feel);
+    else if (state.phase === 'lost') playFeel('loss', feel);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- cue fires only on phase edges, not pref edits
+  }, [state.phase]);
 
   // Advance the tutorial as the player actually performs each step. Driven by the
   // play handler (executePlay) rather than an effect.
@@ -754,6 +792,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
   }
 
   function kickoffDrive() {
+    feelEvent('kickoff');
     setState((current) => ({ ...current, awaitingKickoff: false }));
   }
 
@@ -845,6 +884,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
 
   function toggleCard(card: FourthPhaseCard) {
     if (state.phase !== 'play') return;
+    feelEvent('card_tap');
     setCoachNudge('');
     setResolution(null);
     setState((current) => {
@@ -938,6 +978,8 @@ export default function FourthPhaseLab({ onHome }: Props) {
     setCoachNudge('');
     setShareCopied(false);
     setShareCardStatus('');
+    // Same impact tiers as buildResolution: huge > cash > normal series.
+    feelEvent(preview.points >= 180 || preview.bigPlay >= 4 ? 'big_cash' : preview.didCash ? 'cash' : 'run_series');
     setResolution((current) => buildResolution(preview, playExplanation, (current?.key ?? 0) + 1));
     setState((current) => {
       const ids = new Set(current.selectedIds);
@@ -1023,6 +1065,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
 
   function redrawHand() {
     if (state.phase !== 'play' || state.discardsLeft <= 0) return;
+    feelEvent('card_tap');
     setResolution(null);
     setCoachNudge('');
     setState((current) => {
@@ -1116,9 +1159,11 @@ export default function FourthPhaseLab({ onHome }: Props) {
   function buyOffer(offer: FourthPhaseWarRoomOffer) {
     if (state.phase !== 'warRoom' || state.money < discountedOfferCost(offer.cost, state.discounts).cost) return;
     if (offer.kind === 'joker' && offer.joker && state.jokers.length >= FOURTH_PHASE_JOKER_LIMIT) {
+      feelEvent('card_tap');
       setState((current) => ({ ...current, pendingDraft: offer }));
       return;
     }
+    feelEvent('buy');
     setState((current) => {
       const { cost, used } = discountedOfferCost(offer.cost, current.discounts);
       if (current.phase !== 'warRoom' || current.money < cost) return current;
@@ -1135,6 +1180,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
 
   function confirmReplaceJoker(index: number) {
     if (state.phase !== 'warRoom' || !state.pendingDraft?.joker) return;
+    feelEvent('buy');
     setState((current) => {
       const pending = current.pendingDraft;
       if (!pending?.joker || current.phase !== 'warRoom') return current;
@@ -1156,6 +1202,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
 
   function rerollWarRoom() {
     if (state.phase !== 'warRoom' || state.money < FOURTH_PHASE_WAR_ROOM_REROLL_COST) return;
+    feelEvent('card_tap');
     setState((current) => {
       if (current.phase !== 'warRoom' || current.money < FOURTH_PHASE_WAR_ROOM_REROLL_COST) return current;
       const rerollsThisWarRoom = current.rerollsThisWarRoom + 1;
@@ -1226,6 +1273,10 @@ export default function FourthPhaseLab({ onHome }: Props) {
           dailyStreak={dailyRecord?.streak ?? 0}
           localBest={localBest?.score ?? null}
           wins={career.wins}
+          soundOn={feel.sound}
+          hapticsOn={feel.haptics}
+          onToggleSound={toggleSound}
+          onToggleHaptics={toggleHaptics}
           onExit={onHome}
         />
       </Shell>
@@ -1261,7 +1312,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
   if (state.phase === 'play' && state.awaitingKickoff) {
     return (
       <Shell>
-        <GameHeader runCode={runCode} stakeLevel={state.stake} onTitle={() => setScreen('title')} onNewRun={() => setScreen('teams')} />
+        <GameHeader runCode={runCode} stakeLevel={state.stake} soundOn={feel.sound} onToggleSound={toggleSound} onTitle={() => setScreen('title')} onNewRun={() => setScreen('teams')} />
         <DriveIntroScreen
           driveNumber={state.driveIndex + 1}
           drives={FOURTH_PHASE_DRIVES}
@@ -1286,7 +1337,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
   if (state.phase === 'warRoom') {
     return (
       <Shell impactClass={shellImpact}>
-        <GameHeader runCode={runCode} stakeLevel={state.stake} onTitle={() => setScreen('title')} onNewRun={() => setScreen('teams')} />
+        <GameHeader runCode={runCode} stakeLevel={state.stake} soundOn={feel.sound} onToggleSound={toggleSound} onTitle={() => setScreen('title')} onNewRun={() => setScreen('teams')} />
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
           <Metric label="Run progress" value={`${state.runScore}`} color={FB.gold} />
           <Metric label="Best series" value={`${state.bestPlay}`} color="#5fb4ff" />
@@ -1331,9 +1382,9 @@ export default function FourthPhaseLab({ onHome }: Props) {
     const nextStakeUnlocked = won && state.stake < FOURTH_PHASE_STAKES.length && fourthPhaseMaxStake(career, state.team) === state.stake + 1;
     return (
       <Shell impactClass={shellImpact}>
-        <GameHeader runCode={runCode} stakeLevel={state.stake} onTitle={() => setScreen('title')} onNewRun={() => setScreen('teams')} />
+        <GameHeader runCode={runCode} stakeLevel={state.stake} soundOn={feel.sound} onToggleSound={toggleSound} onTitle={() => setScreen('title')} onNewRun={() => setScreen('teams')} />
         <section style={{ ...card(), padding: 16, marginTop: 10, textAlign: 'center', borderColor: won ? FB.gold : FB.red }}>
-          <div style={{ fontSize: 13, color: won ? FB.gold : FB.red, fontWeight: 950, letterSpacing: 0 }}>
+          <div className="fp-head fp-verdict-stamp" style={{ fontSize: 26, color: won ? FB.gold : FB.red, fontWeight: 900 }}>
             {won ? 'RUN WON' : 'RUN OVER'}
           </div>
           <div style={{ fontSize: 11, color: fourthPhaseStake(state.stake).color, fontWeight: 900, marginTop: 4 }}>
@@ -1408,11 +1459,11 @@ export default function FourthPhaseLab({ onHome }: Props) {
 
   return (
     <div
-      className={shellImpact}
-      style={{ minHeight: '100svh', padding: '10px 12px 96px', background: FB.bg }}
+      className={shellImpact ? `fp-shell ${shellImpact}` : 'fp-shell'}
+      style={{ minHeight: '100svh', padding: '10px 12px 96px' }}
     >
-      <div className="fp-screen-in" style={{ maxWidth: 560, margin: '0 auto' }}>
-      <GameHeader runCode={runCode} stakeLevel={state.stake} onTitle={() => setScreen('title')} onNewRun={() => setScreen('teams')} />
+      <div className="fp-screen-in fp-table-col" style={{ maxWidth: 560, margin: '0 auto' }}>
+      <GameHeader runCode={runCode} stakeLevel={state.stake} soundOn={feel.sound} onToggleSound={toggleSound} onTitle={() => setScreen('title')} onNewRun={() => setScreen('teams')} />
 
       {tutorialStep >= 0 && tutorialStep < TUTORIAL_STEPS.length && (
         <section style={{ ...card(), padding: 13, marginBottom: 10, borderColor: FB.gold, background: 'linear-gradient(135deg,#232a15,#151922)' }}>
@@ -1465,6 +1516,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
         activeBoss={activeBoss === 'none' ? null : FOURTH_PHASE_BOSSES[activeBoss]}
         scoutingBoss={!coachMode && activeBoss === 'none' ? FOURTH_PHASE_BOSSES[state.boss] : null}
         bossArrivesDrive={stakeProfile.bossFromDrive + 1}
+        gain={resolution && state.lastPlay ? { points: state.lastPlay.points, cashed: state.lastPlay.didCash, key: resolution.key } : null}
       />
 
       {resolution && (
@@ -1756,6 +1808,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
             <button
               onClick={executePlay}
               disabled={!preview}
+              className="fp-pressable"
               style={{ ...btnPrimary, padding: '0 18px', minHeight: 48, opacity: preview ? 1 : 0.45, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7 }}
             >
               <FootballGlyph size={15} />
@@ -1957,6 +2010,7 @@ function GameStatusPanel({
   activeBoss,
   scoutingBoss,
   bossArrivesDrive,
+  gain,
 }: {
   labPhase: LabPhase;
   teamName: string;
@@ -1979,6 +2033,8 @@ function GameStatusPanel({
   activeBoss: FourthPhaseBossProfile | null;
   scoutingBoss: FourthPhaseBossProfile | null;
   bossArrivesDrive: number;
+  /** Last series' points, floated over the drive target right after Run Series. */
+  gain: { points: number; cashed: boolean; key: number } | null;
 }) {
   const pressureLabel = coachMode ? 'Coach Mode' : activeBoss ? 'Boss Active' : 'Scouting';
   const pressureColor = coachMode ? FB.green : activeBoss ? FB.red : FB.gold;
@@ -2015,9 +2071,19 @@ function GameStatusPanel({
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.05fr) minmax(132px, .95fr)', gap: 8, alignItems: 'stretch' }}>
-          <div style={{ ...statTile, background: 'rgba(7,11,16,0.74)' }}>
+          <div style={{ ...statTile, background: 'rgba(7,11,16,0.74)', position: 'relative' }}>
             <div style={{ ...sectionLabel, color: FB.textDim }}>Drive Target</div>
-            <div className="fb-led" style={{ fontSize: 31, color: FB.text, fontWeight: 950, lineHeight: 0.95, marginTop: 3 }}>
+            {gain && gain.points > 0 && (
+              <span
+                key={gain.key}
+                className="fb-num fp-float-gain"
+                aria-hidden="true"
+                style={{ fontSize: 19, fontWeight: 950, color: gain.cashed ? FB.gold : FB.green, textShadow: '0 1px 4px rgba(0,0,0,0.7)' }}
+              >
+                +{gain.points}
+              </span>
+            )}
+            <div key={driveScore} className="fb-led fb-pop" style={{ fontSize: 31, color: FB.text, fontWeight: 950, lineHeight: 0.95, marginTop: 3 }}>
               {driveScore}<span style={{ fontSize: 14, color: FB.textFaint }}> / {target}</span>
             </div>
             <FieldProgress progress={progress} />
@@ -2033,7 +2099,7 @@ function GameStatusPanel({
                 <PhaseIcon phase="crowd" size={12} />
                 <div style={{ ...sectionLabel, color: meterWillCash ? FB.gold : '#cbbdff' }}>Momentum</div>
               </div>
-              <div className="fb-led" style={{ fontSize: 22, color: meterWillCash ? FB.gold : '#efe9ff', fontWeight: 950, lineHeight: 1 }}>
+              <div key={formatMeter(meter)} className="fb-led fb-pop" style={{ fontSize: 22, color: meterWillCash ? FB.gold : '#efe9ff', fontWeight: 950, lineHeight: 1 }}>
                 {formatMeter(meter)}
               </div>
             </div>
@@ -2231,6 +2297,7 @@ function HandCard({ card, selected, tone, onClick }: { card: FourthPhaseCard; se
       onClick={onClick}
       title={cardDisplayName(card)}
       aria-pressed={selected}
+      className="fp-pressable"
       style={{
         ...cardFaceFrame(card, selected, selected || coachHighlight),
         minHeight: 118,
@@ -2288,6 +2355,7 @@ function MiniCard({
       onClick={onClick}
       title={cardDisplayName(card)}
       aria-pressed={selected}
+      className="fp-pressable"
       style={{
         ...cardFaceFrame(card, selected, selected),
         minWidth: 86,
@@ -2502,8 +2570,8 @@ function WarRoom({
 
 function Shell({ impactClass, children }: { impactClass?: string; children: ReactNode }) {
   return (
-    <div className={impactClass} style={{ minHeight: '100svh', padding: '10px 12px 96px', background: FB.bg }}>
-      <div className="fp-screen-in" style={{ maxWidth: 560, margin: '0 auto' }}>{children}</div>
+    <div className={impactClass ? `fp-shell ${impactClass}` : 'fp-shell'} style={{ minHeight: '100svh', padding: '10px 12px 96px' }}>
+      <div className="fp-screen-in fp-table-col" style={{ maxWidth: 560, margin: '0 auto' }}>{children}</div>
     </div>
   );
 }
@@ -2517,10 +2585,24 @@ function StakeBadge({ level }: { level: number }) {
   );
 }
 
-function GameHeader({ runCode, stakeLevel, onTitle, onNewRun }: { runCode: string; stakeLevel: number; onTitle: () => void; onNewRun: () => void }) {
+function SoundToggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
   return (
-    <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
-      <button onClick={onTitle} style={{ ...btnGhost, minWidth: 74 }}>Home</button>
+    <button
+      onClick={onToggle}
+      aria-label={on ? 'Mute sound' : 'Unmute sound'}
+      aria-pressed={on}
+      title={on ? 'Sound on' : 'Sound off'}
+      style={{ ...btnGhost, minWidth: 40, padding: '0 8px', fontSize: 14, color: on ? FB.gold : FB.textFaint }}
+    >
+      {on ? '\u{1F50A}' : '\u{1F507}'}
+    </button>
+  );
+}
+
+function GameHeader({ runCode, stakeLevel, soundOn, onToggleSound, onTitle, onNewRun }: { runCode: string; stakeLevel: number; soundOn: boolean; onToggleSound: () => void; onTitle: () => void; onNewRun: () => void }) {
+  return (
+    <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
+      <button onClick={onTitle} style={{ ...btnGhost, minWidth: 64 }}>Home</button>
       <div style={{ textAlign: 'center' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
           <FootballGlyph size={14} />
@@ -2531,7 +2613,10 @@ function GameHeader({ runCode, stakeLevel, onTitle, onNewRun }: { runCode: strin
           <StakeBadge level={stakeLevel} />
         </div>
       </div>
-      <button onClick={onNewRun} style={{ ...btnGhost, minWidth: 74 }}>New run</button>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <SoundToggle on={soundOn} onToggle={onToggleSound} />
+        <button onClick={onNewRun} style={{ ...btnGhost }}>New run</button>
+      </div>
     </header>
   );
 }
@@ -2555,6 +2640,10 @@ function TitleScreen({
   dailyStreak,
   localBest,
   wins,
+  soundOn,
+  hapticsOn,
+  onToggleSound,
+  onToggleHaptics,
   onExit,
 }: {
   canContinue: boolean;
@@ -2566,6 +2655,10 @@ function TitleScreen({
   dailyStreak: number;
   localBest: number | null;
   wins: number;
+  soundOn: boolean;
+  hapticsOn: boolean;
+  onToggleSound: () => void;
+  onToggleHaptics: () => void;
   onExit?: () => void;
 }) {
   return (
@@ -2612,6 +2705,14 @@ function TitleScreen({
         <Metric label="Career wins" value={`${wins}`} color={FB.green} />
         <Metric label="Local best" value={localBest != null ? `${localBest}` : '—'} color={FB.gold} />
         <Metric label="Daily streak" value={`${dailyStreak}`} color="#cbbdff" />
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+        <button onClick={onToggleSound} aria-pressed={soundOn} style={{ ...btnGhost, color: soundOn ? FB.gold : FB.textFaint }}>
+          {soundOn ? '\u{1F50A}' : '\u{1F507}'} Sound {soundOn ? 'on' : 'off'}
+        </button>
+        <button onClick={onToggleHaptics} aria-pressed={hapticsOn} style={{ ...btnGhost, color: hapticsOn ? FB.gold : FB.textFaint }}>
+          {'\u{1F4F3}'} Haptics {hapticsOn ? 'on' : 'off'}
+        </button>
       </div>
       <HowToPlay defaultOpen={false} />
       {onExit && (
@@ -2880,7 +2981,7 @@ function DriveIntroScreen({
             Sideline: {jokers.join(' / ')}
           </div>
         )}
-        <button onClick={onKickoff} style={{ ...btnPrimary, width: '100%', minHeight: 52, marginTop: 14, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+        <button onClick={onKickoff} className="fp-pressable" style={{ ...btnPrimary, width: '100%', minHeight: 52, marginTop: 14, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
           <FootballGlyph size={16} />
           {driveNumber === 1 ? 'Kickoff' : `Start Drive ${driveNumber}`}
         </button>

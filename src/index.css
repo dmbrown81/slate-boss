@@ -193,6 +193,58 @@ button:focus-visible,
 .fp-cashed-stamp { animation: fp-stamp-pop .55s cubic-bezier(.2,.85,.3,1.1) both; }
 .fp-points-land { animation: fp-points-land .6s cubic-bezier(.2,.9,.3,1.15) .18s both; }
 
+/* ── Desktop stage ─────────────────────────────────────────────
+   Phones get the flat locker-room navy. Wider screens dress the set:
+   a brass stadium-light wash, faint yard lines across the whole stage,
+   and the game column sits on it like a card table instead of floating
+   in a void. Pure presentation; the column keeps its phone layout. */
+.fp-shell { background: var(--fp-bg); }
+@media (min-width: 760px) {
+  .fp-shell {
+    background:
+      radial-gradient(1200px 640px at 50% -160px, rgba(217, 164, 65, 0.11), transparent 62%),
+      repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.015) 0 1px, transparent 1px 72px),
+      linear-gradient(180deg, #161b26 0%, #0d1118 100%);
+  }
+  .fp-table-col {
+    background: rgba(19, 23, 32, 0.8);
+    border: 1px solid rgba(84, 64, 31, 0.55);
+    border-radius: 16px;
+    padding: 16px 20px 22px;
+    box-shadow: 0 34px 80px -42px rgba(0, 0, 0, 0.92), inset 0 1px 0 rgba(255, 226, 166, 0.05);
+  }
+}
+
+/* tactile press: cards and primary actions squash slightly under the thumb.
+   !important because card frames carry inline transforms (selected lift). */
+.fp-pressable { touch-action: manipulation; }
+.fp-pressable:active { transform: translateY(1px) scale(0.97) !important; transition: transform 70ms ease-out !important; }
+
+/* floating "+N" score gain: rises off the drive target and fades */
+@keyframes fp-float-gain {
+  0% { transform: translateY(4px) scale(0.8); opacity: 0; }
+  18% { transform: translateY(0) scale(1.06); opacity: 1; }
+  55% { transform: translateY(-14px) scale(1); opacity: 1; }
+  100% { transform: translateY(-30px) scale(0.96); opacity: 0; }
+}
+.fp-float-gain {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  pointer-events: none;
+  animation: fp-float-gain 1.15s cubic-bezier(.2,.8,.3,1) both;
+}
+
+/* end-of-run verdict: stamp slams in and stays (fp-stamp-pop keeps its end state) */
+.fp-verdict-stamp {
+  display: inline-block;
+  border: 3px solid currentColor;
+  border-radius: 8px;
+  padding: 4px 14px;
+  letter-spacing: 3px;
+  animation: fp-stamp-pop .6s cubic-bezier(.2,.85,.3,1.1) both;
+}
+
 /* faint yard-lines for hero/scoreboard backgrounds */
 .fb-yard {
   background-image: repeating-linear-gradient(
@@ -232,13 +284,24 @@ button:focus-visible,
   .fp-impact-huge,
   .fp-cashed-stamp,
   .fp-points-land,
-  .fp-screen-in {
+  .fp-screen-in,
+  .fp-float-gain,
+  .fp-verdict-stamp {
     animation: none !important;
+  }
+
+  .fp-pressable:active {
+    transform: none !important;
   }
 
   .fp-stage,
   .fp-cashed-stamp,
-  .fp-points-land {
+  .fp-points-land,
+  .fp-verdict-stamp {
     opacity: 1;
+  }
+
+  .fp-float-gain {
+    opacity: 0;
   }
 }
