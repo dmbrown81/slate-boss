@@ -28,7 +28,6 @@ import {
   FOURTH_PHASE_BOSSES,
   FOURTH_PHASE_DISCOUNT_TOKEN_CAP,
   FOURTH_PHASE_DRIVES,
-  FOURTH_PHASE_HAND_SIZE,
   FOURTH_PHASE_JOKER_LIMIT,
   FOURTH_PHASE_MAX_PLAYS_PER_DRIVE,
   FOURTH_PHASE_PLAY_LIMIT,
@@ -46,6 +45,7 @@ import {
   cardPlayChips,
   coachOrderCards,
   coachPickForWarRoom,
+  coachRoomLine,
   comboLedgerEntries,
   createFourthPhaseRun,
   discountedOfferCost,
@@ -386,7 +386,7 @@ function createInitialState(
   const run = createFourthPhaseRun(team, seed);
   const stake = fourthPhaseStake(stakeLevel);
   const orderedDeck = scriptedOpening(run.deck);
-  const draw = drawFourthPhaseCards(orderedDeck, [], FOURTH_PHASE_HAND_SIZE, mulberry32(stringSeed(`${seed}:opening`)));
+  const draw = drawFourthPhaseCards(orderedDeck, [], stake.handSize, mulberry32(stringSeed(`${seed}:opening`)));
   return {
     seed,
     team,
@@ -1022,7 +1022,8 @@ export default function FourthPhaseLab({ onHome }: Props) {
   }
 
   function refillHand(current: LabState, hand: FourthPhaseCard[], discardPile: FourthPhaseCard[], drawExtra: number) {
-    const count = Math.max(0, FOURTH_PHASE_HAND_SIZE - hand.length) + Math.max(0, drawExtra);
+    const handSize = fourthPhaseStake(current.stake).handSize;
+    const count = Math.max(0, handSize - hand.length) + Math.max(0, drawExtra);
     const draw = drawFourthPhaseCards(
       current.drawPile,
       discardPile,
@@ -1030,7 +1031,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
       mulberry32(stringSeed(`${current.seed}:draw:${current.drawNonce}`)),
     );
     return {
-      hand: [...hand, ...draw.drawn].slice(0, FOURTH_PHASE_HAND_SIZE + 2),
+      hand: [...hand, ...draw.drawn].slice(0, handSize + 2),
       drawPile: draw.deck,
       discardPile: draw.discard,
       drawNonce: current.drawNonce + 1,
@@ -1175,7 +1176,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
       const draw = drawFourthPhaseCards(
         current.drawPile,
         [...current.discardPile, ...current.hand],
-        FOURTH_PHASE_HAND_SIZE,
+        fourthPhaseStake(current.stake).handSize,
         mulberry32(stringSeed(`${current.seed}:redraw:${current.drawNonce}`)),
       );
       return {
@@ -1201,7 +1202,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
       { meter: BASE_METER, meterCap: Math.max(BASE_METER_CAP, current.meterCap) },
       { jokers: nextJokers, practice: nextPractice, wins: nextDrive, boss: activeBossForDrive(current, nextDrive, stake.bossFromDrive) },
     );
-    const draw = drawFourthPhaseCards(fullPile, [], FOURTH_PHASE_HAND_SIZE, mulberry32(stringSeed(`${current.seed}:drive-hand:${nextDrive}`)));
+    const draw = drawFourthPhaseCards(fullPile, [], stake.handSize, mulberry32(stringSeed(`${current.seed}:drive-hand:${nextDrive}`)));
     return {
       ...current,
       awaitingKickoff: true,
@@ -1480,6 +1481,12 @@ export default function FourthPhaseLab({ onHome }: Props) {
           nextDriveNumber={state.driveIndex + 2}
           nextTarget={state.targets[state.driveIndex + 1]}
           nextBoss={nextBossKey === 'none' ? null : FOURTH_PHASE_BOSSES[nextBossKey]}
+          coachLine={coachRoomLine(
+            nextBossKey,
+            state.targets[state.driveIndex + 1] ?? 0,
+            nextBossKey === 'none' ? FOURTH_PHASE_BOSSES[state.boss].name : undefined,
+            nextBossKey === 'none' ? stakeProfile.bossFromDrive + 1 : undefined,
+          )}
           onDraft={buyOffer}
           onReplace={confirmReplaceJoker}
           onCancelReplace={cancelReplaceJoker}
@@ -2521,6 +2528,7 @@ function WarRoom({
   nextDriveNumber,
   nextTarget,
   nextBoss,
+  coachLine,
   onDraft,
   onReplace,
   onCancelReplace,
@@ -2537,6 +2545,8 @@ function WarRoom({
   nextDriveNumber: number;
   nextTarget: number;
   nextBoss: FourthPhaseBossProfile | null;
+  /** The coach naming the next drive's problem before the offers appear. */
+  coachLine: string;
   onDraft: (offer: FourthPhaseWarRoomOffer) => void;
   onReplace: (index: number) => void;
   onCancelReplace: () => void;
@@ -2591,10 +2601,10 @@ function WarRoom({
         <div>
           <div style={{ ...sectionLabel, color: FB.gold }}>War Room</div>
           <div style={{ fontSize: 14, color: FB.text, fontWeight: 950, marginTop: 2 }}>
-            Drive {nextDriveNumber - 1} cleared. Draft help for Drive {nextDriveNumber}.
+            Drive {nextDriveNumber - 1} cleared. Adjustments for Drive {nextDriveNumber}.
           </div>
           <div style={{ fontSize: 11, color: FB.textDim, fontWeight: 800, marginTop: 3 }}>
-            Buy up to {FOURTH_PHASE_WAR_ROOM_BUY_LIMIT} upgrades, or skip to bank $3.
+            Install up to {FOURTH_PHASE_WAR_ROOM_BUY_LIMIT} adjustments, or save the cap.
           </div>
         </div>
         <div style={{ ...statTile, textAlign: 'right', minWidth: 84 }}>
@@ -2603,9 +2613,18 @@ function WarRoom({
         </div>
       </div>
 
+      {/* The coach speaks first: the next drive's problem, in his voice. The
+          offers below are answers to this line, not shelf items. */}
+      <div style={{ borderLeft: `3px solid ${FB.gold}`, background: 'rgba(242,189,61,0.06)', borderRadius: '0 8px 8px 0', padding: '9px 11px', marginTop: 10 }}>
+        <div style={{ fontSize: 12, color: FB.text, fontWeight: 850, lineHeight: 1.45, fontStyle: 'italic' }}>
+          {'“'}{coachLine}{'”'}
+        </div>
+        <div style={{ fontSize: 10, color: FB.textFaint, fontWeight: 900, marginTop: 4, letterSpacing: 1 }}>— COACH</div>
+      </div>
+
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 10 }}>
         <Metric label="Next goal" value={`${nextTarget}`} color={FB.text} />
-        <Metric label="Buys" value={`${buysThisWarRoom}/${FOURTH_PHASE_WAR_ROOM_BUY_LIMIT}`} color={FB.gold} />
+        <Metric label="Installs" value={`${buysThisWarRoom}/${FOURTH_PHASE_WAR_ROOM_BUY_LIMIT}`} color={FB.gold} />
       </div>
       {nextBoss && (
         <div style={{ border: `1px solid rgba(240,117,138,0.55)`, borderRadius: FP_RADIUS.card, background: 'rgba(240,117,138,0.08)', padding: '8px 9px', marginTop: 8 }}>
@@ -2650,14 +2669,15 @@ function WarRoom({
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline' }}>
                 <span className="fp-head" style={{ fontSize: 13.5, fontWeight: 900, color: FP_STOCK.ink, letterSpacing: 0.5 }}>{offer.label}</span>
-                <span className="fb-num" style={{ fontSize: 11.5, color: '#8a6a1e', fontWeight: 950, whiteSpace: 'nowrap' }}>
-                  {used > 0 && <s style={{ color: FP_STOCK.inkSoft, marginRight: 4 }}>${offer.cost}</s>}
+                <span className="fb-num" style={{ fontSize: 10.5, color: '#8a6a1e', fontWeight: 950, whiteSpace: 'nowrap', letterSpacing: 0.5 }}>
+                  {isPractice ? 'DRILL' : 'INSTALL'}{' · '}
+                  {used > 0 && <s style={{ color: FP_STOCK.inkSoft, marginRight: 3 }}>${offer.cost}</s>}
                   ${effectiveCost}
                 </span>
               </div>
               {isCoachPick && (
                 <div className="fp-sticker" style={{ fontSize: 9.5, marginTop: 6 }}>
-                  COACH PICK: {coachPick.reason}
+                  COACH'S CALL: {coachPick.reason}
                 </div>
               )}
               <div style={{ fontSize: 11, color: '#45413a', marginTop: 4, lineHeight: 1.35 }}>{offer.detail}</div>
@@ -2680,10 +2700,10 @@ function WarRoom({
           disabled={money < FOURTH_PHASE_WAR_ROOM_REROLL_COST}
           style={{ ...btnGhost, opacity: money >= FOURTH_PHASE_WAR_ROOM_REROLL_COST ? 1 : 0.45 }}
         >
-          Reroll ${FOURTH_PHASE_WAR_ROOM_REROLL_COST}
+          New looks ${FOURTH_PHASE_WAR_ROOM_REROLL_COST}
         </button>
         <button onClick={onSkip} style={btnGhost}>
-          {buysThisWarRoom > 0 ? 'Start drive' : 'Skip, bank $3'}
+          {buysThisWarRoom > 0 ? 'Take the field' : 'Save the cap +$3'}
         </button>
       </div>
     </section>

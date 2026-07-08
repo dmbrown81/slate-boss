@@ -20,6 +20,8 @@ export interface FourthPhaseStakeProfile {
   bossFromDrive: number;
   discardsPerDrive: number;
   startMoney: number;
+  /** Cards held during a drive. The short bench is Legend's rule change. */
+  handSize: number;
 }
 
 export const FOURTH_PHASE_STAKES: readonly FourthPhaseStakeProfile[] = [
@@ -28,24 +30,26 @@ export const FOURTH_PHASE_STAKES: readonly FourthPhaseStakeProfile[] = [
     name: 'Rookie Stake',
     shortName: 'Rookie',
     color: '#e8edf4',
-    tagline: 'The standard road game.',
+    tagline: 'Training camp with real stakes. Learn the loop.',
     modifiers: ['Boss defense on the final drive'],
     targetScale: 1,
     bossFromDrive: 2,
     discardsPerDrive: 2,
     startMoney: 8,
+    handSize: 8,
   },
   {
     level: 2,
     name: 'Pro Stake',
     shortName: 'Pro',
     color: '#62b7ff',
-    tagline: 'Tighter targets, same calls.',
-    modifiers: ['Drive Targets +12%', 'Boss defense on the final drive'],
-    targetScale: 1.12,
+    tagline: 'Tighter targets. The War Room starts mattering.',
+    modifiers: ['Drive Targets +20%', 'Boss defense on the final drive'],
+    targetScale: 1.2,
     bossFromDrive: 2,
     discardsPerDrive: 2,
     startMoney: 8,
+    handSize: 8,
   },
   {
     level: 3,
@@ -53,11 +57,12 @@ export const FOURTH_PHASE_STAKES: readonly FourthPhaseStakeProfile[] = [
     shortName: 'All-Pro',
     color: '#ad91ff',
     tagline: 'The boss shows up early.',
-    modifiers: ['Drive Targets +12%', 'Boss defense from Drive 2'],
-    targetScale: 1.12,
+    modifiers: ['Drive Targets +26%', 'Boss defense from Drive 2'],
+    targetScale: 1.26,
     bossFromDrive: 1,
     discardsPerDrive: 2,
     startMoney: 8,
+    handSize: 8,
   },
   {
     level: 4,
@@ -65,11 +70,12 @@ export const FOURTH_PHASE_STAKES: readonly FourthPhaseStakeProfile[] = [
     shortName: 'Legend',
     color: '#f2bd3d',
     tagline: 'Everything is against you.',
-    modifiers: ['Drive Targets +25%', 'Boss defense from Drive 2', 'One redraw per drive', 'Start with $6'],
-    targetScale: 1.25,
+    modifiers: ['Drive Targets +42%', 'Boss defense from Drive 2', 'Hand size 7', 'One redraw per drive', 'Start with $6'],
+    targetScale: 1.42,
     bossFromDrive: 1,
     discardsPerDrive: 1,
     startMoney: 6,
+    handSize: 7,
   },
 ];
 

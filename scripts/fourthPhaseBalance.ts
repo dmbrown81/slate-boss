@@ -119,10 +119,11 @@ function drawToHand(
   discardPile: FourthPhaseCard[],
   count: number,
   rng: RNG,
+  handSize = FOURTH_PHASE_HAND_SIZE,
 ) {
   const draw = drawFourthPhaseCards(drawPile, discardPile, count, rng);
   return {
-    hand: [...hand, ...draw.drawn].slice(0, FOURTH_PHASE_HAND_SIZE + 2),
+    hand: [...hand, ...draw.drawn].slice(0, handSize + 2),
     drawPile: draw.deck,
     discardPile: draw.discard,
   };
@@ -380,7 +381,7 @@ function simulateGame(team: FourthPhaseTeamKey, seed: number, policy: Policy, st
   const rng = mulberry32(stringSeed(rngKey));
   let drawPile = run.deck;
   let discardPile: FourthPhaseCard[] = [];
-  let handState = drawToHand([], drawPile, discardPile, FOURTH_PHASE_HAND_SIZE, rng);
+  let handState = drawToHand([], drawPile, discardPile, stake.handSize, rng, stake.handSize);
   let hand = handState.hand;
   drawPile = handState.drawPile;
   discardPile = handState.discardPile;
@@ -405,7 +406,7 @@ function simulateGame(team: FourthPhaseTeamKey, seed: number, policy: Policy, st
       const fullPile = shuffleFourthPhase([...drawPile, ...discardPile, ...hand], rng);
       drawPile = fullPile;
       discardPile = [];
-      handState = drawToHand([], drawPile, discardPile, FOURTH_PHASE_HAND_SIZE, rng);
+      handState = drawToHand([], drawPile, discardPile, stake.handSize, rng, stake.handSize);
       hand = handState.hand;
       drawPile = handState.drawPile;
       discardPile = handState.discardPile;
@@ -439,7 +440,7 @@ function simulateGame(team: FourthPhaseTeamKey, seed: number, policy: Policy, st
       const candidate = bestCandidate(hand, context, targetRemaining, policy, rng);
       const weakAttempt = candidate && candidate.result.points < 14 && !candidate.result.situation.utility;
       if ((!candidate || weakAttempt) && discardsLeft > 0) {
-        const redraw = drawFourthPhaseCards(drawPile, [...discardPile, ...hand], FOURTH_PHASE_HAND_SIZE, rng);
+        const redraw = drawFourthPhaseCards(drawPile, [...discardPile, ...hand], stake.handSize, rng);
         hand = redraw.drawn;
         drawPile = redraw.deck;
         discardPile = redraw.discard;
@@ -452,7 +453,7 @@ function simulateGame(team: FourthPhaseTeamKey, seed: number, policy: Policy, st
       const playedCards = candidate.ids.map((index) => hand[index]);
       hand = hand.filter((_, index) => !picked.has(index));
       discardPile = [...discardPile, ...playedCards];
-      const refill = drawToHand(hand, drawPile, discardPile, Math.max(0, FOURTH_PHASE_HAND_SIZE - hand.length) + candidate.result.fuel.draw, rng);
+      const refill = drawToHand(hand, drawPile, discardPile, Math.max(0, stake.handSize - hand.length) + candidate.result.fuel.draw, rng, stake.handSize);
       hand = refill.hand;
       drawPile = refill.drawPile;
       discardPile = refill.discardPile;
@@ -605,6 +606,7 @@ console.log(`\nStake ladder (${ladderSamples} samples per stake per pilot):`);
 console.log('  stake      synergy   greedy    noDraft   synergy_median');
 const ladderSynergyWins: number[] = [synergyWin];
 let legendSynergyWin = 0;
+let proNoDraftWin = noneWin;
 for (const stakeProfile of FOURTH_PHASE_STAKES) {
   if (stakeProfile.level === 1) {
     console.log(`  ${stakeProfile.shortName.padEnd(9)} ${(synergyWin * 100).toFixed(1).padStart(6)}%  ${(greedyWin * 100).toFixed(1).padStart(6)}%  ${(noneWin * 100).toFixed(1).padStart(6)}%  ${median(byPolicy.synergy.map((result) => result.score)).toFixed(0).padStart(8)}  (full-sample gates above)`);
@@ -622,6 +624,7 @@ for (const stakeProfile of FOURTH_PHASE_STAKES) {
   const stakeSynergyWin = win(stakeResults.synergy);
   ladderSynergyWins.push(stakeSynergyWin);
   if (stakeProfile.level === FOURTH_PHASE_STAKES.length) legendSynergyWin = stakeSynergyWin;
+  if (stakeProfile.level === 2) proNoDraftWin = win(stakeResults.none);
   console.log(`  ${stakeProfile.shortName.padEnd(9)} ${(stakeSynergyWin * 100).toFixed(1).padStart(6)}%  ${(win(stakeResults.greedy) * 100).toFixed(1).padStart(6)}%  ${(win(stakeResults.none) * 100).toFixed(1).padStart(6)}%  ${median(stakeResults.synergy.map((result) => result.score)).toFixed(0).padStart(8)}`);
 }
 
@@ -636,6 +639,11 @@ advisory(
   'Legend synergy win in 20-55% (a hard game, still a game)',
   legendSynergyWin >= 0.2 && legendSynergyWin <= 0.55,
   `${(legendSynergyWin * 100).toFixed(1)}%`,
+);
+advisory(
+  'drafting load-bearing by Pro: noDraft win <= 50%',
+  proNoDraftWin <= 0.5,
+  `${(proNoDraftWin * 100).toFixed(1)}% — Rookie is training camp; from Pro up, skipping the War Room should cost the run`,
 );
 
 console.log('\nLegacy Gridiron comparison: run `npm run balance:gridiron -- 3000` separately; this harness does not claim inherited balance.');

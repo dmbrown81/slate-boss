@@ -335,10 +335,13 @@ export function generateFourthPhaseWarRoomOffers(
   const ownedIds = new Set(owned.map((joker) => joker.id));
   const pool = FOURTH_PHASE_JOKER_POOL.filter((joker) => !ownedIds.has(joker.id));
   const ordered = shuffleFourthPhase(pool, mulberry32(stringSeed(`fourth-phase-offers:${seed}:${driveIndex}:${owned.length}:${reroll}`)));
+  // Price by rarity so a buy is a tradeoff with a story, not a flat menu: a
+  // legendary you can only afford because you banked last drive's skip is a
+  // decision the player remembers. Discount tokens still floor at $1.
   const jokerOffers = ordered.slice(0, 3).map((def): FourthPhaseWarRoomOffer => ({
     id: `joker:${def.id}`,
     kind: 'joker',
-    cost: 4,
+    cost: def.rarity === 'legendary' ? 6 : def.rarity === 'rare' ? 5 : 4,
     label: def.name,
     detail: def.effect,
     tags: offerTagsForJoker(def.id, team, boss),

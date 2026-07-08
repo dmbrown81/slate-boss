@@ -236,6 +236,36 @@ export function coachPickForWarRoom(offers: readonly FourthPhaseWarRoomOffer[], 
   return { id: best.id, reason: reasonForTags(best.tags) };
 }
 
+// The War Room's opening line: the coach names the next drive's actual
+// problem before the offers appear, so drafting reads as an adjustment to a
+// threat instead of shopping from a list. Deterministic copy from run data.
+const BOSS_ROOM_PROBLEM: Record<FourthPhaseBossKey, string> = {
+  none: '',
+  stackedBox: "They're stacking the box next drive — our base yards get cut in half. I want cheap ways to score that don't lean on Offense values.",
+  noFlyZone: 'No-Fly Zone next drive: only two Offense cards run clean routes. Make every cash count or find yards somewhere else.',
+  roadGame: "Road Game next drive: they take our crowd away and momentum caps at x2. Cash early, or draft something that doesn't need the meter.",
+  turnoverDrill: 'Ball Security next drive: our Defense creates less leverage. The floor gets thin — find another multiplier.',
+  fieldPositionWar: 'Touchback Machine next drive: hidden yards dry up. The Special Teams economy stalls unless we plan around it.',
+  adaptiveDc: "Got Your Number next drive: repeat a call and they blank it. We need enough variety to never run the same look twice.",
+  preventDefense: 'Prevent Defense next drive: they cap the explosive ceiling. Big cash-ins shrink — steady scoring wins this one.',
+};
+
+export function coachRoomLine(
+  nextBoss: FourthPhaseBossKey,
+  nextTarget: number,
+  scoutedBossName?: string,
+  scoutedArrivesDrive?: number,
+): string {
+  const problem = BOSS_ROOM_PROBLEM[nextBoss];
+  if (problem) return problem;
+  // Open field next drive, but the scouting report still hangs over the room:
+  // buys made now are how you answer the boss before it takes the field.
+  if (scoutedBossName && scoutedArrivesDrive) {
+    return `Next drive asks for ${nextTarget} — open field. But ${scoutedBossName} takes the field on Drive ${scoutedArrivesDrive}. Spend ahead of it, or save the cap.`;
+  }
+  return `Next drive asks for ${nextTarget}. Open field, no boss pressure — spend where it compounds, or save the cap.`;
+}
+
 export function buildRunShareCardData(input: {
   outcome: 'W' | 'L';
   team: string;
