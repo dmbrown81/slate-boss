@@ -6,19 +6,21 @@ import { mulberry32, stringSeed, type RNG } from '../src/lib/rng';
 import {
   BASE_METER,
   BASE_METER_CAP,
-  FOURTH_PHASE_DISCARDS,
   FOURTH_PHASE_DISCOUNT_TOKEN_CAP,
   FOURTH_PHASE_HAND_SIZE,
   FOURTH_PHASE_JOKER_LIMIT,
   FOURTH_PHASE_MAX_PLAYS_PER_DRIVE,
+  FOURTH_PHASE_STAKES,
   FOURTH_PHASE_TEAMS,
   FOURTH_PHASE_WAR_ROOM_BUY_LIMIT,
   FOURTH_PHASE_WAR_ROOM_REROLL_COST,
   activeBossForDrive,
   applyFourthPhaseDrawStart,
+  coachPickForWarRoom,
   createFourthPhaseRun,
   discountedOfferCost,
   drawFourthPhaseCards,
+  fourthPhaseStake,
   generateFourthPhaseWarRoomOffers,
   jokerDefinition,
   meterTightness,
@@ -36,7 +38,17 @@ import {
   type SituationKey,
 } from '../src/lib/fourthPhase';
 
-type Policy = 'synergy' | 'random' | 'none';
+// Pilot policies:
+//   synergy — skilled player: reorders for cash-ins, drafts by fit.
+//   random  — noise floor: random legal series, random shopping.
+//   none    — skilled play, never drafts (measures War Room necessity).
+//   greedy  — cold-player proxy: reads the preview and plays the highest
+//             number every series, never reorders for cash-ins, and buys the
+//             COACH PICK blindly. This is what a day-one human actually does.
+//   mono    — degenerate-rhythm probe: a skilled pilot that only ever hunts
+//             Crowd Surge -> Shot Play. If it wins near synergy, the other
+//             eight situations are decoration.
+type Policy = 'synergy' | 'random' | 'none' | 'greedy' | 'mono';
 
 // A skilled pilot reorders a play so Crowd charges land before the Offense card cashes the meter.
 // Crowd first, then Defense/Special Teams, then Offense last — this exercises the drag-order mechanic
@@ -117,7 +129,7 @@ function drawToHand(
 }
 
 function candidateObjective(result: FourthPhaseScoreResult, targetRemaining: number, policy: Policy): number {
-  if (policy === 'random') return result.points;
+  if (policy === 'random' || policy === 'greedy') return result.points;
   const willClear = result.points >= targetRemaining;
   const meterGain = Math.max(0, result.meterAfter - result.meterBefore);
   const fuelValue = result.fuel.draw * 16 + result.fuel.money * 6 + result.fuel.discount * 8;
@@ -137,12 +149,24 @@ function bestCandidate(
 ): Candidate | null {
   const options = combos(hand.length, 5).map((ids) => {
     const selected = ids.map((index) => hand[index]);
-    const played = policy === 'random' ? selected : orderForCash(selected);
+    // random taps in whatever order; greedy taps in hand order and never
+    // discovers the reorder trick — that gap vs synergy IS the ordering skill.
+    const played = policy === 'random' || policy === 'greedy' ? selected : orderForCash(selected);
     const result = scoreFourthPhasePlay(played, context);
     return { ids, result, objective: candidateObjective(result, targetRemaining, policy) };
   });
   if (!options.length) return null;
   if (policy === 'random') return options[Math.floor(rng() * options.length)];
+  if (policy === 'mono') {
+    const monoOptions = options.filter((option) => option.result.situation.key === 'houseCall' || option.result.situation.key === 'blackout');
+    if (monoOptions.length) {
+      monoOptions.sort((a, b) => b.objective - a.objective || b.result.points - a.result.points);
+      return monoOptions[0];
+    }
+    // No Surge/Shot shape in hand: a spammer redraws hunting Crowd while they
+    // can (signalled by returning null), then settles for the best fallback.
+    if (context.discardsLeft > 0) return null;
+  }
   options.sort((a, b) => b.objective - a.objective || b.result.points - a.result.points);
   return options[0];
 }
@@ -291,6 +315,19 @@ function runWarRoom(
   // at the prices a real player would see.
   const effectiveCost = (cost: number) => discountedOfferCost(cost, nextDiscounts).cost;
 
+  // A cold player trusts the sticker: buy the COACH PICK if affordable, once,
+  // and never reroll. No fit evaluation — that's the whole point of greedy.
+  if (policy === 'greedy') {
+    const pick = coachPickForWarRoom(offers, team, boss);
+    const offer = pick ? offers.find((candidate) => candidate.id === pick.id) : undefined;
+    if (offer && effectiveCost(offer.cost) <= nextMoney) {
+      const applied = applyOffer(offer, nextJokers, nextPractice, team, bossDriveSoon);
+      const priced = discountedOfferCost(offer.cost, nextDiscounts);
+      return { jokers: applied.jokers, practice: applied.practice, money: nextMoney - priced.cost, discounts: nextDiscounts - priced.used };
+    }
+    return { jokers: nextJokers, practice: nextPractice, money: nextMoney + 3, discounts: nextDiscounts };
+  }
+
   while (buys < FOURTH_PHASE_WAR_ROOM_BUY_LIMIT) {
     const affordable = offers.filter((offer) => effectiveCost(offer.cost) <= nextMoney);
     if (!affordable.length) break;
@@ -333,9 +370,14 @@ function runWarRoom(
   return { jokers: nextJokers, practice: nextPractice, money: nextMoney, discounts: nextDiscounts };
 }
 
-function simulateGame(team: FourthPhaseTeamKey, seed: number, policy: Policy): SimResult {
+function simulateGame(team: FourthPhaseTeamKey, seed: number, policy: Policy, stakeLevel = 1): SimResult {
   const run = createFourthPhaseRun(team, seed);
-  const rng = mulberry32(stringSeed(`fourth-phase-sim:${seed}:${team}:${policy}`));
+  const stake = fourthPhaseStake(stakeLevel);
+  // Same scaling the Lab applies when a run starts at this stake.
+  const targets = run.targets.map((target) => Math.round(target * stake.targetScale));
+  // Stake 1 keeps the historical rng key so gate numbers stay reproducible.
+  const rngKey = stakeLevel === 1 ? `fourth-phase-sim:${seed}:${team}:${policy}` : `fourth-phase-sim:${seed}:${team}:${policy}:s${stakeLevel}`;
+  const rng = mulberry32(stringSeed(rngKey));
   let drawPile = run.deck;
   let discardPile: FourthPhaseCard[] = [];
   let handState = drawToHand([], drawPile, discardPile, FOURTH_PHASE_HAND_SIZE, rng);
@@ -344,7 +386,7 @@ function simulateGame(team: FourthPhaseTeamKey, seed: number, policy: Policy): S
   discardPile = handState.discardPile;
   let jokers = [...run.jokers];
   let practice = { ...run.practice };
-  let money = run.money;
+  let money = stake.startMoney;
   let discountTokens = 0;
   let meter = run.meter.meter;
   let meterCap = run.meter.meterCap;
@@ -357,8 +399,8 @@ function simulateGame(team: FourthPhaseTeamKey, seed: number, policy: Policy): S
   let comboPlays = 0;
   let comboClears = 0;
 
-  for (let driveIndex = 0; driveIndex < run.targets.length; driveIndex += 1) {
-    const boss = activeBossForDrive(run, driveIndex);
+  for (let driveIndex = 0; driveIndex < targets.length; driveIndex += 1) {
+    const boss = activeBossForDrive(run, driveIndex, stake.bossFromDrive);
     if (driveIndex > 0) {
       const fullPile = shuffleFourthPhase([...drawPile, ...discardPile, ...hand], rng);
       drawPile = fullPile;
@@ -373,14 +415,14 @@ function simulateGame(team: FourthPhaseTeamKey, seed: number, policy: Policy): S
     }
 
     let driveScore = 0;
-    let discardsLeft = FOURTH_PHASE_DISCARDS;
+    let discardsLeft = stake.discardsPerDrive;
     let cardsPlayedThisDrive = 0;
     const repeatedSituations: Partial<Record<SituationKey, number>> = {};
     let guard = 0;
 
-    while (driveScore < run.targets[driveIndex] && cardsPlayedThisDrive < FOURTH_PHASE_MAX_PLAYS_PER_DRIVE && guard < 24) {
+    while (driveScore < targets[driveIndex] && cardsPlayedThisDrive < FOURTH_PHASE_MAX_PLAYS_PER_DRIVE && guard < 24) {
       guard += 1;
-      const targetRemaining = run.targets[driveIndex] - driveScore;
+      const targetRemaining = targets[driveIndex] - driveScore;
       const context = {
         meter,
         meterCap,
@@ -435,13 +477,13 @@ function simulateGame(team: FourthPhaseTeamKey, seed: number, policy: Policy): S
       if (meterTightness(meter, meterCap) >= 0.9) tightPlays += 1;
     }
 
-    if (driveScore < run.targets[driveIndex]) {
+    if (driveScore < targets[driveIndex]) {
       return { won: false, score: totalScore, failDrive: driveIndex + 1, endingMoney: money, peakScore, peakMeter, tightPlays, plays, comboFires, comboPlays, comboClears, team };
     }
 
     money += 5 + driveIndex * 2;
-    if (driveIndex < run.targets.length - 1) {
-      const drafted = runWarRoom(jokers, practice, money, discountTokens, seed, driveIndex, team, activeBossForDrive(run, driveIndex + 1), policy, rng);
+    if (driveIndex < targets.length - 1) {
+      const drafted = runWarRoom(jokers, practice, money, discountTokens, seed, driveIndex, team, activeBossForDrive(run, driveIndex + 1, stake.bossFromDrive), policy, rng);
       jokers = drafted.jokers;
       practice = drafted.practice;
       money = drafted.money;
@@ -467,18 +509,22 @@ function summarize(label: string, results: readonly SimResult[]) {
 console.log(`Fourth Phase balance harness -- ${sampleCount} simulated lab games per policy`);
 console.log('Abstract-target skeleton: three drives, boss on drive 3, local deterministic RNG.\n');
 
-const byPolicy: Record<Policy, SimResult[]> = { synergy: [], random: [], none: [] };
+const byPolicy: Record<Policy, SimResult[]> = { synergy: [], random: [], none: [], greedy: [], mono: [] };
 for (let index = 0; index < sampleCount; index += 1) {
   const team = teamKeys[index % teamKeys.length];
   const seed = stringSeed(`fourth-phase-balance:${index}:${team}`);
   byPolicy.synergy.push(simulateGame(team, seed, 'synergy'));
   byPolicy.random.push(simulateGame(team, seed, 'random'));
   byPolicy.none.push(simulateGame(team, seed, 'none'));
+  byPolicy.greedy.push(simulateGame(team, seed, 'greedy'));
+  byPolicy.mono.push(simulateGame(team, seed, 'mono'));
 }
 
 summarize('synergy', byPolicy.synergy);
 summarize('random', byPolicy.random);
 summarize('noDraft', byPolicy.none);
+summarize('greedy', byPolicy.greedy);
+summarize('mono', byPolicy.mono);
 
 const synergyWin = byPolicy.synergy.filter((result) => result.won).length / byPolicy.synergy.length;
 const randomWin = byPolicy.random.filter((result) => result.won).length / byPolicy.random.length;
@@ -525,6 +571,72 @@ for (const gate of gates) {
   if (!gate.pass) failures += 1;
   console.log(`  ${gate.pass ? 'OK' : 'FAIL'} ${gate.label} -- ${gate.detail}`);
 }
+
+// ---------------------------------------------------------------------------
+// Advisory sections. These measure the open review questions — cold-player
+// fairness, degenerate-rhythm dominance, and the unproven stake ladder — and
+// print 🟡 warnings instead of failing, so CI keeps gating on the proven
+// stake-1 contract while the data accumulates.
+// ---------------------------------------------------------------------------
+
+const greedyWin = byPolicy.greedy.filter((result) => result.won).length / byPolicy.greedy.length;
+const monoWin = byPolicy.mono.filter((result) => result.won).length / byPolicy.mono.length;
+
+function advisory(label: string, ok: boolean, detail: string) {
+  console.log(`  ${ok ? 'OK' : '\u{1F7E1} ADVISORY'} ${label} -- ${detail}`);
+}
+
+console.log('\nAdvisories (informational, never fail the run):');
+advisory(
+  'cold-player proxy (greedy) win >= 20% at Rookie',
+  greedyWin >= 0.2,
+  `${(greedyWin * 100).toFixed(1)}% — below 20% means first runs are a woodchipper regardless of tutorial quality`,
+);
+advisory(
+  'mono rhythm (Surge->Shot spam) trails synergy by >= 5 win pts',
+  synergyWin - monoWin >= 0.05,
+  `mono ${(monoWin * 100).toFixed(1)}% vs synergy ${(synergyWin * 100).toFixed(1)}% — inside 5 pts the other eight situations are decorative`,
+);
+
+// Stake ladder: smaller samples per stake — this is a shape check (is the
+// ladder ordered and is Legend a game at all), not a tuning gate yet.
+const ladderSamples = Math.max(300, Math.floor(sampleCount / 3));
+console.log(`\nStake ladder (${ladderSamples} samples per stake per pilot):`);
+console.log('  stake      synergy   greedy    noDraft   synergy_median');
+const ladderSynergyWins: number[] = [synergyWin];
+let legendSynergyWin = 0;
+for (const stakeProfile of FOURTH_PHASE_STAKES) {
+  if (stakeProfile.level === 1) {
+    console.log(`  ${stakeProfile.shortName.padEnd(9)} ${(synergyWin * 100).toFixed(1).padStart(6)}%  ${(greedyWin * 100).toFixed(1).padStart(6)}%  ${(noneWin * 100).toFixed(1).padStart(6)}%  ${median(byPolicy.synergy.map((result) => result.score)).toFixed(0).padStart(8)}  (full-sample gates above)`);
+    continue;
+  }
+  const stakeResults: Record<'synergy' | 'greedy' | 'none', SimResult[]> = { synergy: [], greedy: [], none: [] };
+  for (let index = 0; index < ladderSamples; index += 1) {
+    const team = teamKeys[index % teamKeys.length];
+    const seed = stringSeed(`fourth-phase-balance:${index}:${team}`);
+    stakeResults.synergy.push(simulateGame(team, seed, 'synergy', stakeProfile.level));
+    stakeResults.greedy.push(simulateGame(team, seed, 'greedy', stakeProfile.level));
+    stakeResults.none.push(simulateGame(team, seed, 'none', stakeProfile.level));
+  }
+  const win = (results: SimResult[]) => results.filter((result) => result.won).length / results.length;
+  const stakeSynergyWin = win(stakeResults.synergy);
+  ladderSynergyWins.push(stakeSynergyWin);
+  if (stakeProfile.level === FOURTH_PHASE_STAKES.length) legendSynergyWin = stakeSynergyWin;
+  console.log(`  ${stakeProfile.shortName.padEnd(9)} ${(stakeSynergyWin * 100).toFixed(1).padStart(6)}%  ${(win(stakeResults.greedy) * 100).toFixed(1).padStart(6)}%  ${(win(stakeResults.none) * 100).toFixed(1).padStart(6)}%  ${median(stakeResults.synergy.map((result) => result.score)).toFixed(0).padStart(8)}`);
+}
+
+console.log('\nStake ladder advisories:');
+const monotonic = ladderSynergyWins.every((value, index) => index === 0 || value <= ladderSynergyWins[index - 1] + 0.02);
+advisory(
+  'synergy win non-increasing up the ladder (2 pt noise tolerance)',
+  monotonic,
+  ladderSynergyWins.map((value, index) => `S${index + 1} ${(value * 100).toFixed(1)}%`).join(' -> '),
+);
+advisory(
+  'Legend synergy win in 20-55% (a hard game, still a game)',
+  legendSynergyWin >= 0.2 && legendSynergyWin <= 0.55,
+  `${(legendSynergyWin * 100).toFixed(1)}%`,
+);
 
 console.log('\nLegacy Gridiron comparison: run `npm run balance:gridiron -- 3000` separately; this harness does not claim inherited balance.');
 
