@@ -245,6 +245,73 @@ button:focus-visible,
   animation: fp-stamp-pop .6s cubic-bezier(.2,.85,.3,1.1) both;
 }
 
+/* ── The Play Unfolds: signature cash-in cinematic ─────────────── */
+@keyframes fp-cin-in {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+.fp-cin-overlay { animation: fp-cin-in .18s ease-out; }
+
+@keyframes fp-cin-card-slam {
+  0% { transform: translateY(-26px) scale(1.5) rotate(-4deg); opacity: 0; }
+  62% { transform: translateY(2px) scale(0.97) rotate(0.5deg); opacity: 1; }
+  100% { transform: translateY(0) scale(1) rotate(0); opacity: 1; }
+}
+.fp-cin-card {
+  opacity: 0;
+  animation: fp-cin-card-slam .3s cubic-bezier(.2,.85,.3,1.1) forwards;
+}
+
+@keyframes fp-cin-term-in {
+  0% { transform: translateY(8px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+.fp-cin-term {
+  display: inline-block;
+  opacity: 0;
+  animation: fp-cin-term-in .22s ease-out forwards;
+}
+
+/* the built momentum visibly empties into the score */
+@keyframes fp-cin-drain-out {
+  0% { width: 100%; filter: brightness(1); }
+  30% { filter: brightness(1.5); }
+  100% { width: 0%; filter: brightness(1.2); }
+}
+.fp-cin-drain { animation: fp-cin-drain-out .55s cubic-bezier(.4,.05,.2,1) forwards; }
+
+@keyframes fp-cin-score-in {
+  0% { transform: scale(0.4); opacity: 0; }
+  55% { transform: scale(1.14); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.fp-cin-score { animation: fp-cin-score-in .38s cubic-bezier(.2,.9,.3,1.2) both; }
+
+/* ── Drive-clear ceremony: the reward for succeeding is a beat, not more work ── */
+@keyframes fp-drive-banner-in {
+  0% { opacity: 0; }
+  12% { opacity: 1; }
+  86% { opacity: 1; }
+  100% { opacity: 0; }
+}
+.fp-drive-banner { animation: fp-drive-banner-in 1.4s ease-out both; }
+
+/* ── Breakaway: the football rips downfield on a 100+ point series ── */
+@keyframes fp-breakaway-streak {
+  0% { opacity: 0.9; transform: scaleX(0.2); transform-origin: left; }
+  100% { opacity: 0; transform: scaleX(1); transform-origin: left; }
+}
+.fp-breakaway-streak {
+  position: absolute;
+  top: 38%;
+  bottom: 38%;
+  left: 0;
+  right: 12%;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(242,189,61,0.65));
+  animation: fp-breakaway-streak .8s ease-out both;
+}
+
 /* faint yard-lines for hero/scoreboard backgrounds */
 .fb-yard {
   background-image: repeating-linear-gradient(
@@ -286,8 +353,25 @@ button:focus-visible,
   .fp-points-land,
   .fp-screen-in,
   .fp-float-gain,
-  .fp-verdict-stamp {
+  .fp-verdict-stamp,
+  .fp-cin-overlay,
+  .fp-cin-card,
+  .fp-cin-term,
+  .fp-cin-drain,
+  .fp-cin-score,
+  .fp-drive-banner,
+  .fp-breakaway-streak {
     animation: none !important;
+  }
+
+  .fp-cin-card,
+  .fp-cin-term,
+  .fp-drive-banner {
+    opacity: 1;
+  }
+
+  .fp-breakaway-streak {
+    opacity: 0;
   }
 
   .fp-pressable:active {

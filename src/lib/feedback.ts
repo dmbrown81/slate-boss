@@ -79,7 +79,7 @@ const AUDIO_PATTERNS: Record<AudioCueEvent, { freq: number; at: number; dur: num
 
 let audioContext: AudioContext | null = null;
 
-function prefersReducedMotion(): boolean {
+export function prefersReducedMotion(): boolean {
   if (typeof window === 'undefined' || !window.matchMedia) return false;
   try {
     return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -134,6 +134,107 @@ export function audioCue(event: AudioCueEvent, enabled: boolean): void {
     }
   } catch {
     // WebAudio can be blocked or unavailable; feedback is optional.
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Crowd noise. Sine cues are UI punctuation; the crowd is atmosphere. Both are
+// synthesized (no asset pipeline): a stadium is, acoustically, band-passed
+// noise — a murmur loop that swells with the momentum meter, and a roar burst
+// for signature cash-ins. All volumes stay under the cues.
+// ---------------------------------------------------------------------------
+
+let noiseBuffer: AudioBuffer | null = null;
+
+function getNoiseBuffer(ctx: AudioContext): AudioBuffer {
+  if (noiseBuffer && noiseBuffer.sampleRate === ctx.sampleRate) return noiseBuffer;
+  const length = ctx.sampleRate * 2;
+  noiseBuffer = ctx.createBuffer(1, length, ctx.sampleRate);
+  const data = noiseBuffer.getChannelData(0);
+  // Pink-ish noise via a cheap running filter; pure white reads as static.
+  let last = 0;
+  for (let i = 0; i < length; i += 1) {
+    const white = Math.random() * 2 - 1;
+    last = last * 0.94 + white * 0.06;
+    data[i] = last * 3.2;
+  }
+  return noiseBuffer;
+}
+
+/** One-shot crowd roar: swells fast, decays slow. For signature cash-ins and wins. */
+export function crowdRoar(enabled: boolean): void {
+  if (!enabled || prefersReducedMotion()) return;
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  try {
+    if (ctx.state === 'suspended') void ctx.resume();
+    const start = ctx.currentTime + 0.01;
+    const source = ctx.createBufferSource();
+    source.buffer = getNoiseBuffer(ctx);
+    source.loop = true;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(700, start);
+    filter.frequency.exponentialRampToValueAtTime(1500, start + 0.28);
+    filter.frequency.exponentialRampToValueAtTime(500, start + 1.3);
+    filter.Q.value = 0.7;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(0.055, start + 0.24);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + 1.4);
+    source.connect(filter);
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+    source.start(start);
+    source.stop(start + 1.5);
+  } catch {
+    // Atmosphere is optional; never throw.
+  }
+}
+
+interface MurmurNodes {
+  source: AudioBufferSourceNode;
+  filter: BiquadFilterNode;
+  gain: GainNode;
+}
+
+let murmur: MurmurNodes | null = null;
+
+/**
+ * Continuous stadium murmur tied to the momentum meter. `level` is 0..1
+ * (meter fill); 0 ramps silent. The room literally gets louder and brighter
+ * as the crowd charges — the meter IS the crowd.
+ */
+export function setCrowdMurmur(level: number, enabled: boolean): void {
+  const ctx = audioContext; // never create a context just for ambience
+  const target = enabled && !prefersReducedMotion() ? Math.max(0, Math.min(1, level)) : 0;
+  if (!murmur && (target <= 0 || !ctx)) return;
+  try {
+    const context = ctx ?? getAudioContext();
+    if (!context) return;
+    if (!murmur) {
+      const source = context.createBufferSource();
+      source.buffer = getNoiseBuffer(context);
+      source.loop = true;
+      const filter = context.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.value = 420;
+      filter.Q.value = 0.6;
+      const gain = context.createGain();
+      gain.gain.value = 0.0001;
+      source.connect(filter);
+      filter.connect(gain);
+      gain.connect(context.destination);
+      source.start();
+      murmur = { source, filter, gain };
+    }
+    const now = context.currentTime;
+    const volume = target <= 0 ? 0.0001 : 0.003 + target * 0.016;
+    murmur.gain.gain.cancelScheduledValues(now);
+    murmur.gain.gain.setTargetAtTime(volume, now, 0.4);
+    murmur.filter.frequency.setTargetAtTime(420 + target * 900, now, 0.5);
+  } catch {
+    // Atmosphere is optional; never throw.
   }
 }
 

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type ReactNode } from 'react';
 import { mulberry32, stringSeed } from '../../lib/rng';
-import { loadFeelPrefs, playFeel, saveFeelPrefs, type FourthPhaseFeelEvent } from './fpFeedback';
+import { loadFeelPrefs, playFeel, saveFeelPrefs, updateCrowdMurmur, type FourthPhaseFeelEvent } from './fpFeedback';
+import { prefersReducedMotion } from '../../lib/feedback';
+import PlayCinematic from './PlayCinematic';
 import {
   FP as FB,
   FP_FONT_HEAD,
@@ -680,6 +682,13 @@ export default function FourthPhaseLab({ onHome }: Props) {
   const [coachDiagnosis, setCoachDiagnosis] = useState('');
   const shownLessonsRef = useRef<Set<string>>(new Set());
   const [feel, setFeel] = useState(loadFeelPrefs);
+  // Signature cash-in cinematic: at most one interruption per drive, and the
+  // peak must stay rare or it stops being a peak.
+  const [cinematic, setCinematic] = useState<{ cards: FourthPhaseCard[]; result: FourthPhaseScoreResult; key: number } | null>(null);
+  const cinematicDriveRef = useRef(-1);
+  const cinematicKeyRef = useRef(0);
+  const [driveBanner, setDriveBanner] = useState<{ drive: number; score: number } | null>(null);
+  const driveBannerTimerRef = useRef(0);
 
   function feelEvent(event: FourthPhaseFeelEvent) {
     playFeel(event, feel);
@@ -716,6 +725,16 @@ export default function FourthPhaseLab({ onHome }: Props) {
     else if (state.phase === 'lost') playFeel('loss', feel);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- cue fires only on phase edges, not pref edits
   }, [state.phase]);
+
+  // Stadium murmur follows the momentum meter while a drive is live. The
+  // meter IS the crowd: the room gets louder and brighter as it charges.
+  const murmurLevel = screen === 'game' && state.phase === 'play' && !state.awaitingKickoff
+    ? Math.min(1, (state.meter - BASE_METER) / Math.max(0.1, state.meterCap - BASE_METER))
+    : 0;
+  useEffect(() => {
+    updateCrowdMurmur(murmurLevel, feel);
+  }, [murmurLevel, feel]);
+  useEffect(() => () => updateCrowdMurmur(0, { sound: false, haptics: false }), []);
 
   // Advance the tutorial as the player actually performs each step. Driven by the
   // play handler (executePlay) rather than an effect.
@@ -839,6 +858,9 @@ export default function FourthPhaseLab({ onHome }: Props) {
     setLedgerExpanded(false);
     setCoachDiagnosis('');
     shownLessonsRef.current = new Set();
+    setCinematic(null);
+    cinematicDriveRef.current = -1;
+    setDriveBanner(null);
   }
 
   function kickoffDrive() {
@@ -1029,8 +1051,27 @@ export default function FourthPhaseLab({ onHome }: Props) {
     setCoachNudge('');
     setShareCopied(false);
     setShareCardStatus('');
-    // Same impact tiers as buildResolution: huge > cash > normal series.
-    feelEvent(preview.points >= 180 || preview.bigPlay >= 4 ? 'big_cash' : preview.didCash ? 'cash' : 'run_series');
+    // Signature cash-ins get the full "Play Unfolds" cinematic (which owns the
+    // payoff sound); everything else gets the instant cue. One interruption
+    // per drive, never during the tutorial, never under reduced motion.
+    const signatureCash = preview.didCash && (preview.bigPlay >= 3.5 || preview.points >= 150);
+    const showCinematic = signatureCash && tutorialStep < 0 && !prefersReducedMotion() && cinematicDriveRef.current !== state.driveIndex;
+    if (showCinematic) {
+      cinematicDriveRef.current = state.driveIndex;
+      cinematicKeyRef.current += 1;
+      setCinematic({ cards: selectedCards, result: preview, key: cinematicKeyRef.current });
+    } else {
+      // Same impact tiers as buildResolution: huge > cash > normal series.
+      feelEvent(preview.points >= 180 || preview.bigPlay >= 4 ? 'big_cash' : preview.didCash ? 'cash' : 'run_series');
+    }
+    // Clearing a mid-run drive earns a held beat before the War Room — unless
+    // the cinematic is already celebrating this exact play.
+    const clearsDrive = state.driveScore + preview.points >= target;
+    if (clearsDrive && state.driveIndex < FOURTH_PHASE_DRIVES - 1 && !showCinematic) {
+      setDriveBanner({ drive: state.driveIndex + 1, score: state.driveScore + preview.points });
+      window.clearTimeout(driveBannerTimerRef.current);
+      driveBannerTimerRef.current = window.setTimeout(() => setDriveBanner(null), 1450);
+    }
     setResolution((current) => buildResolution(preview, shownExplanation, (current?.key ?? 0) + 1, tutorialStep >= 0));
     // Preview and execution score through the same context, so `preview` IS the
     // resolved series — the diagnosis reads exact numbers, not estimates.
@@ -1321,6 +1362,29 @@ export default function FourthPhaseLab({ onHome }: Props) {
 
   const shellImpact = resolution?.impact === 'huge' ? 'fp-impact-huge' : resolution?.impact === 'cash' ? 'fp-impact-cash' : undefined;
   const runInProgress = runStarted && (state.phase === 'play' || state.phase === 'warRoom');
+  // The cinematic can outlive the play that triggered it (drive clears, run
+  // ends), so it renders on every in-game screen, above everything.
+  const cinematicOverlay = cinematic ? (
+    <PlayCinematic
+      key={cinematic.key}
+      cards={cinematic.cards}
+      result={cinematic.result}
+      prefs={feel}
+      onDone={() => setCinematic(null)}
+    />
+  ) : null;
+  const driveBannerOverlay = driveBanner ? (
+    <div className="fp-drive-banner" aria-hidden="true" style={{ position: 'fixed', inset: 0, zIndex: 80, display: 'grid', placeItems: 'center', background: 'rgba(5,7,11,0.82)', pointerEvents: 'none' }}>
+      <div style={{ textAlign: 'center' }}>
+        <div className="fp-head fp-verdict-stamp" style={{ fontSize: 30, color: FB.green, fontWeight: 900 }}>
+          DRIVE {driveBanner.drive} CLEARED
+        </div>
+        <div className="fb-led" style={{ fontSize: 20, color: FB.text, fontWeight: 950, marginTop: 12 }}>
+          {driveBanner.score} posted
+        </div>
+      </div>
+    </div>
+  ) : null;
 
   if (screen === 'title') {
     return (
@@ -1399,6 +1463,8 @@ export default function FourthPhaseLab({ onHome }: Props) {
   if (state.phase === 'warRoom') {
     return (
       <Shell impactClass={shellImpact}>
+        {cinematicOverlay}
+        {driveBannerOverlay}
         <GameHeader runCode={runCode} stakeLevel={state.stake} soundOn={feel.sound} onToggleSound={toggleSound} onTitle={() => setScreen('title')} onNewRun={() => setScreen('teams')} />
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
           <Metric label="Run progress" value={`${state.runScore}`} color={FB.gold} />
@@ -1444,6 +1510,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
     const nextStakeUnlocked = won && state.stake < FOURTH_PHASE_STAKES.length && fourthPhaseMaxStake(career, state.team) === state.stake + 1;
     return (
       <Shell impactClass={shellImpact}>
+        {cinematicOverlay}
         <GameHeader runCode={runCode} stakeLevel={state.stake} soundOn={feel.sound} onToggleSound={toggleSound} onTitle={() => setScreen('title')} onNewRun={() => setScreen('teams')} />
         <section style={{ ...card(), padding: 16, marginTop: 10, textAlign: 'center', borderColor: won ? FB.gold : FB.red }}>
           <div className="fp-head fp-verdict-stamp" style={{ fontSize: 26, color: won ? FB.gold : FB.red, fontWeight: 900 }}>
@@ -1524,6 +1591,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
       className={shellImpact ? `fp-shell ${shellImpact}` : 'fp-shell'}
       style={{ minHeight: '100svh', padding: '10px 12px 96px' }}
     >
+      {cinematicOverlay}
       <div className="fp-screen-in fp-table-col" style={{ maxWidth: 560, margin: '0 auto' }}>
       <GameHeader runCode={runCode} stakeLevel={state.stake} soundOn={feel.sound} onToggleSound={toggleSound} onTitle={() => setScreen('title')} onNewRun={() => setScreen('teams')} />
 
@@ -2144,7 +2212,7 @@ function GameStatusPanel({
             <div key={driveScore} className="fb-led fb-pop" style={{ fontSize: 31, color: FB.text, fontWeight: 950, lineHeight: 0.95, marginTop: 3 }}>
               {driveScore}<span style={{ fontSize: 14, color: FB.textFaint }}> / {target}</span>
             </div>
-            <FieldProgress progress={progress} />
+            <FieldProgress progress={progress} surgeKey={gain && gain.points >= 100 ? gain.key : null} />
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginTop: 7 }}>
               <span style={{ fontSize: 10.5, color: FB.textFaint }}>{targetRemaining} left</span>
               <span style={{ fontSize: 10.5, color: FB.textDim, fontWeight: 850 }}>{playsLeft} calls</span>
@@ -2200,7 +2268,8 @@ function GameStatusPanel({
 // Drive progress drawn as a field: turf bands, yard lines, hash marks, a striped
 // end zone, and the ball marching toward the goal line as driveScore climbs.
 // Pure presentation. Progress is the same driveScore/target ratio as before.
-function FieldProgress({ progress }: { progress: number }) {
+// `surgeKey` fires the breakaway streak when a single series rips 100+ points.
+function FieldProgress({ progress, surgeKey }: { progress: number; surgeKey: number | null }) {
   const pos = Math.min(1, Math.max(0, progress));
   return (
     <div
@@ -2220,7 +2289,8 @@ function FieldProgress({ progress }: { progress: number }) {
       <div style={{ position: 'absolute', top: 0, bottom: 0, right: 0, width: '12%', background: 'repeating-linear-gradient(45deg, #251f07 0px, #251f07 5px, #2e2609 5px, #2e2609 10px)', borderLeft: '2px solid rgba(240,180,41,0.85)', display: 'grid', placeItems: 'center' }}>
         <span style={{ fontSize: 8.5, fontWeight: 950, color: FB.gold, letterSpacing: 0, writingMode: 'vertical-rl' }}>GOAL</span>
       </div>
-      <div style={{ position: 'absolute', top: '50%', left: `${(2 + pos * 86).toFixed(2)}%`, transform: 'translate(-50%, -50%)', transition: 'left 400ms cubic-bezier(.2,.9,.3,1.15)', filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.65))' }}>
+      {surgeKey != null && <div key={surgeKey} className="fp-breakaway-streak" aria-hidden="true" />}
+      <div style={{ position: 'absolute', top: '50%', left: `${(2 + pos * 86).toFixed(2)}%`, transform: 'translate(-50%, -50%)', transition: 'left 400ms cubic-bezier(.2,.9,.3,1.15)', filter: surgeKey != null ? 'drop-shadow(0 0 8px rgba(242,189,61,0.9))' : 'drop-shadow(0 1px 3px rgba(0,0,0,0.65))' }}>
         <FootballGlyph size={20} />
       </div>
     </div>

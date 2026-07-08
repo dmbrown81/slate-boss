@@ -2,7 +2,7 @@
 // the shared feedback module (src/lib/feedback.ts). Presentation only — nothing
 // here can touch scoring. Prefs persist so a muted phone stays muted.
 
-import { audioCue, defaultHapticsEnabled, haptic, type AudioCueEvent, type HapticEvent } from '../../lib/feedback';
+import { audioCue, crowdRoar, defaultHapticsEnabled, haptic, setCrowdMurmur, type AudioCueEvent, type HapticEvent } from '../../lib/feedback';
 
 export type FourthPhaseFeelEvent =
   | 'card_tap'
@@ -66,4 +66,14 @@ export function playFeel(event: FourthPhaseFeelEvent, prefs: FourthPhaseFeelPref
   const route = ROUTES[event];
   audioCue(route.audio, prefs.sound);
   if (route.haptic) haptic(route.haptic, prefs.haptics);
+}
+
+/** Crowd roar for the signature payoff beat (cinematic cash-ins, run wins). */
+export function playRoar(prefs: FourthPhaseFeelPrefs): void {
+  crowdRoar(prefs.sound);
+}
+
+/** Ambient stadium murmur that follows the momentum meter (0..1 fill). */
+export function updateCrowdMurmur(level: number, prefs: FourthPhaseFeelPrefs): void {
+  setCrowdMurmur(level, prefs.sound);
 }
