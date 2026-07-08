@@ -183,6 +183,45 @@ interface LabState {
   completion?: FourthPhaseRunRecord;
 }
 
+// Run-one explanation copy: the engine's strings name Leverage/Explosive, but
+// during the tutorial only two nouns exist (Yards, Momentum). Same numbers,
+// staged vocabulary.
+function stagedExplanation(result: FourthPhaseScoreResult): string {
+  if (result.bust) return 'No clean shape - the series broke down and momentum bled.';
+  if (result.didCash) return `Crowd built momentum -> Offense cashed it -> ${result.points} progress.`;
+  if (result.situation.utility && result.meterCharged > 0.05) return `${result.situation.label} built +${result.meterCharged.toFixed(2)} momentum.`;
+  return `${result.situation.label} gained ${result.points} progress.`;
+}
+
+// Post-series safety net for players past the tutorial: when a series goes
+// wrong in one of the three classic ways, name the mistake and the next move
+// in football language. One sentence, diagnostic, never generic. The caller
+// shows each lesson at most once per run so this never becomes nagging.
+function diagnoseWeakSeries(
+  result: FourthPhaseScoreResult,
+  meterBefore: number,
+): { lesson: string; text: string } | null {
+  if (result.bust) {
+    return {
+      lesson: 'bust',
+      text: 'That was a Busted Play: those phases make no clean series, so it scored a penalty and bled momentum. A single blue Offense card is always a safe Checkdown.',
+    };
+  }
+  if (!result.didCash && result.meterCharged > 0.3 && result.points < 25) {
+    return {
+      lesson: 'chargeNoCash',
+      text: `You built momentum to ${formatMeter(result.meterAfter)} but didn't score with it. Next series: put a blue Offense card after a Crowd card to cash it in.`,
+    };
+  }
+  if (!result.didCash && meterBefore > BASE_METER + 0.5 && result.points < 40) {
+    return {
+      lesson: 'satOnHeat',
+      text: `Momentum was hot at ${formatMeter(meterBefore)} and that series didn't cash it — hot momentum bleeds while you wait. Offense cashes it.`,
+    };
+  }
+  return null;
+}
+
 // Decide whether a series earns the cash-in celebration, and why. Replaces the old
 // bare `points >= 120` magic number with reasons that scale to the drive and the run.
 function evaluateCashIn(
@@ -304,10 +343,12 @@ function isTutorialDone(): boolean {
 }
 
 // The very first run a player ever sees should end against a boss whose effect
-// reads in one clause. Re-rolling the seed (not overriding the boss) keeps run
+// reads in one clause AND leaves the tutorial's lesson intact. Prevent Defense
+// is out: it caps Explosive, which disables the exact cash-momentum trick the
+// coach just taught. Re-rolling the seed (not overriding the boss) keeps run
 // codes honest: the boss is still derived from the seed, so sharing/importing
 // this run reproduces it exactly.
-const GENTLE_FIRST_BOSSES: readonly FourthPhaseBossKey[] = ['stackedBox', 'preventDefense'];
+const GENTLE_FIRST_BOSSES: readonly FourthPhaseBossKey[] = ['stackedBox', 'turnoverDrill'];
 
 function firstRunSeed(team: FourthPhaseTeamKey): number {
   let seed = stringSeed(`fourth-phase-lab:${team}:${Date.now()}`);
@@ -434,14 +475,18 @@ function buildLossDiagnosis(state: LabState, targetRemaining: number): { reason:
   };
 }
 
-function buildResolution(result: FourthPhaseScoreResult, explanation: string, key: number): PlayResolution {
-  const stages = [
-    { label: 'Yards', value: `${result.yards}`, color: '#5fb4ff' },
-    { label: 'Leverage', value: `+${result.execution.toFixed(2)}`, color: '#ff7c93' },
-    { label: 'Explosive', value: `x${result.bigPlay.toFixed(2)}`, color: '#f4c24f' },
-  ];
+// `staged` = the first tutorial run: only two nouns exist yet (Yards, Momentum),
+// so the breakdown stays in that vocabulary. Leverage/Explosive arrive run two.
+function buildResolution(result: FourthPhaseScoreResult, explanation: string, key: number, staged = false): PlayResolution {
+  const stages = staged
+    ? [{ label: 'Yards', value: `${result.yards}`, color: '#5fb4ff' }]
+    : [
+      { label: 'Yards', value: `${result.yards}`, color: '#5fb4ff' },
+      { label: 'Leverage', value: `+${result.execution.toFixed(2)}`, color: '#ff7c93' },
+      { label: 'Explosive', value: `x${result.bigPlay.toFixed(2)}`, color: '#f4c24f' },
+    ];
   if (result.didCash) {
-    stages.push({ label: 'Cash', value: formatMeter(result.meterAfterCash), color: '#34c771' });
+    stages.push({ label: staged ? 'Momentum cashed' : 'Cash', value: formatMeter(result.meterAfterCash), color: '#34c771' });
   } else if (result.meterCharged > 0) {
     stages.push({ label: 'Momentum', value: `+${result.meterCharged.toFixed(2)}`, color: '#a987ff' });
   }
@@ -632,6 +677,8 @@ export default function FourthPhaseLab({ onHome }: Props) {
   const [dragJoker, setDragJoker] = useState<string | null>(null);
   const [ledgerExpanded, setLedgerExpanded] = useState(false);
   const [tutorialStep, setTutorialStep] = useState<number>(-1);
+  const [coachDiagnosis, setCoachDiagnosis] = useState('');
+  const shownLessonsRef = useRef<Set<string>>(new Set());
   const [feel, setFeel] = useState(loadFeelPrefs);
 
   function feelEvent(event: FourthPhaseFeelEvent) {
@@ -739,6 +786,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
   );
   const preview = selectedCards.length ? scoreFourthPhasePlay(selectedCards, buildPlayContext(state)) : null;
   const playExplanation = preview ? buildPlayExplanation(selectedCards, preview) : 'Tap cards to build a series.';
+  const shownExplanation = tutorialStep >= 0 && preview ? stagedExplanation(preview) : playExplanation;
   const previewVerb = preview ? playEffectVerb(preview) : null;
   const previewCombos = preview ? comboLedgerEntries(preview) : [];
   // Would the coach's order (Crowd -> Defense -> ST -> Offense) score more than the
@@ -789,10 +837,13 @@ export default function FourthPhaseLab({ onHome }: Props) {
     setCoachNudge('');
     setResolution(null);
     setLedgerExpanded(false);
+    setCoachDiagnosis('');
+    shownLessonsRef.current = new Set();
   }
 
   function kickoffDrive() {
     feelEvent('kickoff');
+    setCoachDiagnosis('');
     setState((current) => ({ ...current, awaitingKickoff: false }));
   }
 
@@ -980,7 +1031,18 @@ export default function FourthPhaseLab({ onHome }: Props) {
     setShareCardStatus('');
     // Same impact tiers as buildResolution: huge > cash > normal series.
     feelEvent(preview.points >= 180 || preview.bigPlay >= 4 ? 'big_cash' : preview.didCash ? 'cash' : 'run_series');
-    setResolution((current) => buildResolution(preview, playExplanation, (current?.key ?? 0) + 1));
+    setResolution((current) => buildResolution(preview, shownExplanation, (current?.key ?? 0) + 1, tutorialStep >= 0));
+    // Preview and execution score through the same context, so `preview` IS the
+    // resolved series — the diagnosis reads exact numbers, not estimates.
+    if (tutorialStep < 0) {
+      const diagnosis = diagnoseWeakSeries(preview, state.meter);
+      if (diagnosis && !shownLessonsRef.current.has(diagnosis.lesson)) {
+        shownLessonsRef.current.add(diagnosis.lesson);
+        setCoachDiagnosis(diagnosis.text);
+      } else {
+        setCoachDiagnosis('');
+      }
+    }
     setState((current) => {
       const ids = new Set(current.selectedIds);
       const selected = current.selectedIds
@@ -1511,6 +1573,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
         playsLeft={playsLeft}
         maxPlays={FOURTH_PHASE_MAX_PLAYS_PER_DRIVE}
         coachMode={coachMode}
+        hideMeter={tutorialStep === 0}
         activeBoss={activeBoss === 'none' ? null : FOURTH_PHASE_BOSSES[activeBoss]}
         scoutingBoss={!coachMode && activeBoss === 'none' ? FOURTH_PHASE_BOSSES[state.boss] : null}
         bossArrivesDrive={stakeProfile.bossFromDrive + 1}
@@ -1529,6 +1592,13 @@ export default function FourthPhaseLab({ onHome }: Props) {
               </div>
             ))}
           </div>
+        </section>
+      )}
+
+      {coachDiagnosis && !coachMode && state.phase === 'play' && (
+        <section className="fp-resolve" style={{ ...card(), padding: '10px 12px', marginTop: 10, borderColor: 'rgba(242,189,61,0.5)', background: 'rgba(242,189,61,0.06)' }}>
+          <div style={{ ...sectionLabel, color: FB.gold }}>Coach</div>
+          <div style={{ fontSize: 12, color: FB.text, fontWeight: 850, lineHeight: 1.4, marginTop: 4 }}>{coachDiagnosis}</div>
         </section>
       )}
 
@@ -1573,7 +1643,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
           <div style={{ fontSize: 11, color: FB.textFaint }}>{state.selectedIds.length}/{FOURTH_PHASE_PLAY_LIMIT}. Left scores first.</div>
         </div>
         <div style={{ border: `1px solid ${preview?.didCash ? FB.gold : FB.border}`, borderRadius: 8, background: FB.panelSoft, color: preview?.didCash ? FB.gold : FB.textDim, padding: '8px 9px', fontSize: 11.5, fontWeight: 850, marginBottom: 8 }}>
-          {playExplanation}
+          {shownExplanation}
         </div>
         {previewCombos.length > 0 && <ComboChips entries={previewCombos} />}
         <div style={{ display: 'flex', gap: 6, minHeight: 100, overflowX: 'auto', padding: '8px 0 2px' }}>
@@ -1664,7 +1734,9 @@ export default function FourthPhaseLab({ onHome }: Props) {
         </div>
         {preview && (
           <>
-            <div style={{ fontSize: 11.5, color: FB.textDim, fontWeight: 850, marginTop: 8 }}>
+            {/* Run one stays in two nouns (Yards, Momentum); the full equation
+                with Leverage/Explosive appears once the tutorial is done. */}
+            {!coachMode && <div style={{ fontSize: 11.5, color: FB.textDim, fontWeight: 850, marginTop: 8 }}>
               <span className="fb-num" style={{ color: '#5fb4ff' }}>{preview.yards} Yards</span>
               {' × '}
               <span className="fb-num" style={{ color: '#ff7c93' }}>{Math.max(0.1, 1 + preview.execution).toFixed(2)} Leverage</span>
@@ -1672,7 +1744,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
               <span className="fb-num" style={{ color: '#f4c24f' }}>{preview.bigPlay.toFixed(2)} Explosive</span>
               {' = '}
               <span className="fb-num" style={{ color: FB.text }}>{preview.points}</span>
-            </div>
+            </div>}
             {preview.bust && (
               <div style={{ fontSize: 11, color: FB.red, fontWeight: 800, marginTop: 8 }}>
                 Bad call: these phases make no clean series. Penalty score and momentum bleeds.
@@ -1799,7 +1871,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
               </div>
               {preview && (
                 <div style={{ fontSize: 10.5, color: preview.didCash ? FB.gold : FB.textFaint, fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {playExplanation}
+                  {shownExplanation}
                 </div>
               )}
             </div>
@@ -2003,6 +2075,7 @@ function GameStatusPanel({
   playsLeft,
   maxPlays,
   coachMode,
+  hideMeter,
   activeBoss,
   scoutingBoss,
   bossArrivesDrive,
@@ -2024,6 +2097,8 @@ function GameStatusPanel({
   playsLeft: number;
   maxPlays: number;
   coachMode: boolean;
+  /** Tutorial step 0: momentum hasn't been introduced yet, so the tile hides. */
+  hideMeter?: boolean;
   activeBoss: FourthPhaseBossProfile | null;
   scoutingBoss: FourthPhaseBossProfile | null;
   bossArrivesDrive: number;
@@ -2053,7 +2128,7 @@ function GameStatusPanel({
           meterHot={meterHot}
           meterWillCash={meterWillCash}
         />
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.05fr) minmax(132px, .95fr)', gap: 8, alignItems: 'stretch' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: hideMeter ? 'minmax(0, 1fr)' : 'minmax(0, 1.05fr) minmax(132px, .95fr)', gap: 8, alignItems: 'stretch' }}>
           <div style={{ ...statTile, background: 'rgba(7,11,16,0.74)', position: 'relative' }}>
             <div style={{ ...sectionLabel, color: FB.textDim }}>Drive Target</div>
             {gain && gain.points > 0 && (
@@ -2076,7 +2151,7 @@ function GameStatusPanel({
             </div>
           </div>
 
-          <div style={{ ...statTile, background: meterWillCash ? 'linear-gradient(180deg,#282009,#0a0f16)' : 'rgba(7,11,16,0.74)', borderColor: meterWillCash ? FB.gold : meterHot ? '#4e426f' : FB.borderSoft }}>
+          {!hideMeter && <div style={{ ...statTile, background: meterWillCash ? 'linear-gradient(180deg,#282009,#0a0f16)' : 'rgba(7,11,16,0.74)', borderColor: meterWillCash ? FB.gold : meterHot ? '#4e426f' : FB.borderSoft }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                 <PhaseIcon phase="crowd" size={12} />
@@ -2094,7 +2169,7 @@ function GameStatusPanel({
               <span style={{ color: FB.textFaint, fontSize: 10 }}>cap {formatMeter(meterCap)}</span>
               <span style={{ color: meterWillCash ? FB.gold : meterHot ? '#cbbdff' : FB.textDim, fontSize: 10.5, fontWeight: 850, lineHeight: 1.25 }}>{meterHint}</span>
             </div>
-          </div>
+          </div>}
         </div>
 
         <div style={{ border: `1px solid ${activeBoss ? 'rgba(240,117,138,0.55)' : coachMode ? 'rgba(73,209,126,0.45)' : 'rgba(242,189,61,0.42)'}`, borderRadius: FP_RADIUS.card, background: activeBoss ? 'rgba(240,117,138,0.08)' : 'rgba(242,189,61,0.07)', padding: '8px 9px', display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 9, alignItems: 'baseline' }}>
@@ -2736,6 +2811,10 @@ function TeamSelectScreen({
   const maxStake = fourthPhaseMaxStake(progress, pickTeam);
   const stake = fourthPhaseStake(pickStake);
   const team = FOURTH_PHASE_TEAMS[pickTeam];
+  // The stake ladder is a ceremony a first-time player hasn't earned: before any
+  // career win every team is capped at Rookie anyway, so the picker is pure
+  // friction. It appears once there's a win to build a ladder on.
+  const stakesUnlocked = progress.wins > 0;
   return (
     <div>
       <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
@@ -2814,7 +2893,7 @@ function TeamSelectScreen({
         })}
       </div>
 
-      <section style={{ ...card(), padding: 11, marginTop: 12 }}>
+      {stakesUnlocked && <section style={{ ...card(), padding: 11, marginTop: 12 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
           <div style={sectionLabel}>Stake</div>
           <div style={{ fontSize: 10.5, color: FB.textFaint }}>win a stake to unlock the next</div>
@@ -2851,10 +2930,10 @@ function TeamSelectScreen({
             <li key={modifier} style={{ fontSize: 11, color: FB.textDim, lineHeight: 1.35 }}>{modifier}</li>
           ))}
         </ul>
-      </section>
+      </section>}
 
-      <button onClick={onStart} style={{ ...btnPrimary, width: '100%', minHeight: 52, marginTop: 12 }}>
-        Kickoff — {team.shortName} · {stake.shortName} Stake
+      <button onClick={onStart} className="fp-pressable" style={{ ...btnPrimary, width: '100%', minHeight: 52, marginTop: 12 }}>
+        {stakesUnlocked ? `Kickoff — ${team.shortName} · ${stake.shortName} Stake` : `Kickoff — ${team.shortName}`}
       </button>
 
       <section style={{ ...card(), padding: 10, marginTop: 12 }}>
