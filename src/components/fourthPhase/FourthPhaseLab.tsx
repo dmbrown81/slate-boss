@@ -1496,8 +1496,6 @@ export default function FourthPhaseLab({ onHome }: Props) {
 
       <GameStatusPanel
         labPhase={state.phase}
-        teamName={teamProfile.name}
-        teamIdentity={teamProfile.identity}
         driveIndex={state.driveIndex}
         drives={FOURTH_PHASE_DRIVES}
         driveScore={state.driveScore}
@@ -1633,6 +1631,18 @@ export default function FourthPhaseLab({ onHome }: Props) {
         </div>
       </section>
 
+      <section style={{ marginTop: 10 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+          <div style={sectionLabel}>Hand</div>
+          {!coachMode && <div style={{ fontSize: 11, color: FB.textFaint }}>War Room cash <span style={{ color: FB.gold, fontWeight: 900 }}>${state.money}</span></div>}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 7 }}>
+          {state.hand.map((card) => (
+            <HandCard key={card.id} card={card} selected={state.selectedIds.includes(card.id)} tone={coachCardTone(card)} onClick={() => toggleCard(card)} />
+          ))}
+        </div>
+      </section>
+
       <section style={{ ...card(), padding: 12, marginTop: 10, borderColor: preview?.didCash ? FB.gold : preview?.bust ? 'rgba(240,117,138,0.55)' : FB.border }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
           <div style={{ minWidth: 0 }}>
@@ -1689,18 +1699,6 @@ export default function FourthPhaseLab({ onHome }: Props) {
             <AfterThisLine points={preview.points} targetRemaining={targetRemaining} playsLeft={playsLeft} />
           </>
         )}
-      </section>
-
-      <section style={{ marginTop: 10 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-          <div style={sectionLabel}>Hand</div>
-          {!coachMode && <div style={{ fontSize: 11, color: FB.textFaint }}>War Room cash <span style={{ color: FB.gold, fontWeight: 900 }}>${state.money}</span></div>}
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 7 }}>
-          {state.hand.map((card) => (
-            <HandCard key={card.id} card={card} selected={state.selectedIds.includes(card.id)} tone={coachCardTone(card)} onClick={() => toggleCard(card)} />
-          ))}
-        </div>
       </section>
 
       {!coachMode && state.lastPlay && (
@@ -1990,8 +1988,6 @@ function ObjectiveHeader({
 
 function GameStatusPanel({
   labPhase,
-  teamName,
-  teamIdentity,
   driveIndex,
   drives,
   driveScore,
@@ -2013,8 +2009,6 @@ function GameStatusPanel({
   gain,
 }: {
   labPhase: LabPhase;
-  teamName: string;
-  teamIdentity: string;
   driveIndex: number;
   drives: number;
   driveScore: number;
@@ -2059,17 +2053,6 @@ function GameStatusPanel({
           meterHot={meterHot}
           meterWillCash={meterWillCash}
         />
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 10, alignItems: 'start' }}>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 13, color: FB.text, fontWeight: 950, lineHeight: 1.1 }}>{teamName}</div>
-            <div style={{ fontSize: 10.5, color: FB.textFaint, marginTop: 2, lineHeight: 1.25 }}>{teamIdentity}</div>
-          </div>
-          <div style={{ ...statTile, padding: '6px 8px', textAlign: 'right' }}>
-            <div style={{ ...sectionLabel, fontSize: 9.5 }}>Drive</div>
-            <div className="fb-num" style={{ fontSize: 17, color: FB.gold, fontWeight: 950, lineHeight: 1 }}>{driveIndex + 1}/{drives}</div>
-          </div>
-        </div>
-
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.05fr) minmax(132px, .95fr)', gap: 8, alignItems: 'stretch' }}>
           <div style={{ ...statTile, background: 'rgba(7,11,16,0.74)', position: 'relative' }}>
             <div style={{ ...sectionLabel, color: FB.textDim }}>Drive Target</div>
