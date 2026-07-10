@@ -18,6 +18,11 @@ export function ResolutionCard({ resolution }: { resolution: PlayResolution }) {
     <section key={resolution.key} className={resolution.impact === 'normal' ? 'fp-resolve' : 'fp-resolve fp-resolve-cash'} style={{ ...card(), padding: 12, marginTop: 10, borderColor: resolution.impact === 'normal' ? FB.border : FB.gold, background: resolution.impact === 'normal' ? FB.panelSoft : 'linear-gradient(135deg,#2e2410,#171c26)' }}>
       <div style={{ ...sectionLabel, color: resolution.impact === 'normal' ? FB.textFaint : FB.gold }}>Series Result</div>
       <div style={{ fontSize: 12, color: FB.text, fontWeight: 900, marginTop: 5 }}>{resolution.explanation}</div>
+      {resolution.bossLine && (
+        <div style={{ fontSize: 11.5, color: '#ff9aac', fontWeight: 850, fontStyle: 'italic', marginTop: 5 }}>
+          {'“'}{resolution.bossLine}{'”'}
+        </div>
+      )}
       <div style={{ display: 'grid', gridTemplateColumns: `repeat(${resolution.stages.length}, minmax(0, 1fr))`, gap: 6, marginTop: 10 }}>
         {resolution.stages.map((stage, index) => (
           <div key={`${stage.label}-${index}`} className="fp-stage" style={{ '--fp-stage-delay': `${index * 90}ms`, border: `1px solid ${FB.border}`, borderRadius: 8, padding: '7px 6px', background: FB.inset } as CSSProperties}>
@@ -93,10 +98,16 @@ export function CashInCard({
 }
 
 // Held beat when a mid-run drive clears (unless the cinematic owns the moment).
-export function DriveBannerOverlay({ drive, score }: { drive: number; score: number }) {
+// The stamp names the drive's character: WALK-OFF, ESCAPED, STATEMENT DRIVE...
+export function DriveBannerOverlay({ drive, score, stamp }: { drive: number; score: number; stamp?: string }) {
   return (
     <div className="fp-drive-banner" aria-hidden="true" style={{ position: 'fixed', inset: 0, zIndex: 80, display: 'grid', placeItems: 'center', background: 'rgba(5,7,11,0.82)', pointerEvents: 'none' }}>
       <div style={{ textAlign: 'center' }}>
+        {stamp && (
+          <div className="fp-head" style={{ fontSize: 15, color: FB.gold, fontWeight: 900, letterSpacing: 3, marginBottom: 10 }}>
+            {stamp}
+          </div>
+        )}
         <div className="fp-head fp-verdict-stamp" style={{ fontSize: 30, color: FB.green, fontWeight: 900 }}>
           DRIVE {drive} CLEARED
         </div>

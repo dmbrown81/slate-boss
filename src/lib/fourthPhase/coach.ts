@@ -266,6 +266,141 @@ export function coachRoomLine(
   return `Next drive asks for ${nextTarget}. Open field, no boss pressure — spend where it compounds, or save the cap.`;
 }
 
+// ---------------------------------------------------------------------------
+// Voice. The 2026-07-10 fun audit was unanimous: the game reads like a helpful
+// kiosk. Bosses get mouths, the coach gets a spine, playbooks get a philosophy.
+// All copy is deterministic — chosen by run state, never by a roll.
+// ---------------------------------------------------------------------------
+
+export interface BossVoice {
+  /** Drive-intro taunt, spoken before the mechanical effect is explained. */
+  intro: string;
+  /** Fired when the boss visibly eats a play (a boss entry hits the ledger). */
+  punish: string;
+  /** Exit line when the player clears the boss drive. */
+  playerWin: string;
+  /** Exit line when the boss ends the run. */
+  playerLoss: string;
+  /** Newspaper-style verdict headline for a loss to this boss. */
+  lossHeadline: string;
+}
+
+const BOSS_VOICE: Record<Exclude<FourthPhaseBossKey, 'none'>, BossVoice> = {
+  stackedBox: {
+    intro: 'Nine in the box. Run your cute little routes — nothing gets through the middle.',
+    punish: 'Stuffed at the line. Told you.',
+    playerWin: 'Who taught you to score without daylight? Fine. Take it.',
+    playerLoss: 'The box never broke. It never does.',
+    lossHeadline: 'THE BOX NEVER BROKE',
+  },
+  noFlyZone: {
+    intro: 'Two clean routes tonight. That is all you get. Choose like it matters.',
+    punish: 'Third receiver is blanketed. Where exactly was he going?',
+    playerWin: 'You found the seams. Enjoy them — they close next week.',
+    playerLoss: 'Nothing flew tonight. Nothing was ever going to.',
+    lossHeadline: 'GROUNDED IN PRIME TIME',
+  },
+  roadGame: {
+    intro: 'Hear that? That is OUR building. Your crowd stayed home.',
+    punish: 'Momentum dies in here. Always has.',
+    playerWin: 'Quietest flight home of the year. You earned it.',
+    playerLoss: 'Listen to that silence. Beautiful, is it not?',
+    lossHeadline: 'SILENCED ON THE ROAD',
+  },
+  turnoverDrill: {
+    intro: 'We strip everything that moves. Hold it tight or hand it over.',
+    punish: 'That leverage you love so much? We just took it.',
+    playerWin: 'Clean all night. I hate a careful team.',
+    playerLoss: 'They never did learn to take care of the ball.',
+    lossHeadline: 'COUGHED IT UP',
+  },
+  fieldPositionWar: {
+    intro: 'Go ahead. Kick it. See what happens.',
+    punish: 'Touchback. No hidden yards today, friend.',
+    playerWin: 'You out-kicked the machine. Savor that sentence.',
+    playerLoss: 'Field position was ours from the anthem on.',
+    lossHeadline: 'PINNED ALL NIGHT',
+  },
+  adaptiveDc: {
+    intro: 'I have watched every snap you have ever called. Run something twice. Please.',
+    punish: 'Saw that one in film study.',
+    playerWin: 'New material. I will be adding it to the notebook.',
+    playerLoss: 'I had your number from the coin toss.',
+    lossHeadline: 'READ LIKE A BOOK',
+  },
+  preventDefense: {
+    intro: 'Nothing over the top tonight. Take your checkdowns and die slow.',
+    punish: 'Ceiling is capped. That bomb of yours was a firecracker.',
+    playerWin: 'Dinked and dunked us to death. Hats off, I suppose.',
+    playerLoss: 'Slow death, exactly like we drew it up.',
+    lossHeadline: 'NOTHING OVER THE TOP',
+  },
+};
+
+export function bossVoice(boss: FourthPhaseBossKey): BossVoice | null {
+  return boss === 'none' ? null : BOSS_VOICE[boss];
+}
+
+/** The coach after a loss: takes the blame, keeps the door open. Deterministic pick. */
+const COACH_LOSS_LINES = [
+  'That one is on me. We had the pieces and I let the order beat us.',
+  'They did not beat us — the clock did. Get some sleep. We go again.',
+  'We left points on the field tonight. I will wear this one.',
+  'One call. One lousy call. That is the whole distance.',
+] as const;
+
+export function coachLossLine(seed: number): string {
+  return COACH_LOSS_LINES[Math.abs(seed) % COACH_LOSS_LINES.length];
+}
+
+/** One-line philosophy per playbook — the select screen sells an attitude, not a stat lean. */
+const COACH_PHILOSOPHY: Record<FourthPhaseTeamKey, string> = {
+  balanced: 'We beat you with whatever you forgot to defend.',
+  airRaid: 'We do not punt on hope. We throw on it.',
+  smashmouth: 'Four yards and a bad attitude, forty times in a row.',
+  blackAndBlue: 'Points are rented. Leverage is owned.',
+  loudHouse: 'The crowd is the twelfth man. We start eleven of them.',
+  specialTeamsChaos: 'The third phase wins games. The fourth one steals them.',
+};
+
+export function coachPhilosophy(team: FourthPhaseTeamKey): string {
+  return COACH_PHILOSOPHY[team];
+}
+
+/** Everything Call of the Game needs about the run's best series. */
+export interface BestSeriesRecord {
+  points: number;
+  situation: string;
+  driveNumber: number;
+  didCash: boolean;
+  bigPlay: number;
+  bossName?: string;
+}
+
+// The verdict's highlight reel in one sentence, generated from run data the
+// game already tracks — a memory, not a statistic.
+export function callOfTheGameLine(best: BestSeriesRecord): string {
+  const cash = best.didCash ? ` cashed x${best.bigPlay.toFixed(1)}` : '';
+  const boss = best.bossName ? ` through ${best.bossName}` : '';
+  return `Call of the Game: Drive ${best.driveNumber} — ${best.situation}${cash} for ${best.points}${boss}.`;
+}
+
+// Each drive clear gets a character, not just a stamp: how the drive ended is
+// the story the banner should tell.
+export function driveClearStamp(input: {
+  clearingPoints: number;
+  target: number;
+  callsUsed: number;
+  maxCalls: number;
+  didCash: boolean;
+}): string {
+  if (input.clearingPoints >= input.target) return 'WALK-OFF';
+  if (input.callsUsed >= input.maxCalls) return 'ESCAPED';
+  if (input.callsUsed <= 3) return 'STATEMENT DRIVE';
+  if (input.didCash) return 'CASHED OUT';
+  return 'ANSWERED';
+}
+
 export function buildRunShareCardData(input: {
   outcome: 'W' | 'L';
   team: string;

@@ -74,6 +74,7 @@ export function SeriesPreviewPanel({
   bossWarning,
   previewBleeds,
   reorderHint,
+  hideReorderDelta,
   onCoachOrder,
   targetRemaining,
   playsLeft,
@@ -85,6 +86,9 @@ export function SeriesPreviewPanel({
   bossWarning: string | null;
   previewBleeds: boolean;
   reorderHint: { delta: number; unlocksCash: boolean } | null;
+  /** Pro and above: the coach points at a better order but stops selling the
+   *  exact answer — discovery is the reward (2026-07-10 fun audit). */
+  hideReorderDelta?: boolean;
   onCoachOrder: () => void;
   targetRemaining: number;
   playsLeft: number;
@@ -142,7 +146,9 @@ export function SeriesPreviewPanel({
               onClick={onCoachOrder}
               style={{ ...btnGhost, width: '100%', marginTop: 8, borderColor: FB.gold, color: FB.gold }}
             >
-              {reorderHint.unlocksCash ? 'Reorder to cash momentum' : 'Better order available'}: +{reorderHint.delta} points
+              {hideReorderDelta
+                ? (reorderHint.unlocksCash ? 'Coach sees a cash in this hand' : 'Coach sees a better order')
+                : `${reorderHint.unlocksCash ? 'Reorder to cash momentum' : 'Better order available'}: +${reorderHint.delta} points`}
             </button>
           )}
           <AfterThisLine points={preview.points} targetRemaining={targetRemaining} playsLeft={playsLeft} />

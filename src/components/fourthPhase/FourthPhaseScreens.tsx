@@ -18,6 +18,7 @@ import { teamKeys } from './fpPersistence';
 import {
   FOURTH_PHASE_STAKES,
   FOURTH_PHASE_TEAMS,
+  coachPhilosophy,
   fourthPhaseMaxStake,
   fourthPhaseStake,
   fourthPhaseTeamUnlocks,
@@ -259,6 +260,9 @@ export function TeamSelectScreen({
                     {profile.name}
                   </div>
                   <div style={{ fontSize: 11, color: '#45413a', marginTop: 4, lineHeight: 1.35 }}>{profile.identity}</div>
+                  <div style={{ fontSize: 10.5, color: FP_STOCK.inkSoft, fontWeight: 800, fontStyle: 'italic', marginTop: 4, lineHeight: 1.3 }}>
+                    {'“'}{coachPhilosophy(key)}{'”'} — Coach
+                  </div>
                   <div className="fp-sticker" style={{ fontSize: 9, marginTop: 7, lineHeight: 1.3 }}>
                     SIGNATURE INSERT: {signature.name} — {signature.effect}
                   </div>
@@ -348,6 +352,7 @@ export function DriveIntroScreen({
   teamIdentity,
   stakeLevel,
   boss,
+  bossTaunt,
   upcomingBoss,
   bossArrivesDrive,
   plays,
@@ -364,6 +369,8 @@ export function DriveIntroScreen({
   teamIdentity: string;
   stakeLevel: number;
   boss: FourthPhaseBossProfile | null;
+  /** The boss's own intro taunt, spoken before the effect is explained. */
+  bossTaunt?: string;
   upcomingBoss: FourthPhaseBossProfile | null;
   bossArrivesDrive: number;
   plays: number;
@@ -398,7 +405,12 @@ export function DriveIntroScreen({
           <div style={{ border: `1px solid rgba(240,117,138,0.6)`, borderRadius: FP_RADIUS.card, background: 'rgba(240,117,138,0.09)', padding: '10px 11px', marginTop: 12 }}>
             <div style={{ ...sectionLabel, color: FB.red }}>Boss defense on the field</div>
             <div style={{ fontSize: 13, color: '#ff9aac', fontWeight: 950, marginTop: 3 }}>{boss.name}</div>
-            <div style={{ fontSize: 11, color: FB.textDim, marginTop: 2, lineHeight: 1.35 }}>{boss.effect}</div>
+            {bossTaunt && (
+              <div style={{ fontSize: 11.5, color: FB.text, fontWeight: 850, fontStyle: 'italic', marginTop: 5, lineHeight: 1.35 }}>
+                {'“'}{bossTaunt}{'”'}
+              </div>
+            )}
+            <div style={{ fontSize: 11, color: FB.textDim, marginTop: 4, lineHeight: 1.35 }}>{boss.effect}</div>
           </div>
         ) : upcomingBoss ? (
           <div style={{ border: `1px solid rgba(242,189,61,0.42)`, borderRadius: FP_RADIUS.card, background: 'rgba(242,189,61,0.06)', padding: '9px 11px', marginTop: 12 }}>

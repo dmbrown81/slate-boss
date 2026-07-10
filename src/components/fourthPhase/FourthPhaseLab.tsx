@@ -70,11 +70,15 @@ import {
   FOURTH_PHASE_WAR_ROOM_REROLL_COST,
   activeBossForDrive,
   applyFourthPhaseDrawStart,
+  bossVoice,
   bossWarningForPlay,
   buildPlayExplanation,
   buildRunShareCardData,
+  callOfTheGameLine,
   cardDisplayName,
+  coachLossLine,
   coachOrderCards,
+  driveClearStamp,
   coachPickForWarRoom,
   coachRoomLine,
   comboLedgerEntries,
@@ -98,6 +102,7 @@ import {
   scoreFourthPhasePlay,
   shuffleFourthPhase,
   tutorialCheckdownIsValid,
+  type BestSeriesRecord,
   type FourthPhaseBossKey,
   type FourthPhaseCard,
   type FourthPhaseJokerState,
@@ -148,6 +153,8 @@ interface LabState {
   phase: LabPhase;
   runScore: number;
   bestPlay: number;
+  /** The run's best series with its story context — feeds Call of the Game. */
+  bestSeries?: BestSeriesRecord;
   buysThisWarRoom: number;
   rerollsThisWarRoom: number;
   pendingDraft?: FourthPhaseWarRoomOffer;
@@ -330,7 +337,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
   const [cinematic, setCinematic] = useState<{ cards: FourthPhaseCard[]; result: FourthPhaseScoreResult; key: number } | null>(null);
   const cinematicDriveRef = useRef(-1);
   const cinematicKeyRef = useRef(0);
-  const [driveBanner, setDriveBanner] = useState<{ drive: number; score: number } | null>(null);
+  const [driveBanner, setDriveBanner] = useState<{ drive: number; score: number; stamp: string } | null>(null);
   const driveBannerTimerRef = useRef(0);
 
   function feelEvent(event: FourthPhaseFeelEvent) {
@@ -749,11 +756,23 @@ export default function FourthPhaseLab({ onHome }: Props) {
     // the cinematic is already celebrating this exact play.
     const clearsDrive = state.driveScore + preview.points >= target;
     if (clearsDrive && state.driveIndex < FOURTH_PHASE_DRIVES - 1 && !showCinematic) {
-      setDriveBanner({ drive: state.driveIndex + 1, score: state.driveScore + preview.points });
+      setDriveBanner({
+        drive: state.driveIndex + 1,
+        score: state.driveScore + preview.points,
+        stamp: driveClearStamp({
+          clearingPoints: preview.points,
+          target,
+          callsUsed: state.playsThisDrive + 1,
+          maxCalls: FOURTH_PHASE_MAX_PLAYS_PER_DRIVE,
+          didCash: preview.didCash,
+        }),
+      });
       window.clearTimeout(driveBannerTimerRef.current);
       driveBannerTimerRef.current = window.setTimeout(() => setDriveBanner(null), 1450);
     }
-    setResolution((current) => buildResolution(preview, shownExplanation, (current?.key ?? 0) + 1, tutorialStep >= 0));
+    // The boss speaks when it visibly eats a play — the ledger says whether it did.
+    const bossPunish = preview.ledger.some((entry) => entry.channel === 'boss') ? bossVoice(activeBoss)?.punish : undefined;
+    setResolution((current) => buildResolution(preview, shownExplanation, (current?.key ?? 0) + 1, tutorialStep >= 0, bossPunish));
     // Preview and execution score through the same context, so `preview` IS the
     // resolved series — the diagnosis reads exact numbers, not estimates.
     if (tutorialStep < 0) {
@@ -780,6 +799,17 @@ export default function FourthPhaseLab({ onHome }: Props) {
         ...current.repeatedSituations,
         [result.situation.key]: (current.repeatedSituations[result.situation.key] ?? 0) + 1,
       };
+      const bossNow = activeBossForDrive(current, current.driveIndex, fourthPhaseStake(current.stake).bossFromDrive);
+      const bestSeries: BestSeriesRecord | undefined = result.points > current.bestPlay
+        ? {
+          points: result.points,
+          situation: result.situation.label,
+          driveNumber: current.driveIndex + 1,
+          didCash: result.didCash,
+          bigPlay: result.bigPlay,
+          bossName: bossNow === 'none' ? undefined : FOURTH_PHASE_BOSSES[bossNow].name,
+        }
+        : current.bestSeries;
       const cashEval = evaluateCashIn(result, current.targets[current.driveIndex], current.bestPlay);
       const cashIn = cashEval.show
         ? {
@@ -803,6 +833,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
         discounts: Math.min(FOURTH_PHASE_DISCOUNT_TOKEN_CAP, current.discounts + result.fuel.discount),
         repeatedSituations,
         bestPlay: Math.max(current.bestPlay, result.points),
+        bestSeries,
         lastPlay: result,
         cashIn,
       };
@@ -1064,7 +1095,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
     />
   ) : null;
   const driveBannerOverlay = driveBanner ? (
-    <DriveBannerOverlay drive={driveBanner.drive} score={driveBanner.score} />
+    <DriveBannerOverlay drive={driveBanner.drive} score={driveBanner.score} stamp={driveBanner.stamp} />
   ) : null;
 
   if (screen === 'title') {
@@ -1130,6 +1161,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
           teamIdentity={teamProfile.identity}
           stakeLevel={state.stake}
           boss={activeBoss !== 'none' ? FOURTH_PHASE_BOSSES[activeBoss] : null}
+          bossTaunt={bossVoice(activeBoss)?.intro}
           upcomingBoss={activeBoss === 'none' ? FOURTH_PHASE_BOSSES[state.boss] : null}
           bossArrivesDrive={stakeProfile.bossFromDrive + 1}
           plays={FOURTH_PHASE_MAX_PLAYS_PER_DRIVE}
@@ -1197,6 +1229,13 @@ export default function FourthPhaseLab({ onHome }: Props) {
   if (state.phase === 'won' || state.phase === 'lost') {
     const won = state.phase === 'won';
     const nextStakeUnlocked = won && state.stake < FOURTH_PHASE_STAKES.length && fourthPhaseMaxStake(career, state.team) === state.stake + 1;
+    // Loss drama, staged before the diagnosis: the margin, the fuel that died
+    // in the tank, and the boss getting the last word — feel it, then learn.
+    const verdictBossVoice = activeBoss !== 'none' ? bossVoice(activeBoss) : null;
+    const verdictBossName = activeBoss !== 'none' ? FOURTH_PHASE_BOSSES[activeBoss].name : '';
+    const strandedMeter = !won && state.lastPlay && state.lastPlay.meterAfter > BASE_METER + 0.5 ? state.lastPlay.meterAfter : null;
+    const priorRuns = loadFourthPhaseHistory().filter((entry) => entry.id !== state.completion?.id);
+    const careerBestSeries = priorRuns.length > 0 && state.bestPlay > Math.max(...priorRuns.map((entry) => entry.bestPlay));
     return (
       <Shell impactClass={shellImpact}>
         {cinematicOverlay}
@@ -1208,6 +1247,26 @@ export default function FourthPhaseLab({ onHome }: Props) {
           <div style={{ fontSize: 11, color: fourthPhaseStake(state.stake).color, fontWeight: 900, marginTop: 4 }}>
             {teamProfile.name} | {fourthPhaseStake(state.stake).name}
           </div>
+          {!won && verdictBossVoice && (
+            <div className="fp-head" style={{ fontSize: 13, color: FB.red, fontWeight: 900, letterSpacing: 2.5, marginTop: 8 }}>
+              {verdictBossVoice.lossHeadline}
+            </div>
+          )}
+          {!won && (
+            <div className="fb-led" style={{ fontSize: 26, color: FB.red, fontWeight: 950, marginTop: 6, lineHeight: 1 }}>
+              SHORT BY {targetRemaining}
+            </div>
+          )}
+          {strandedMeter && (
+            <div style={{ display: 'inline-block', border: '1px solid rgba(169,135,255,0.55)', borderRadius: FP_RADIUS.pill, color: '#cbbdff', padding: '3px 10px', fontSize: 11, fontWeight: 900, marginTop: 8 }}>
+              {formatMeter(strandedMeter)} momentum stranded
+            </div>
+          )}
+          {verdictBossVoice && (
+            <div style={{ fontSize: 11.5, color: won ? FB.textDim : '#ff9aac', fontWeight: 850, fontStyle: 'italic', marginTop: 8, lineHeight: 1.4 }}>
+              {'“'}{won ? verdictBossVoice.playerWin : verdictBossVoice.playerLoss}{'”'} — {verdictBossName}
+            </div>
+          )}
           <div style={{ fontSize: 12, color: FB.textDim, marginTop: 6 }}>
             {won
               ? `All ${FOURTH_PHASE_DRIVES} drives cleared against ${FOURTH_PHASE_BOSSES[state.boss].name}.`
@@ -1216,12 +1275,23 @@ export default function FourthPhaseLab({ onHome }: Props) {
           {lossDiagnosis && (
             <div style={{ border: `1px solid rgba(242,189,61,0.42)`, borderRadius: 8, color: FB.gold, background: 'rgba(242,189,61,0.07)', padding: '8px 10px', fontSize: 11.5, fontWeight: 850, marginTop: 8, lineHeight: 1.4, textAlign: 'left' }}>
               {lossDiagnosis.advice}
+              <div style={{ color: FB.textDim, fontStyle: 'italic', fontWeight: 800, marginTop: 6 }}>
+                {'“'}{coachLossLine(state.seed)}{'”'} — Coach
+              </div>
             </div>
           )}
           <div className="fb-num" style={{ fontSize: 40, color: FB.gold, fontWeight: 950, marginTop: 8, lineHeight: 1 }}>{state.runScore}</div>
           <div style={{ fontSize: 10.5, color: FB.textFaint, marginTop: 2 }}>total progress</div>
           {state.completion && localBest?.id === state.completion.id && (
             <div style={{ fontSize: 11, color: FB.gold, fontWeight: 900, marginTop: 5 }}>New local best</div>
+          )}
+          {state.bestSeries && (
+            <div style={{ fontSize: 11.5, color: FB.gold, fontWeight: 900, marginTop: 10, lineHeight: 1.4 }}>
+              {callOfTheGameLine(state.bestSeries)}
+            </div>
+          )}
+          {careerBestSeries && (
+            <div style={{ fontSize: 10.5, color: FB.gold, fontWeight: 900, marginTop: 3 }}>★ Career-best series</div>
           )}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginTop: 12 }}>
             <Metric label="Best series" value={`${state.bestPlay}`} color={FB.gold} />
@@ -1284,8 +1354,8 @@ export default function FourthPhaseLab({ onHome }: Props) {
               {shareCardStatus || 'Save share card'}
             </button>
           </div>
-          <button onClick={() => restart(state.team, state.seed, undefined, state.stake)} style={{ ...btnGhost, width: '100%', marginTop: 8 }}>
-            Replay this seed
+          <button onClick={() => restart(state.team, state.seed, undefined, state.stake)} style={{ ...btnGhost, width: '100%', marginTop: 8, ...(won ? null : { borderColor: FB.red, color: '#ff9aac' }) }}>
+            {won ? 'Replay this seed' : verdictBossName ? `Revenge Game — rematch ${verdictBossName}` : 'Revenge Game — same seed'}
           </button>
         </section>
       </Shell>
@@ -1433,6 +1503,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
         bossWarning={bossWarning}
         previewBleeds={previewBleeds}
         reorderHint={reorderHint}
+        hideReorderDelta={state.stake >= 2}
         onCoachOrder={coachOrderSelected}
         targetRemaining={targetRemaining}
         playsLeft={playsLeft}

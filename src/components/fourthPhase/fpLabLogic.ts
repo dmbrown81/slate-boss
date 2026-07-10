@@ -66,6 +66,8 @@ export interface PlayResolution {
   explanation: string;
   stages: { label: string; value: string; color: string }[];
   impact: 'normal' | 'cash' | 'huge';
+  /** The boss's punish line when it visibly ate this play (boss ledger entry). */
+  bossLine?: string;
 }
 
 // Played first-run tutorial. Teaches the job first (clear the drive target before
@@ -146,7 +148,7 @@ export function diagnoseWeakSeries(
 
 // `staged` = the first tutorial run: only two nouns exist yet (Yards, Momentum),
 // so the breakdown stays in that vocabulary. Leverage/Explosive arrive run two.
-export function buildResolution(result: FourthPhaseScoreResult, explanation: string, key: number, staged = false): PlayResolution {
+export function buildResolution(result: FourthPhaseScoreResult, explanation: string, key: number, staged = false, bossLine?: string): PlayResolution {
   const stages = staged
     ? [{ label: 'Yards', value: `${result.yards}`, color: '#5fb4ff' }]
     : [
@@ -165,6 +167,7 @@ export function buildResolution(result: FourthPhaseScoreResult, explanation: str
     explanation,
     stages,
     impact: result.points >= 180 || result.bigPlay >= 4 ? 'huge' : result.didCash ? 'cash' : 'normal',
+    bossLine,
   };
 }
 
