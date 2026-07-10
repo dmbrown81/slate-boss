@@ -42,9 +42,11 @@ import { DriveIntroScreen, TeamSelectScreen, TitleScreen } from './FourthPhaseSc
 import {
   FP_PROGRESS_KEY,
   bestFourthPhaseRun,
+  dailyModifierFor,
   fourthPhaseDailySeed,
   isTutorialDone,
   loadFourthPhaseDaily,
+  loadFourthPhaseGrudge,
   loadFourthPhaseHistory,
   markTutorialDone,
   previousUtcDateLabel,
@@ -92,6 +94,7 @@ import {
   fourthPhaseRunCode,
   fourthPhaseStake,
   generateFourthPhaseWarRoomOffers,
+  halftimeCounterFor,
   isTrueCrowdBeforeOffenseCash,
   jokerDefinition,
   newlyUnlockedTeams,
@@ -99,6 +102,7 @@ import {
   recordFourthPhaseResult,
   plainPlaySummary,
   playEffectVerb,
+  SITUATION_LABELS,
   scoreFourthPhasePlay,
   shuffleFourthPhase,
   tutorialCheckdownIsValid,
@@ -147,6 +151,8 @@ interface LabState {
   meter: number;
   meterCap: number;
   repeatedSituations: Partial<Record<SituationKey, number>>;
+  /** Drive 2's halftime adjustment: the situation the defense countered after Drive 1. */
+  halftimeCounter?: SituationKey;
   /** One entry per finished drive (cleared or died): feeds the daily share grid. */
   driveLog: DriveLogEntry[];
   drawNonce: number;
@@ -192,13 +198,17 @@ function createInitialState(
   const stake = fourthPhaseStake(stakeLevel);
   const orderedDeck = scriptedOpening(run.deck);
   const draw = drawFourthPhaseCards(orderedDeck, [], stake.handSize, mulberry32(stringSeed(`${seed}:opening`)));
+  // The daily's named twist is a run-parameter change (money/redraws/targets/
+  // meter cap) — never a scoring change, so the preview stays exact. Practice
+  // replays get the same twist: the practice must be the real puzzle.
+  const modifier = meta.dailyLabel ? dailyModifierFor(meta.dailyLabel) : null;
   return {
     seed,
     team,
     stake: stake.level,
     awaitingKickoff: true,
     boss: run.boss,
-    targets: run.targets.map((target) => Math.round(target * stake.targetScale)) as [number, number, number],
+    targets: run.targets.map((target) => Math.round(target * stake.targetScale * (modifier?.targetScale ?? 1))) as [number, number, number],
     drawPile: draw.deck,
     discardPile: draw.discard,
     hand: draw.drawn,
@@ -206,14 +216,14 @@ function createInitialState(
     jokers: run.jokers,
     practice: run.practice,
     draft: [],
-    money: stake.startMoney,
+    money: Math.max(0, stake.startMoney + (modifier?.startMoneyDelta ?? 0)),
     discounts: 0,
     driveIndex: 0,
     driveScore: 0,
-    discardsLeft: stake.discardsPerDrive,
+    discardsLeft: Math.max(1, stake.discardsPerDrive + (modifier?.redrawsDelta ?? 0)),
     playsThisDrive: 0,
     meter: run.meter.meter,
-    meterCap: run.meter.meterCap,
+    meterCap: modifier?.meterCapMax ? Math.min(run.meter.meterCap, modifier.meterCapMax) : run.meter.meterCap,
     repeatedSituations: {},
     driveLog: [],
     drawNonce: 1,
@@ -240,6 +250,7 @@ function makeRunRecord(state: LabState, score: number, won: boolean, bestPlay: n
     bestPlay,
     runCode,
     dailyLabel: state.dailyLabel,
+    boss: state.boss,
   };
 }
 
@@ -308,6 +319,7 @@ function buildPlayContext(state: LabState): FourthPhaseScoreContext {
     wins: state.driveIndex,
     boss: activeBossForDrive(state, state.driveIndex, fourthPhaseStake(state.stake).bossFromDrive),
     repeatedSituations: state.repeatedSituations,
+    halftimeCounter: state.halftimeCounter,
   };
 }
 
@@ -475,6 +487,15 @@ export default function FourthPhaseLab({ onHome }: Props) {
     cards: selectedCards,
     repeatedSituations: state.repeatedSituations,
   }) : null;
+  // The halftime adjustment telegraphs exactly like a boss: the warning names
+  // the countered call before the player commits. Never co-occurs with a boss
+  // (the adjustment only exists on bossless drive 2), so it shares the slot.
+  const halftimeWarning = preview && state.halftimeCounter && preview.situation.key === state.halftimeCounter
+    ? `Halftime adjustment: they've seen your ${SITUATION_LABELS[state.halftimeCounter]} — it scores x0.8 Yards this drive.`
+    : null;
+  const grudge = loadFourthPhaseGrudge();
+  const dailyModifier = state.dailyLabel ? dailyModifierFor(state.dailyLabel) : null;
+  const todayModifier = dailyModifierFor(daily.label);
   const progress = Math.min(1, state.driveScore / target);
   const meterFill = Math.min(1, (state.meter - BASE_METER) / Math.max(0.1, state.meterCap - BASE_METER));
   const runCode = fourthPhaseRunCode(state.seed, state.team, state.stake);
@@ -580,6 +601,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
         drivesCleared: state.driveLog.filter((drive) => drive.cleared).length,
         grid: dailyShareGrid(state.driveLog),
         runCode: state.completion.runCode,
+        modifierName: dailyModifierFor(state.completion.dailyLabel).name,
       });
     }
     if (storedDailyRecord?.date === daily.label && storedDailyRecord.grid) {
@@ -592,6 +614,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
         drivesCleared: storedDailyRecord.grid.split('\n').filter((row) => row.includes('🟨')).length,
         grid: storedDailyRecord.grid,
         runCode: fourthPhaseRunCode(storedDailyRecord.seed, storedDailyRecord.team, 1),
+        modifierName: dailyModifierFor(storedDailyRecord.date).name,
       });
     }
     return null;
@@ -862,6 +885,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
             current.boss,
             0,
             current.practice,
+            activeBossForDrive(current, current.driveIndex + 1, fourthPhaseStake(current.stake).bossFromDrive),
           ),
           money: warRoomMoney,
           meter: BASE_METER,
@@ -914,13 +938,18 @@ export default function FourthPhaseLab({ onHome }: Props) {
   function buildNextDriveState(current: LabState, nextJokers: FourthPhaseJokerState[], nextPractice: FourthPhasePracticeBook, money: number): LabState {
     const nextDrive = current.driveIndex + 1;
     const stake = fourthPhaseStake(current.stake);
+    const nextBoss = activeBossForDrive(current, nextDrive, stake.bossFromDrive);
+    // Daily modifiers re-apply at every drive boundary (redraws and the meter
+    // cap reset per drive, so the twist must too).
+    const modifier = current.dailyLabel ? dailyModifierFor(current.dailyLabel) : null;
     const fullPile = shuffleFourthPhase(
       [...current.drawPile, ...current.hand, ...current.discardPile],
       mulberry32(stringSeed(`${current.seed}:drive:${nextDrive}`)),
     );
+    const baseCap = Math.max(BASE_METER_CAP, current.meterCap);
     const meter = applyFourthPhaseDrawStart(
-      { meter: BASE_METER, meterCap: Math.max(BASE_METER_CAP, current.meterCap) },
-      { jokers: nextJokers, practice: nextPractice, wins: nextDrive, boss: activeBossForDrive(current, nextDrive, stake.bossFromDrive) },
+      { meter: BASE_METER, meterCap: modifier?.meterCapMax ? Math.min(baseCap, modifier.meterCapMax) : baseCap },
+      { jokers: nextJokers, practice: nextPractice, wins: nextDrive, boss: nextBoss },
     );
     const draw = drawFourthPhaseCards(fullPile, [], stake.handSize, mulberry32(stringSeed(`${current.seed}:drive-hand:${nextDrive}`)));
     return {
@@ -936,11 +965,14 @@ export default function FourthPhaseLab({ onHome }: Props) {
       draft: [],
       money,
       driveScore: 0,
-      discardsLeft: stake.discardsPerDrive,
+      discardsLeft: Math.max(1, stake.discardsPerDrive + (modifier?.redrawsDelta ?? 0)),
       playsThisDrive: 0,
       meter: meter.meter,
       meterCap: meter.meterCap,
       repeatedSituations: {},
+      // Drive 2's identity on bossless drives: the defense counters the
+      // situation the player leaned on in Drive 1. Declared at the intro.
+      halftimeCounter: nextDrive === 1 && nextBoss === 'none' ? halftimeCounterFor(current.repeatedSituations) ?? undefined : undefined,
       drawNonce: current.drawNonce + 1,
       phase: 'play',
       buysThisWarRoom: 0,
@@ -1043,6 +1075,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
           current.boss,
           rerollsThisWarRoom,
           current.practice,
+          activeBossForDrive(current, current.driveIndex + 1, fourthPhaseStake(current.stake).bossFromDrive),
         ),
       };
     });
@@ -1107,6 +1140,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
           onPlay={() => setScreen('teams')}
           onDaily={startDailyRun}
           dailyLabel={daily.label}
+          dailyModifier={todayModifier}
           todayDailyDone={todayDailyDone}
           dailyStreak={dailyRecord?.streak ?? 0}
           localBest={localBest?.score ?? null}
@@ -1162,6 +1196,10 @@ export default function FourthPhaseLab({ onHome }: Props) {
           stakeLevel={state.stake}
           boss={activeBoss !== 'none' ? FOURTH_PHASE_BOSSES[activeBoss] : null}
           bossTaunt={bossVoice(activeBoss)?.intro}
+          rematch={grudge !== null && grudge.boss === (activeBoss !== 'none' ? activeBoss : state.boss)}
+          halftimeNote={state.halftimeCounter
+            ? `They've seen your ${SITUATION_LABELS[state.halftimeCounter]}. It scores x0.8 Yards this drive — show them something new.`
+            : undefined}
           upcomingBoss={activeBoss === 'none' ? FOURTH_PHASE_BOSSES[state.boss] : null}
           bossArrivesDrive={stakeProfile.bossFromDrive + 1}
           plays={FOURTH_PHASE_MAX_PLAYS_PER_DRIVE}
@@ -1169,6 +1207,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
           money={state.money}
           jokers={state.jokers.map((joker) => jokerDefinition(joker).name)}
           dailyLabel={state.dailyLabel}
+          dailyModifier={dailyModifier ?? undefined}
           onKickoff={kickoffDrive}
         />
       </Shell>
@@ -1500,7 +1539,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
         previewVerb={previewVerb}
         lastPlay={state.lastPlay}
         coachMode={coachMode}
-        bossWarning={bossWarning}
+        bossWarning={bossWarning ?? halftimeWarning}
         previewBleeds={previewBleeds}
         reorderHint={reorderHint}
         hideReorderDelta={state.stake >= 2}

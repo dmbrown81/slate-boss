@@ -156,6 +156,9 @@ export interface FourthPhaseScoreContext {
   wins: number;
   boss: FourthPhaseBossKey;
   repeatedSituations: Partial<Record<SituationKey, number>>;
+  /** Halftime adjustment: the situation the defense countered after Drive 1.
+   *  Declared at the drive intro, applied in scoring, dodged by varying calls. */
+  halftimeCounter?: SituationKey;
 }
 
 export type FourthPhaseWarRoomOfferKind = 'joker' | 'practice';

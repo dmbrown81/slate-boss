@@ -273,6 +273,13 @@ function applyBossAfterCards(score: MutableFourthPhaseScore, situation: Situatio
     score.bigPlay = 2.75;
     ledger(score, { channel: 'boss', label: 'Prevent Defense', value: 'Explosive cap x2.75', detail: 'Explosives are kept in front.' });
   }
+  // The halftime adjustment: on a bossless Drive 2 the defense counters the
+  // situation the player leaned on in Drive 1. Declared at the drive intro,
+  // fully visible in the preview, and dodged by simply calling something else.
+  if (context.halftimeCounter && situation.key === context.halftimeCounter) {
+    score.yards *= 0.8;
+    ledger(score, { channel: 'boss', label: 'Halftime Adj', value: 'Yards x0.8', detail: `They have seen your ${situation.label}. Show them something new.` });
+  }
 }
 
 function pointsFrom(score: MutableFourthPhaseScore): number {

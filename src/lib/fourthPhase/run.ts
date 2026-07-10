@@ -281,6 +281,21 @@ function practiceTags(situation: SituationKey, team: FourthPhaseTeamKey, boss: F
   return [...new Set(tags)].slice(0, 3);
 }
 
+const BOSS_PREFERRED_PRACTICE: Partial<Record<FourthPhaseBossKey, SituationKey[]>> = {
+  roadGame: ['houseCall', 'blackout'],
+  fieldPositionWar: ['drive', 'houseCall'],
+  noFlyZone: ['fieldFlip', 'pickSix'],
+  stackedBox: ['fieldFlip', 'stand'],
+  turnoverDrill: ['drive', 'houseCall'],
+  adaptiveDc: ['complementaryFootball', 'momentumShift'],
+  preventDefense: ['drive', 'fieldFlip'],
+};
+
+/** The guaranteed pre-boss drill: the first boss-preferred situation with room to grow. */
+function scoutedPracticeKeyFor(nextBoss: FourthPhaseBossKey, practice: FourthPhasePracticeBook): SituationKey | null {
+  return (BOSS_PREFERRED_PRACTICE[nextBoss] ?? []).find((key) => (practice[key] ?? 0) < 3) ?? null;
+}
+
 function practiceKeyFor(team: FourthPhaseTeamKey, boss: FourthPhaseBossKey, seed: number, driveIndex: number, reroll: number, practice: FourthPhasePracticeBook): SituationKey {
   const preferred: Partial<Record<FourthPhaseTeamKey, SituationKey[]>> = {
     balanced: ['complementaryFootball', 'momentumShift', 'houseCall'],
@@ -290,16 +305,7 @@ function practiceKeyFor(team: FourthPhaseTeamKey, boss: FourthPhaseBossKey, seed
     loudHouse: ['houseCall', 'blackout', 'complementaryFootball'],
     specialTeamsChaos: ['fieldFlip', 'complementaryFootball', 'houseCall'],
   };
-  const bossPreferred: Partial<Record<FourthPhaseBossKey, SituationKey[]>> = {
-    roadGame: ['houseCall', 'blackout'],
-    fieldPositionWar: ['drive', 'houseCall'],
-    noFlyZone: ['fieldFlip', 'pickSix'],
-    stackedBox: ['fieldFlip', 'stand'],
-    turnoverDrill: ['drive', 'houseCall'],
-    adaptiveDc: ['complementaryFootball', 'momentumShift'],
-    preventDefense: ['drive', 'fieldFlip'],
-  };
-  const pool = [...(bossPreferred[boss] ?? []), ...(preferred[team] ?? []), ...PRACTICE_KEYS]
+  const pool = [...(BOSS_PREFERRED_PRACTICE[boss] ?? []), ...(preferred[team] ?? []), ...PRACTICE_KEYS]
     .filter((key, index, all) => all.indexOf(key) === index)
     .filter((key) => (practice[key] ?? 0) < 3);
   if (!pool.length) return 'houseCall';
@@ -323,6 +329,32 @@ function practiceDrillDetail(situation: SituationKey, level: number): string {
   return `Level ${level}: ${SITUATION_LABELS[situation]} gains +${level * 5} Yards, +${(level * 0.03).toFixed(2)} Leverage, +${bigPlay.toFixed(2)} Explosive.`;
 }
 
+/** Jokers the coach considers a legitimate response lane to the named boss. */
+function bossAnswerJokerIds(boss: FourthPhaseBossKey): readonly FourthPhaseJokerId[] {
+  if (boss === 'none') return [];
+  const generalists: FourthPhaseJokerId[] = ['closer', 'pressBoxAngle', 'redZonePackage'];
+  return boss === 'roadGame' ? ['roadWarriors', 'homeCooking', 'sustainedDrive', ...generalists] : generalists;
+}
+
+/**
+ * The defense's halftime adjustment target: the situation the player leaned on
+ * most in Drive 1. The Checkdown stays exempt (it is the taught safety valve)
+ * and busts are already punished. Deterministic — the repeat book's insertion
+ * order is play order, so ties break toward the earlier-established call.
+ */
+export function halftimeCounterFor(repeated: Partial<Record<SituationKey, number>>): SituationKey | null {
+  let best: SituationKey | null = null;
+  let bestCount = 0;
+  for (const [key, count] of Object.entries(repeated) as [SituationKey, number][]) {
+    if (key === 'checkdown' || key === 'bustedPlay') continue;
+    if ((count ?? 0) > bestCount) {
+      best = key;
+      bestCount = count ?? 0;
+    }
+  }
+  return bestCount >= 1 ? best : null;
+}
+
 export function generateFourthPhaseWarRoomOffers(
   owned: readonly FourthPhaseJokerState[],
   seed: number,
@@ -331,6 +363,8 @@ export function generateFourthPhaseWarRoomOffers(
   boss: FourthPhaseBossKey,
   reroll = 0,
   practice: FourthPhasePracticeBook = {},
+  /** The boss actually taking the field NEXT drive; triggers the SCOUTED guarantee. */
+  nextBoss: FourthPhaseBossKey = 'none',
 ): FourthPhaseWarRoomOffer[] {
   const ownedIds = new Set(owned.map((joker) => joker.id));
   const pool = FOURTH_PHASE_JOKER_POOL.filter((joker) => !ownedIds.has(joker.id));
@@ -338,7 +372,7 @@ export function generateFourthPhaseWarRoomOffers(
   // Price by rarity so a buy is a tradeoff with a story, not a flat menu: a
   // legendary you can only afford because you banked last drive's skip is a
   // decision the player remembers. Discount tokens still floor at $1.
-  const jokerOffers = ordered.slice(0, 3).map((def): FourthPhaseWarRoomOffer => ({
+  const offerFor = (def: (typeof ordered)[number]): FourthPhaseWarRoomOffer => ({
     id: `joker:${def.id}`,
     kind: 'joker',
     cost: def.rarity === 'legendary' ? 6 : def.rarity === 'rare' ? 5 : 4,
@@ -346,8 +380,20 @@ export function generateFourthPhaseWarRoomOffers(
     detail: def.effect,
     tags: offerTagsForJoker(def.id, team, boss),
     joker: { id: def.id },
-  }));
-  const situation = practiceKeyFor(team, boss, seed, driveIndex, reroll, practice);
+  });
+  const jokerOffers = ordered.slice(0, 3).map(offerFor);
+  // The coach names next drive's problem before the offers appear; the shop
+  // must never shrug at it. Pre-boss drafts guarantee a response lane through
+  // the practice drill (a plan, not a power spike — guaranteeing the premium
+  // boss jokers blew the win-rate gates). Jokers that happen to answer the
+  // boss still earn the SCOUTED tag when the seed deals them naturally.
+  const answerIds = bossAnswerJokerIds(nextBoss);
+  if (answerIds.length) {
+    const scouted = jokerOffers.find((offer) => Boolean(offer.joker && (answerIds as readonly string[]).includes(offer.joker.id)));
+    if (scouted) scouted.tags = [...new Set(['SCOUTED', ...scouted.tags])].slice(0, 3);
+  }
+  const scoutedDrill = nextBoss !== 'none' ? scoutedPracticeKeyFor(nextBoss, practice) : null;
+  const situation = scoutedDrill ?? practiceKeyFor(team, boss, seed, driveIndex, reroll, practice);
   const level = (practice[situation] ?? 0) + 1;
   const drill: FourthPhaseWarRoomOffer = {
     id: `practice:${situation}:${level}`,
@@ -355,7 +401,9 @@ export function generateFourthPhaseWarRoomOffers(
     cost: 3,
     label: `${SITUATION_LABELS[situation]} Drill`,
     detail: practiceDrillDetail(situation, level),
-    tags: practiceTags(situation, team, boss),
+    tags: scoutedDrill
+      ? [...new Set(['SCOUTED', ...practiceTags(situation, team, boss)])].slice(0, 3)
+      : practiceTags(situation, team, boss),
     situation,
   };
   return [...jokerOffers, drill];

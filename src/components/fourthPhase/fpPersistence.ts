@@ -1,5 +1,5 @@
 import { stringSeed } from '../../lib/rng';
-import { FOURTH_PHASE_TEAMS, type FourthPhaseTeamKey } from '../../lib/fourthPhase';
+import { FOURTH_PHASE_TEAMS, type FourthPhaseBossKey, type FourthPhaseTeamKey } from '../../lib/fourthPhase';
 
 export const teamKeys = Object.keys(FOURTH_PHASE_TEAMS) as FourthPhaseTeamKey[];
 
@@ -7,6 +7,7 @@ const FP_HISTORY_KEY = 'fourth_phase_history_v1';
 const FP_DAILY_KEY = 'fourth_phase_daily_v1';
 export const FP_PROGRESS_KEY = 'fourth_phase_progress_v1';
 const FP_TUTORIAL_KEY = 'fp-tutorial-done';
+const FP_GRUDGE_KEY = 'fourth_phase_grudge_v1';
 
 export interface FourthPhaseRunMeta {
   dailyLabel?: string;
@@ -24,6 +25,19 @@ export interface FourthPhaseRunRecord {
   bestPlay: number;
   runCode: string;
   dailyLabel?: string;
+  /** The run's boss (absent on records saved before REMATCH shipped). */
+  boss?: FourthPhaseBossKey;
+}
+
+/** The boss that ended the player's last run. One field, one grudge. */
+export interface FourthPhaseGrudge {
+  boss: FourthPhaseBossKey;
+  runCode: string;
+  date: string;
+}
+
+export function loadFourthPhaseGrudge(): FourthPhaseGrudge | null {
+  return readJson<FourthPhaseGrudge | null>(FP_GRUDGE_KEY, null);
 }
 
 export interface FourthPhaseDailyRecord {
@@ -85,6 +99,19 @@ export function fourthPhaseDailySeed(label = utcDateLabel()): { label: string; s
 export function saveFourthPhaseCompletion(record: FourthPhaseRunRecord, dailyPractice?: boolean, grid?: string) {
   const history = [record, ...loadFourthPhaseHistory().filter((entry) => entry.id !== record.id)].slice(0, 10);
   writeJson(FP_HISTORY_KEY, history);
+  // The grudge book: a loss plants a REMATCH flag on the boss that ended the
+  // run; beating that boss (any run) clears it.
+  if (record.boss) {
+    if (!record.won) {
+      writeJson<FourthPhaseGrudge>(FP_GRUDGE_KEY, { boss: record.boss, runCode: record.runCode, date: record.date });
+    } else if (loadFourthPhaseGrudge()?.boss === record.boss) {
+      try {
+        localStorage.removeItem(FP_GRUDGE_KEY);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
   if (!record.dailyLabel || dailyPractice) return;
   const previous = loadFourthPhaseDaily();
   const streak = previous?.date === previousUtcDateLabel(record.dailyLabel) ? previous.streak + 1 : 1;
@@ -97,6 +124,36 @@ export function saveFourthPhaseCompletion(record: FourthPhaseRunRecord, dailyPra
     streak,
     grid,
   });
+}
+
+// ---------------------------------------------------------------------------
+// Named daily modifiers. One deterministic twist per UTC day, declared before
+// entry, so the daily is a puzzle with a proper noun instead of just a seed.
+// All effects are run-parameter changes (money, redraws, targets, meter cap) —
+// the scoring engine is untouched, so the preview stays exact by construction.
+// ---------------------------------------------------------------------------
+
+export interface FourthPhaseDailyModifier {
+  key: string;
+  name: string;
+  detail: string;
+  startMoneyDelta?: number;
+  redrawsDelta?: number;
+  targetScale?: number;
+  meterCapMax?: number;
+}
+
+const DAILY_MODIFIERS: FourthPhaseDailyModifier[] = [
+  { key: 'primeTime', name: 'PRIME TIME', detail: 'Targets +10%. The whole country is watching.', targetScale: 1.1 },
+  { key: 'shortWeek', name: 'SHORT WEEK', detail: 'One fewer redraw per drive. Thursday-night legs.', redrawsDelta: -1 },
+  { key: 'homecoming', name: 'HOMECOMING', detail: 'Start with +$4. The boosters showed up.', startMoneyDelta: 4 },
+  { key: 'silentCount', name: 'SILENT COUNT', detail: 'Momentum caps at x4.0. The crowd stays seated.', meterCapMax: 4 },
+  { key: 'sundayClassic', name: 'SUNDAY CLASSIC', detail: 'No twist. Just you, the seed, and the scoreboard.' },
+];
+
+export function dailyModifierFor(label: string): FourthPhaseDailyModifier {
+  const seed = stringSeed(`fourth-phase-daily-mod:${label}`);
+  return DAILY_MODIFIERS[Math.abs(seed) % DAILY_MODIFIERS.length];
 }
 
 export function isTutorialDone(): boolean {

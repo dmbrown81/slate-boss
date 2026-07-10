@@ -190,9 +190,17 @@ export function WarRoom({
               {offer.tags.length > 0 && (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 7 }}>
                   {offer.tags.map((tag) => (
-                    <span key={tag} style={{ border: `1px solid ${FP_STOCK.line}`, borderRadius: 5, color: FP_STOCK.inkSoft, fontSize: 9.5, fontWeight: 900, padding: '2px 5px', background: 'rgba(255,255,255,0.35)' }}>
-                      {tag}
-                    </span>
+                    // SCOUTED = the guaranteed response lane to the named boss:
+                    // the scouting report's promise, kept by the shop.
+                    tag === 'SCOUTED' ? (
+                      <span key={tag} style={{ border: '1px solid #8a2f3e', borderRadius: 5, color: '#f6f2e8', fontSize: 9.5, fontWeight: 950, letterSpacing: 0.6, padding: '2px 5px', background: '#8a2f3e' }}>
+                        SCOUTED
+                      </span>
+                    ) : (
+                      <span key={tag} style={{ border: `1px solid ${FP_STOCK.line}`, borderRadius: 5, color: FP_STOCK.inkSoft, fontSize: 9.5, fontWeight: 900, padding: '2px 5px', background: 'rgba(255,255,255,0.35)' }}>
+                        {tag}
+                      </span>
+                    )
                   ))}
                 </div>
               )}

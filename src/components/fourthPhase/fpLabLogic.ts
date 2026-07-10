@@ -43,10 +43,15 @@ export function dailyShareText(input: {
   drivesCleared: number;
   grid: string;
   runCode: string;
+  /** The day's named modifier — gives the share a proper noun to carry. */
+  modifierName?: string;
 }): string {
   const streakPart = input.streak > 1 ? ` · 🔥${input.streak}` : '';
+  const title = input.modifierName
+    ? `Fourth Phase Daily ${input.label} — ${input.modifierName}`
+    : `Fourth Phase Daily ${input.label}`;
   return [
-    `Fourth Phase Daily ${input.label}`,
+    title,
     `${input.won ? 'W' : 'L'} · ${input.drivesCleared}/${input.drives} drives · ${input.score} pts${streakPart}`,
     input.grid,
     input.runCode,

@@ -22,6 +22,7 @@ import {
   drawFourthPhaseCards,
   fourthPhaseStake,
   generateFourthPhaseWarRoomOffers,
+  halftimeCounterFor,
   jokerDefinition,
   meterTightness,
   scoreFourthPhasePlay,
@@ -310,7 +311,7 @@ function runWarRoom(
   let buys = 0;
   let rerolls = 0;
   const bossDriveSoon = driveIndex >= 1 || boss !== 'none';
-  let offers = generateFourthPhaseWarRoomOffers(nextJokers, seed, driveIndex, team, boss, rerolls, nextPractice);
+  let offers = generateFourthPhaseWarRoomOffers(nextJokers, seed, driveIndex, team, boss, rerolls, nextPractice, boss);
 
   // Same token math the Lab UI uses (discountedOfferCost) — the harness must buy
   // at the prices a real player would see.
@@ -353,7 +354,7 @@ function runWarRoom(
     if (bestValue < 42 && rerolls < 1 && nextMoney >= FOURTH_PHASE_WAR_ROOM_REROLL_COST + Math.min(...offers.map((offer) => effectiveCost(offer.cost)))) {
       nextMoney -= FOURTH_PHASE_WAR_ROOM_REROLL_COST;
       rerolls += 1;
-      offers = generateFourthPhaseWarRoomOffers(nextJokers, seed, driveIndex, team, boss, rerolls, nextPractice);
+      offers = generateFourthPhaseWarRoomOffers(nextJokers, seed, driveIndex, team, boss, rerolls, nextPractice, boss);
       continue;
     }
     if (bestValue < 30) break;
@@ -400,8 +401,12 @@ function simulateGame(team: FourthPhaseTeamKey, seed: number, policy: Policy, st
   let comboPlays = 0;
   let comboClears = 0;
 
+  // Mirrors the Lab's halftime adjustment: on a bossless drive 2 the defense
+  // counters the situation the pilot leaned on in drive 1.
+  let prevDriveRepeats: Partial<Record<SituationKey, number>> = {};
   for (let driveIndex = 0; driveIndex < targets.length; driveIndex += 1) {
     const boss = activeBossForDrive(run, driveIndex, stake.bossFromDrive);
+    const halftimeCounter = driveIndex === 1 && boss === 'none' ? halftimeCounterFor(prevDriveRepeats) ?? undefined : undefined;
     if (driveIndex > 0) {
       const fullPile = shuffleFourthPhase([...drawPile, ...discardPile, ...hand], rng);
       drawPile = fullPile;
@@ -436,6 +441,7 @@ function simulateGame(team: FourthPhaseTeamKey, seed: number, policy: Policy, st
         wins: driveIndex,
         boss,
         repeatedSituations,
+        halftimeCounter,
       };
       const candidate = bestCandidate(hand, context, targetRemaining, policy, rng);
       const weakAttempt = candidate && candidate.result.points < 14 && !candidate.result.situation.utility;
@@ -481,6 +487,7 @@ function simulateGame(team: FourthPhaseTeamKey, seed: number, policy: Policy, st
     if (driveScore < targets[driveIndex]) {
       return { won: false, score: totalScore, failDrive: driveIndex + 1, endingMoney: money, peakScore, peakMeter, tightPlays, plays, comboFires, comboPlays, comboClears, team };
     }
+    prevDriveRepeats = repeatedSituations;
 
     money += 5 + driveIndex * 2;
     if (driveIndex < targets.length - 1) {

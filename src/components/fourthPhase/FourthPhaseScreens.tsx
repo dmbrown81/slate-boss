@@ -51,6 +51,7 @@ export function TitleScreen({
   onPlay,
   onDaily,
   dailyLabel,
+  dailyModifier,
   todayDailyDone,
   dailyStreak,
   localBest,
@@ -68,6 +69,8 @@ export function TitleScreen({
   onPlay: () => void;
   onDaily: () => void;
   dailyLabel: string;
+  /** Today's named twist, declared before entry — the daily's proper noun. */
+  dailyModifier?: { name: string; detail: string };
   todayDailyDone: boolean;
   dailyStreak: number;
   localBest: number | null;
@@ -125,6 +128,12 @@ export function TitleScreen({
       <button onClick={onDaily} style={{ ...btnGhost, minHeight: 48, borderColor: '#5b4a86', color: '#cbbdff', fontSize: 13 }}>
         {todayDailyDone ? `Daily ${dailyLabel} | practice (streak ${dailyStreak})` : `Daily Challenge | ${dailyLabel}`}
       </button>
+      {dailyModifier && (
+        <div style={{ fontSize: 10.5, color: '#cbbdff', fontWeight: 900, textAlign: 'center', marginTop: -4 }}>
+          {dailyModifier.name}
+          <span style={{ color: FB.textFaint, fontWeight: 800 }}> — {dailyModifier.detail}</span>
+        </div>
+      )}
       {todayDailyDone && (
         <div style={{ display: 'grid', gap: 6, marginTop: -4 }}>
           {onShareDaily && (
@@ -353,6 +362,8 @@ export function DriveIntroScreen({
   stakeLevel,
   boss,
   bossTaunt,
+  rematch,
+  halftimeNote,
   upcomingBoss,
   bossArrivesDrive,
   plays,
@@ -360,6 +371,7 @@ export function DriveIntroScreen({
   money,
   jokers,
   dailyLabel,
+  dailyModifier,
   onKickoff,
 }: {
   driveNumber: number;
@@ -371,6 +383,10 @@ export function DriveIntroScreen({
   boss: FourthPhaseBossProfile | null;
   /** The boss's own intro taunt, spoken before the effect is explained. */
   bossTaunt?: string;
+  /** This boss ended the player's last run — the game remembers. */
+  rematch?: boolean;
+  /** Drive 2's declared halftime adjustment (bossless drives only). */
+  halftimeNote?: string;
   upcomingBoss: FourthPhaseBossProfile | null;
   bossArrivesDrive: number;
   plays: number;
@@ -378,6 +394,7 @@ export function DriveIntroScreen({
   money: number;
   jokers: string[];
   dailyLabel?: string;
+  dailyModifier?: { name: string; detail: string };
   onKickoff: () => void;
 }) {
   return (
@@ -386,6 +403,12 @@ export function DriveIntroScreen({
         {dailyLabel && (
           <div style={{ marginBottom: 8 }}>
             <span style={{ ...tapeLabel, fontSize: 9.5 }}>DAILY CHALLENGE {dailyLabel}</span>
+            {dailyModifier && (
+              <div style={{ fontSize: 11, color: '#cbbdff', fontWeight: 900, marginTop: 6 }}>
+                {dailyModifier.name}
+                <span style={{ color: FB.textDim, fontWeight: 800 }}> — {dailyModifier.detail}</span>
+              </div>
+            )}
           </div>
         )}
         <div style={{ ...sectionLabel, color: FB.textFaint }}>Drive</div>
@@ -404,7 +427,15 @@ export function DriveIntroScreen({
         {boss ? (
           <div style={{ border: `1px solid rgba(240,117,138,0.6)`, borderRadius: FP_RADIUS.card, background: 'rgba(240,117,138,0.09)', padding: '10px 11px', marginTop: 12 }}>
             <div style={{ ...sectionLabel, color: FB.red }}>Boss defense on the field</div>
-            <div style={{ fontSize: 13, color: '#ff9aac', fontWeight: 950, marginTop: 3 }}>{boss.name}</div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, marginTop: 3 }}>
+              <span style={{ fontSize: 13, color: '#ff9aac', fontWeight: 950 }}>{boss.name}</span>
+              {rematch && (
+                <span style={{ ...tapeLabel, fontSize: 9, background: 'rgba(240,117,138,0.92)', color: '#2b0a11', transform: 'rotate(1.2deg)' }}>REMATCH</span>
+              )}
+            </div>
+            {rematch && (
+              <div style={{ fontSize: 10.5, color: '#ff9aac', fontWeight: 850, marginTop: 3 }}>This one ended your last run.</div>
+            )}
             {bossTaunt && (
               <div style={{ fontSize: 11.5, color: FB.text, fontWeight: 850, fontStyle: 'italic', marginTop: 5, lineHeight: 1.35 }}>
                 {'“'}{bossTaunt}{'”'}
@@ -417,9 +448,17 @@ export function DriveIntroScreen({
             <div style={{ ...sectionLabel, color: FB.gold }}>Scouting report</div>
             <div style={{ fontSize: 11, color: FB.textDim, marginTop: 3, lineHeight: 1.35 }}>
               <span style={{ color: FB.gold, fontWeight: 950 }}>{upcomingBoss.name}</span> takes the field on Drive {bossArrivesDrive}. {upcomingBoss.effect}
+              {rematch && <span style={{ color: '#ff9aac', fontWeight: 900 }}> It ended your last run.</span>}
             </div>
           </div>
         ) : null}
+
+        {halftimeNote && (
+          <div style={{ border: `1px solid rgba(240,117,138,0.45)`, borderRadius: FP_RADIUS.card, background: 'rgba(240,117,138,0.06)', padding: '9px 11px', marginTop: 8 }}>
+            <div style={{ ...sectionLabel, color: FB.red }}>Halftime adjustment</div>
+            <div style={{ fontSize: 11, color: FB.textDim, marginTop: 3, lineHeight: 1.35 }}>{halftimeNote}</div>
+          </div>
+        )}
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginTop: 12 }}>
           <Metric label="Calls" value={`${plays}`} color={FB.green} />
