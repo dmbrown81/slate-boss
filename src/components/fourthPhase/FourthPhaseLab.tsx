@@ -1,27 +1,61 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from 'react';
 import { mulberry32, stringSeed } from '../../lib/rng';
 import { loadFeelPrefs, playFeel, saveFeelPrefs, updateCrowdMurmur, type FourthPhaseFeelEvent } from './fpFeedback';
 import { prefersReducedMotion } from '../../lib/feedback';
 import PlayCinematic from './PlayCinematic';
 import {
+  EFFECT_VERB_COLOR,
   FP as FB,
   FP_FONT_HEAD,
   FP_RADIUS,
-  FP_STOCK,
-  FP_WOOD,
-  PHASE_BAND,
-  PHASE_INK,
-  PHASE_SERIES,
   btnGhost,
   btnPrimary,
   card,
-  foilFace,
   sectionLabel,
-  statTile,
-  stockFace,
-  tapeLabel,
 } from './fourthPhaseStyles';
-import { HowToPlay, PhaseIcon, SituationsPanel } from './FourthPhaseGuide';
+import { HowToPlay, SituationsPanel } from './FourthPhaseGuide';
+import { FootballGlyph, GameHeader, Metric, Shell, UnlockBanner } from './fpShared';
+import { HandCard, MiniCard, type DragBind } from './FourthPhaseCards';
+import { GameStatusPanel, type LabPhase } from './GameStatusPanel';
+import {
+  CashInCard,
+  CoachDiagnosisCard,
+  DriveBannerOverlay,
+  ResolutionCard,
+} from './FeedbackPanels';
+import {
+  buildResolution,
+  dailyShareGrid,
+  dailyShareText,
+  diagnoseWeakSeries,
+  evaluateCashIn,
+  firstRunSeed,
+  stagedExplanation,
+  type CashInSnapshot,
+  type DriveLogEntry,
+  type PlayResolution,
+} from './fpLabLogic';
+import { ComboChips, SeriesPreviewPanel } from './SeriesPreviewPanel';
+import { TutorialPanel } from './TutorialCoach';
+import { WarRoom } from './WarRoom';
+import { DriveIntroScreen, TeamSelectScreen, TitleScreen } from './FourthPhaseScreens';
+import {
+  FP_PROGRESS_KEY,
+  bestFourthPhaseRun,
+  fourthPhaseDailySeed,
+  isTutorialDone,
+  loadFourthPhaseDaily,
+  loadFourthPhaseHistory,
+  markTutorialDone,
+  previousUtcDateLabel,
+  readJson,
+  saveFourthPhaseCompletion,
+  writeJson,
+  type FourthPhaseDailyRecord,
+  type FourthPhaseRunMeta,
+  type FourthPhaseRunRecord,
+} from './fpPersistence';
+import { renderShareCard } from './fpShareCard';
 import {
   BASE_METER,
   BASE_METER_CAP,
@@ -34,15 +68,12 @@ import {
   FOURTH_PHASE_TEAMS,
   FOURTH_PHASE_WAR_ROOM_BUY_LIMIT,
   FOURTH_PHASE_WAR_ROOM_REROLL_COST,
-  PHASE_SHORT,
   activeBossForDrive,
   applyFourthPhaseDrawStart,
   bossWarningForPlay,
   buildPlayExplanation,
   buildRunShareCardData,
-  cardContributionLabel,
   cardDisplayName,
-  cardPlayChips,
   coachOrderCards,
   coachPickForWarRoom,
   coachRoomLine,
@@ -56,7 +87,6 @@ import {
   fourthPhaseMaxStake,
   fourthPhaseRunCode,
   fourthPhaseStake,
-  fourthPhaseTeamUnlocks,
   generateFourthPhaseWarRoomOffers,
   isTrueCrowdBeforeOffenseCash,
   jokerDefinition,
@@ -65,24 +95,17 @@ import {
   recordFourthPhaseResult,
   plainPlaySummary,
   playEffectVerb,
-  randomFourthPhaseBoss,
   scoreFourthPhasePlay,
   shuffleFourthPhase,
   tutorialCheckdownIsValid,
-  type CardEdition,
   type FourthPhaseBossKey,
-  type FourthPhaseBossProfile,
   type FourthPhaseCard,
   type FourthPhaseJokerState,
   type FourthPhasePracticeBook,
-  type FourthPhaseProgress,
   type FourthPhaseScoreContext,
   type FourthPhaseScoreResult,
   type FourthPhaseTeamKey,
   type FourthPhaseWarRoomOffer,
-  type CoachPick,
-  type PlayerTrait,
-  type RunShareCardData,
   type SituationKey,
 } from '../../lib/fourthPhase';
 
@@ -90,60 +113,8 @@ interface Props {
   onHome?: () => void;
 }
 
-type LabPhase = 'play' | 'warRoom' | 'won' | 'lost';
-
 /** Top-level app flow: title -> team/stake select -> the run itself. */
 type AppScreen = 'title' | 'teams' | 'game';
-
-interface CashInSnapshot {
-  points: number;
-  situation: string;
-  bigPlay: number;
-  meter: number;
-  reason: string;
-}
-
-interface FourthPhaseRunMeta {
-  dailyLabel?: string;
-  dailyPractice?: boolean;
-}
-
-interface FourthPhaseRunRecord {
-  id: string;
-  date: string;
-  seed: number;
-  team: FourthPhaseTeamKey;
-  stake: number;
-  score: number;
-  won: boolean;
-  bestPlay: number;
-  runCode: string;
-  dailyLabel?: string;
-}
-
-interface PlayResolution {
-  key: number;
-  explanation: string;
-  stages: { label: string; value: string; color: string }[];
-  impact: 'normal' | 'cash' | 'huge';
-}
-
-interface FourthPhaseDailyRecord {
-  date: string;
-  seed: number;
-  team: FourthPhaseTeamKey;
-  score: number;
-  won: boolean;
-  streak: number;
-}
-
-interface DragBind {
-  draggable: boolean;
-  onDragStart: (event: DragEvent) => void;
-  onDragOver: (event: DragEvent) => void;
-  onDrop: () => void;
-  onDragEnd: () => void;
-}
 
 interface LabState {
   seed: number;
@@ -171,6 +142,8 @@ interface LabState {
   meter: number;
   meterCap: number;
   repeatedSituations: Partial<Record<SituationKey, number>>;
+  /** One entry per finished drive (cleared or died): feeds the daily share grid. */
+  driveLog: DriveLogEntry[];
   drawNonce: number;
   phase: LabPhase;
   runScore: number;
@@ -183,181 +156,6 @@ interface LabState {
   dailyLabel?: string;
   dailyPractice?: boolean;
   completion?: FourthPhaseRunRecord;
-}
-
-// Run-one explanation copy: the engine's strings name Leverage/Explosive, but
-// during the tutorial only two nouns exist (Yards, Momentum). Same numbers,
-// staged vocabulary.
-function stagedExplanation(result: FourthPhaseScoreResult): string {
-  if (result.bust) return 'No clean shape - the series broke down and momentum bled.';
-  if (result.didCash) return `Crowd built momentum -> Offense cashed it -> ${result.points} progress.`;
-  if (result.situation.utility && result.meterCharged > 0.05) return `${result.situation.label} built +${result.meterCharged.toFixed(2)} momentum.`;
-  return `${result.situation.label} gained ${result.points} progress.`;
-}
-
-// Post-series safety net for players past the tutorial: when a series goes
-// wrong in one of the three classic ways, name the mistake and the next move
-// in football language. One sentence, diagnostic, never generic. The caller
-// shows each lesson at most once per run so this never becomes nagging.
-function diagnoseWeakSeries(
-  result: FourthPhaseScoreResult,
-  meterBefore: number,
-): { lesson: string; text: string } | null {
-  if (result.bust) {
-    return {
-      lesson: 'bust',
-      text: 'That was a Busted Play: those phases make no clean series, so it scored a penalty and bled momentum. A single blue Offense card is always a safe Checkdown.',
-    };
-  }
-  if (!result.didCash && result.meterCharged > 0.3 && result.points < 25) {
-    return {
-      lesson: 'chargeNoCash',
-      text: `You built momentum to ${formatMeter(result.meterAfter)} but didn't score with it. Next series: put a blue Offense card after a Crowd card to cash it in.`,
-    };
-  }
-  if (!result.didCash && meterBefore > BASE_METER + 0.5 && result.points < 40) {
-    return {
-      lesson: 'satOnHeat',
-      text: `Momentum was hot at ${formatMeter(meterBefore)} and that series didn't cash it — hot momentum bleeds while you wait. Offense cashes it.`,
-    };
-  }
-  return null;
-}
-
-// Decide whether a series earns the cash-in celebration, and why. Replaces the old
-// bare `points >= 120` magic number with reasons that scale to the drive and the run.
-function evaluateCashIn(
-  result: FourthPhaseScoreResult,
-  target: number,
-  prevBest: number,
-): { show: boolean; reason: string } {
-  if (result.situation.key === 'complementaryFootball') {
-    return { show: true, reason: 'Complementary Football: all four phases' };
-  }
-  if (result.points >= target) {
-    return { show: true, reason: 'Drive crusher: cleared the target in one series' };
-  }
-  if (result.points > prevBest && result.points >= 80) {
-    return { show: true, reason: `New run best: ${result.points}` };
-  }
-  if (result.didCash && result.bigPlay >= 2.5) {
-    return { show: true, reason: `Meter cash x${result.bigPlay.toFixed(2)}` };
-  }
-  if (result.points >= Math.max(60, Math.round(target * 0.3))) {
-    return { show: true, reason: 'Explosive play' };
-  }
-  return { show: false, reason: '' };
-}
-
-const teamKeys = Object.keys(FOURTH_PHASE_TEAMS) as FourthPhaseTeamKey[];
-const FP_HISTORY_KEY = 'fourth_phase_history_v1';
-const FP_DAILY_KEY = 'fourth_phase_daily_v1';
-const FP_PROGRESS_KEY = 'fourth_phase_progress_v1';
-
-function readJson<T>(key: string, fallback: T): T {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) as T : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function writeJson<T>(key: string, value: T) {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    /* ignore */
-  }
-}
-
-function loadFourthPhaseHistory(): FourthPhaseRunRecord[] {
-  const history = readJson<FourthPhaseRunRecord[]>(FP_HISTORY_KEY, []);
-  return Array.isArray(history) ? history.slice(0, 10) : [];
-}
-
-function bestFourthPhaseRun(history = loadFourthPhaseHistory()): FourthPhaseRunRecord | null {
-  return [...history].sort((a, b) => b.score - a.score || Number(b.won) - Number(a.won))[0] ?? null;
-}
-
-function loadFourthPhaseDaily(): FourthPhaseDailyRecord | null {
-  return readJson<FourthPhaseDailyRecord | null>(FP_DAILY_KEY, null);
-}
-
-function utcDateLabel(date = new Date()): string {
-  return date.toISOString().slice(0, 10);
-}
-
-function previousUtcDateLabel(label: string): string {
-  const date = new Date(`${label}T00:00:00.000Z`);
-  date.setUTCDate(date.getUTCDate() - 1);
-  return utcDateLabel(date);
-}
-
-function fourthPhaseDailySeed(label = utcDateLabel()): { label: string; seed: number; team: FourthPhaseTeamKey } {
-  const seed = stringSeed(`fourth-phase-daily:${label}`);
-  return { label, seed, team: teamKeys[Math.abs(seed) % teamKeys.length] };
-}
-
-function saveFourthPhaseCompletion(record: FourthPhaseRunRecord, dailyPractice?: boolean) {
-  const history = [record, ...loadFourthPhaseHistory().filter((entry) => entry.id !== record.id)].slice(0, 10);
-  writeJson(FP_HISTORY_KEY, history);
-  if (!record.dailyLabel || dailyPractice) return;
-  const previous = loadFourthPhaseDaily();
-  const streak = previous?.date === previousUtcDateLabel(record.dailyLabel) ? previous.streak + 1 : 1;
-  writeJson<FourthPhaseDailyRecord>(FP_DAILY_KEY, {
-    date: record.dailyLabel,
-    seed: record.seed,
-    team: record.team,
-    score: record.score,
-    won: record.won,
-    streak,
-  });
-}
-
-// Played first-run tutorial. Teaches the job first (clear the drive target before
-// calls run out), then the one trick that wins games, by making the player do it
-// instead of asking them to read a panel. Advances on real series (executePlay).
-const TUTORIAL_STEPS = [
-  {
-    title: 'Your job: clear the drive',
-    body: 'Hit the Drive Target at the top before your calls run out. Start simple: tap one blue Offense card below, then press Run Series. Offense gains safe yards.',
-    cta: null,
-  },
-  {
-    title: 'Now the trick that wins games',
-    body: 'Purple Crowd builds momentum. Blue Offense cashes it into an explosive score. Cards resolve left to right, so tap a Crowd card first, then an Offense card.',
-    cta: null,
-  },
-  {
-    title: 'That is the loop',
-    body: 'Build momentum, cash with Offense, clear the target. Same cards in the wrong order score less. Red Defense cards create leverage: stops, pressure, and short fields. Gold Special Teams cards create hidden yards for later.',
-    cta: 'Got it. Call it',
-  },
-] as const;
-
-function isTutorialDone(): boolean {
-  try {
-    return Boolean(localStorage.getItem('fp-tutorial-done'));
-  } catch {
-    return false;
-  }
-}
-
-// The very first run a player ever sees should end against a boss whose effect
-// reads in one clause AND leaves the tutorial's lesson intact. Prevent Defense
-// is out: it caps Explosive, which disables the exact cash-momentum trick the
-// coach just taught. Re-rolling the seed (not overriding the boss) keeps run
-// codes honest: the boss is still derived from the seed, so sharing/importing
-// this run reproduces it exactly.
-const GENTLE_FIRST_BOSSES: readonly FourthPhaseBossKey[] = ['stackedBox', 'turnoverDrill'];
-
-function firstRunSeed(team: FourthPhaseTeamKey): number {
-  let seed = stringSeed(`fourth-phase-lab:${team}:${Date.now()}`);
-  for (let step = 0; step < 64 && !GENTLE_FIRST_BOSSES.includes(randomFourthPhaseBoss(seed, team)); step += 1) {
-    seed += 1;
-  }
-  return seed;
 }
 
 function scriptedOpening(deck: FourthPhaseCard[]): FourthPhaseCard[] {
@@ -410,6 +208,7 @@ function createInitialState(
     meter: run.meter.meter,
     meterCap: run.meter.meterCap,
     repeatedSituations: {},
+    driveLog: [],
     drawNonce: 1,
     phase: 'play',
     runScore: 0,
@@ -477,117 +276,6 @@ function buildLossDiagnosis(state: LabState, targetRemaining: number): { reason:
   };
 }
 
-// `staged` = the first tutorial run: only two nouns exist yet (Yards, Momentum),
-// so the breakdown stays in that vocabulary. Leverage/Explosive arrive run two.
-function buildResolution(result: FourthPhaseScoreResult, explanation: string, key: number, staged = false): PlayResolution {
-  const stages = staged
-    ? [{ label: 'Yards', value: `${result.yards}`, color: '#5fb4ff' }]
-    : [
-      { label: 'Yards', value: `${result.yards}`, color: '#5fb4ff' },
-      { label: 'Leverage', value: `+${result.execution.toFixed(2)}`, color: '#ff7c93' },
-      { label: 'Explosive', value: `x${result.bigPlay.toFixed(2)}`, color: '#f4c24f' },
-    ];
-  if (result.didCash) {
-    stages.push({ label: staged ? 'Momentum cashed' : 'Cash', value: formatMeter(result.meterAfterCash), color: '#34c771' });
-  } else if (result.meterCharged > 0) {
-    stages.push({ label: 'Momentum', value: `+${result.meterCharged.toFixed(2)}`, color: '#a987ff' });
-  }
-  stages.push({ label: 'Drive', value: `${result.points}`, color: result.didCash ? FB.gold : FB.text });
-  return {
-    key,
-    explanation,
-    stages,
-    impact: result.points >= 180 || result.bigPlay >= 4 ? 'huge' : result.didCash ? 'cash' : 'normal',
-  };
-}
-
-function renderShareCard(data: RunShareCardData): Promise<Blob> {
-  const canvas = document.createElement('canvas');
-  canvas.width = 1080;
-  canvas.height = 1350;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return Promise.reject(new Error('Canvas unavailable'));
-
-  ctx.fillStyle = '#141821';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = '#102a1b';
-  for (let x = 0; x < canvas.width; x += 96) {
-    ctx.fillRect(x, 0, 48, canvas.height);
-  }
-  ctx.fillStyle = 'rgba(217,164,65,0.16)';
-  ctx.fillRect(0, 0, canvas.width, 190);
-  ctx.fillRect(0, 1160, canvas.width, 190);
-
-  ctx.textAlign = 'center';
-  ctx.fillStyle = '#d9a441';
-  ctx.font = '900 44px system-ui, -apple-system, Segoe UI, sans-serif';
-  ctx.fillText('FOURTH PHASE', 540, 96);
-
-  ctx.fillStyle = data.outcome === 'W' ? '#34c771' : '#e26d83';
-  ctx.font = '950 96px system-ui, -apple-system, Segoe UI, sans-serif';
-  ctx.fillText(data.outcome === 'W' ? 'RUN WON' : 'RUN OVER', 540, 230);
-
-  ctx.fillStyle = '#e8edf4';
-  ctx.font = '950 170px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
-  ctx.fillText(String(data.score), 540, 430);
-  ctx.fillStyle = '#aeb7c6';
-  ctx.font = '800 34px system-ui, -apple-system, Segoe UI, sans-serif';
-  ctx.fillText('Drive Score', 540, 485);
-
-  const rows = [
-    ['Team', data.team],
-    ['Boss', data.boss],
-    ['Best Play', `${data.bestPlay}`],
-    ['Run Code', data.runCode],
-  ];
-  ctx.textAlign = 'left';
-  let y = 590;
-  for (const [label, value] of rows) {
-    ctx.fillStyle = '#7f8a99';
-    ctx.font = '900 28px system-ui, -apple-system, Segoe UI, sans-serif';
-    ctx.fillText(label.toUpperCase(), 130, y);
-    ctx.fillStyle = '#e8edf4';
-    ctx.font = '900 38px system-ui, -apple-system, Segoe UI, sans-serif';
-    ctx.fillText(value, 340, y);
-    y += 80;
-  }
-
-  ctx.fillStyle = '#d9a441';
-  ctx.font = '900 34px system-ui, -apple-system, Segoe UI, sans-serif';
-  ctx.fillText(data.cashIn || 'No signature cash-in', 130, 940);
-  ctx.fillStyle = '#e8edf4';
-  ctx.font = '800 32px system-ui, -apple-system, Segoe UI, sans-serif';
-  wrapCanvasText(ctx, data.story, 130, 1010, 820, 42);
-
-  ctx.fillStyle = '#a987ff';
-  ctx.font = '900 28px system-ui, -apple-system, Segoe UI, sans-serif';
-  ctx.fillText(`Sideline: ${data.jokers.join(' / ') || 'none'}`, 130, 1210);
-
-  return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (blob) resolve(blob);
-      else reject(new Error('Could not render share card'));
-    }, 'image/png');
-  });
-}
-
-function wrapCanvasText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, lineHeight: number) {
-  const words = text.split(/\s+/);
-  let line = '';
-  let currentY = y;
-  for (const word of words) {
-    const next = line ? `${line} ${word}` : word;
-    if (ctx.measureText(next).width > maxWidth && line) {
-      ctx.fillText(line, x, currentY);
-      line = word;
-      currentY += lineHeight;
-    } else {
-      line = next;
-    }
-  }
-  if (line) ctx.fillText(line, x, currentY);
-}
-
 function dragReorder<T>(items: readonly T[], fromIndex: number, toIndex: number): T[] {
   if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return [...items];
   const copy = [...items];
@@ -616,52 +304,6 @@ function buildPlayContext(state: LabState): FourthPhaseScoreContext {
   };
 }
 
-function meterStyle(meter: number, cap: number): CSSProperties {
-  const tightness = cap <= BASE_METER ? 0 : (meter - BASE_METER) / (cap - BASE_METER);
-  const glow = 0.16 + Math.max(0, Math.min(1, tightness)) * 0.58;
-  return {
-    boxShadow: `0 0 ${18 + tightness * 36}px rgba(169,135,255,${glow})`,
-    borderColor: `rgba(169,135,255,${0.45 + glow * 0.45})`,
-  };
-}
-
-// Editions and traits change the math (deck.ts / engine.ts); the card face must
-// say so or big numbers look like hidden rolls. Badge colors are dark "ink"
-// tones because they print on light card stock.
-const EDITION_BADGE: Record<CardEdition, { label: string; color: string }> = {
-  allPro: { label: 'ALL-PRO', color: '#8a6a1e' },
-  inRhythm: { label: 'RHYTHM', color: '#1f4d7d' },
-  homeRun: { label: 'HOME RUN', color: '#8a6a1e' },
-  crowdFavorite: { label: 'CROWD FAV', color: '#54408c' },
-};
-
-const TRAIT_BADGE: Record<PlayerTrait, { label: string; color: string }> = {
-  reliable: { label: 'RELIABLE', color: '#1e6b40' },
-  explosive: { label: 'EXPLOSIVE', color: '#8a6a1e' },
-  clutch: { label: 'CLUTCH', color: '#1e6b40' },
-  hometownHero: { label: 'HOMETOWN', color: '#54408c' },
-  injuryProne: { label: 'FRAGILE', color: '#8a2f3e' },
-  lockerRoomCancer: { label: 'DRAMA', color: '#8a2f3e' },
-  agingVet: { label: 'AGING VET', color: '#8a2f3e' },
-  holdout: { label: 'HOLDOUT', color: '#8a2f3e' },
-};
-
-/** Accent used for each playbook's patch/emblem on the select screen. */
-const TEAM_ACCENT: Record<FourthPhaseTeamKey, string> = {
-  balanced: '#d9a441',
-  airRaid: '#62b7ff',
-  smashmouth: '#d97f4a',
-  blackAndBlue: '#e2637a',
-  loudHouse: '#ad91ff',
-  specialTeamsChaos: '#49d17e',
-};
-
-function cardBadge(card: FourthPhaseCard): { label: string; color: string } | null {
-  if (card.edition) return EDITION_BADGE[card.edition];
-  if (card.modifier) return TRAIT_BADGE[card.modifier];
-  return null;
-}
-
 export default function FourthPhaseLab({ onHome }: Props) {
   const [state, setState] = useState<LabState>(() => createInitialState('balanced'));
   const [screen, setScreen] = useState<AppScreen>('title');
@@ -672,6 +314,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
   const [importError, setImportError] = useState('');
   const [shareCopied, setShareCopied] = useState(false);
   const [resultCopied, setResultCopied] = useState(false);
+  const [dailyCopied, setDailyCopied] = useState(false);
   const [shareCardStatus, setShareCardStatus] = useState('');
   const [coachNudge, setCoachNudge] = useState('');
   const [resolution, setResolution] = useState<PlayResolution | null>(null);
@@ -744,11 +387,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
   }
 
   function finishTutorial() {
-    try {
-      localStorage.setItem('fp-tutorial-done', '1');
-    } catch {
-      /* ignore */
-    }
+    markTutorialDone();
     setTutorialStep(-1);
     setCoachNudge('');
   }
@@ -776,13 +415,14 @@ export default function FourthPhaseLab({ onHome }: Props) {
   // streak, and the derived career record above.
   useEffect(() => {
     if (!state.completion) return;
-    saveFourthPhaseCompletion(state.completion, state.dailyPractice);
+    saveFourthPhaseCompletion(state.completion, state.dailyPractice, dailyShareGrid(state.driveLog));
     writeJson(FP_PROGRESS_KEY, career);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- driveLog is set in the same update as completion
   }, [state.completion, state.dailyPractice, career]);
 
   const daily = fourthPhaseDailySeed();
   const storedDailyRecord = loadFourthPhaseDaily();
-  const dailyRecord = state.completion?.dailyLabel === daily.label && !state.dailyPractice
+  const dailyRecord: FourthPhaseDailyRecord | null = state.completion?.dailyLabel === daily.label && !state.dailyPractice
     ? {
       date: daily.label,
       seed: state.completion.seed,
@@ -852,6 +492,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
     setImportError('');
     setShareCopied(false);
     setResultCopied(false);
+    setDailyCopied(false);
     setShareCardStatus('');
     setCoachNudge('');
     setResolution(null);
@@ -916,6 +557,45 @@ export default function FourthPhaseLab({ onHome }: Props) {
   function copyResult() {
     if (!navigator.clipboard) return;
     navigator.clipboard.writeText(resultText()).then(() => setResultCopied(true)).catch(() => setResultCopied(false));
+  }
+
+  // The Wordle loop: one spoiler-light text block anyone can paste anywhere.
+  // Fresh completions share from live state; the title screen re-shares today's
+  // stored record (grid included) after the run is gone.
+  function buildDailyResultText(): string | null {
+    if (state.completion?.dailyLabel && !state.dailyPractice) {
+      return dailyShareText({
+        label: state.completion.dailyLabel,
+        won: state.completion.won,
+        score: state.completion.score,
+        streak: dailyRecord?.streak ?? 1,
+        drives: FOURTH_PHASE_DRIVES,
+        drivesCleared: state.driveLog.filter((drive) => drive.cleared).length,
+        grid: dailyShareGrid(state.driveLog),
+        runCode: state.completion.runCode,
+      });
+    }
+    if (storedDailyRecord?.date === daily.label && storedDailyRecord.grid) {
+      return dailyShareText({
+        label: storedDailyRecord.date,
+        won: storedDailyRecord.won,
+        score: storedDailyRecord.score,
+        streak: storedDailyRecord.streak,
+        drives: FOURTH_PHASE_DRIVES,
+        drivesCleared: storedDailyRecord.grid.split('\n').filter((row) => row.includes('🟨')).length,
+        grid: storedDailyRecord.grid,
+        runCode: fourthPhaseRunCode(storedDailyRecord.seed, storedDailyRecord.team, 1),
+      });
+    }
+    return null;
+  }
+
+  const dailyShareReady = Boolean(buildDailyResultText());
+
+  function shareDailyResult() {
+    const text = buildDailyResultText();
+    if (!text || !navigator.clipboard) return;
+    navigator.clipboard.writeText(text).then(() => setDailyCopied(true)).catch(() => setDailyCopied(false));
   }
 
   async function shareRunCard() {
@@ -1127,10 +807,12 @@ export default function FourthPhaseLab({ onHome }: Props) {
         cashIn,
       };
       if (driveScore >= current.targets[current.driveIndex]) {
+        const driveLog: DriveLogEntry[] = [...current.driveLog, { calls: current.playsThisDrive + 1, cleared: true }];
         if (current.driveIndex >= FOURTH_PHASE_DRIVES - 1) {
           const bestPlay = Math.max(current.bestPlay, result.points);
           return {
             ...baseUpdate,
+            driveLog,
             phase: 'won',
             meter: BASE_METER,
             completion: makeRunRecord(current, runScore, true, bestPlay),
@@ -1139,6 +821,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
         const warRoomMoney = baseUpdate.money + 5 + current.driveIndex * 2;
         return {
           ...baseUpdate,
+          driveLog,
           phase: 'warRoom',
           draft: generateFourthPhaseWarRoomOffers(
             baseUpdate.jokers,
@@ -1161,7 +844,13 @@ export default function FourthPhaseLab({ onHome }: Props) {
         (baseUpdate.playsThisDrive >= FOURTH_PHASE_MAX_PLAYS_PER_DRIVE && driveScore < current.targets[current.driveIndex]);
       if (outOfPlayableCards) {
         const bestPlay = Math.max(current.bestPlay, result.points);
-        return { ...baseUpdate, phase: 'lost', meter: BASE_METER, completion: makeRunRecord(current, runScore, false, bestPlay) };
+        return {
+          ...baseUpdate,
+          driveLog: [...current.driveLog, { calls: current.playsThisDrive + 1, cleared: false }],
+          phase: 'lost',
+          meter: BASE_METER,
+          completion: makeRunRecord(current, runScore, false, bestPlay),
+        };
       }
       return baseUpdate;
     });
@@ -1328,7 +1017,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
     });
   }
 
-  function dragProps(id: string, setter: (id: string | null) => void, onDropId: (id: string) => void) {
+  function dragProps(id: string, setter: (id: string | null) => void, onDropId: (id: string) => void): DragBind {
     return {
       draggable: true,
       onDragStart: (event: DragEvent) => {
@@ -1375,16 +1064,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
     />
   ) : null;
   const driveBannerOverlay = driveBanner ? (
-    <div className="fp-drive-banner" aria-hidden="true" style={{ position: 'fixed', inset: 0, zIndex: 80, display: 'grid', placeItems: 'center', background: 'rgba(5,7,11,0.82)', pointerEvents: 'none' }}>
-      <div style={{ textAlign: 'center' }}>
-        <div className="fp-head fp-verdict-stamp" style={{ fontSize: 30, color: FB.green, fontWeight: 900 }}>
-          DRIVE {driveBanner.drive} CLEARED
-        </div>
-        <div className="fb-led" style={{ fontSize: 20, color: FB.text, fontWeight: 950, marginTop: 12 }}>
-          {driveBanner.score} posted
-        </div>
-      </div>
-    </div>
+    <DriveBannerOverlay drive={driveBanner.drive} score={driveBanner.score} />
   ) : null;
 
   if (screen === 'title') {
@@ -1400,6 +1080,8 @@ export default function FourthPhaseLab({ onHome }: Props) {
           dailyStreak={dailyRecord?.streak ?? 0}
           localBest={localBest?.score ?? null}
           wins={career.wins}
+          onShareDaily={dailyShareReady ? shareDailyResult : undefined}
+          dailyShareCopied={dailyCopied}
           soundOn={feel.sound}
           hapticsOn={feel.haptics}
           onToggleSound={toggleSound}
@@ -1566,6 +1248,23 @@ export default function FourthPhaseLab({ onHome }: Props) {
               Daily {state.dailyLabel}{state.dailyPractice ? ' | practice (streak unchanged)' : dailyRecord ? ` | streak ${dailyRecord.streak}` : ''}
             </div>
           )}
+          {state.dailyLabel && !state.dailyPractice && state.driveLog.length > 0 && (
+            <>
+              {/* The share grid, shown before sharing so the emoji rows read as
+                  the run's fingerprint: one row per drive, one square per call. */}
+              <div aria-label="Daily result grid" style={{ fontSize: 17, lineHeight: 1.3, letterSpacing: 2, marginTop: 8 }}>
+                {dailyShareGrid(state.driveLog).split('\n').map((row, index) => (
+                  <div key={index}>{row}</div>
+                ))}
+              </div>
+              <button
+                onClick={shareDailyResult}
+                style={{ ...btnGhost, width: '100%', marginTop: 10, borderColor: '#5b4a86', color: '#cbbdff' }}
+              >
+                {dailyCopied ? 'Copied — paste it anywhere' : 'Share Daily Result'}
+              </button>
+            </>
+          )}
           <div style={{ fontSize: 10.5, color: FB.textFaint, marginTop: 8 }}>{runCode}. Import this code to replay the same run.</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 12 }}>
             <button onClick={() => restart(state.team, undefined, undefined, state.stake)} style={btnPrimary}>Run it back</button>
@@ -1602,34 +1301,14 @@ export default function FourthPhaseLab({ onHome }: Props) {
       <div className="fp-screen-in fp-table-col" style={{ maxWidth: 560, margin: '0 auto' }}>
       <GameHeader runCode={runCode} stakeLevel={state.stake} soundOn={feel.sound} onToggleSound={toggleSound} onTitle={() => setScreen('title')} onNewRun={() => setScreen('teams')} />
 
-      {tutorialStep >= 0 && tutorialStep < TUTORIAL_STEPS.length && (
-        <section style={{ ...card(), padding: 13, marginBottom: 10, borderColor: FB.gold, background: 'linear-gradient(135deg,#232a15,#151922)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
-            <div style={{ ...sectionLabel, color: FB.gold }}>Coach step {tutorialStep + 1}/{TUTORIAL_STEPS.length}</div>
-            <button onClick={finishTutorial} style={{ background: 'transparent', border: 'none', color: FB.textFaint, fontSize: 11, fontWeight: 800, cursor: 'pointer' }}>
-              Skip tutorial
-            </button>
-          </div>
-          <div style={{ fontSize: 14, fontWeight: 950, color: FB.text, marginTop: 4 }}>{TUTORIAL_STEPS[tutorialStep].title}</div>
-          <div style={{ fontSize: 12, color: FB.textDim, lineHeight: 1.45, marginTop: 4 }}>{TUTORIAL_STEPS[tutorialStep].body}</div>
-          {coachNudge && (
-            <div style={{ border: `1px solid ${FB.gold}`, borderRadius: 8, color: FB.gold, background: 'rgba(240,180,41,0.08)', padding: '8px 9px', marginTop: 9, fontSize: 11.5, fontWeight: 850 }}>
-              {coachNudge}
-            </div>
-          )}
-          {canCoachOrder && (
-            <button
-              onClick={coachOrderSelected}
-              style={{ ...btnGhost, width: '100%', marginTop: 9, borderColor: selectedNeedsCoachOrder ? FB.gold : FB.border, color: selectedNeedsCoachOrder ? FB.gold : FB.textDim }}
-            >
-              Coach Order: Crowd first
-            </button>
-          )}
-          {TUTORIAL_STEPS[tutorialStep].cta && (
-            <button onClick={finishTutorial} style={{ ...btnPrimary, width: '100%', marginTop: 10 }}>{TUTORIAL_STEPS[tutorialStep].cta}</button>
-          )}
-        </section>
-      )}
+      <TutorialPanel
+        step={tutorialStep}
+        coachNudge={coachNudge}
+        canCoachOrder={canCoachOrder}
+        highlightCoachOrder={selectedNeedsCoachOrder}
+        onCoachOrder={coachOrderSelected}
+        onFinish={finishTutorial}
+      />
 
       <GameStatusPanel
         labPhase={state.phase}
@@ -1655,61 +1334,19 @@ export default function FourthPhaseLab({ onHome }: Props) {
         gain={resolution && state.lastPlay ? { points: state.lastPlay.points, cashed: state.lastPlay.didCash, key: resolution.key } : null}
       />
 
-      {resolution && (
-        <section key={resolution.key} className={resolution.impact === 'normal' ? 'fp-resolve' : 'fp-resolve fp-resolve-cash'} style={{ ...card(), padding: 12, marginTop: 10, borderColor: resolution.impact === 'normal' ? FB.border : FB.gold, background: resolution.impact === 'normal' ? FB.panelSoft : 'linear-gradient(135deg,#2e2410,#171c26)' }}>
-          <div style={{ ...sectionLabel, color: resolution.impact === 'normal' ? FB.textFaint : FB.gold }}>Series Result</div>
-          <div style={{ fontSize: 12, color: FB.text, fontWeight: 900, marginTop: 5 }}>{resolution.explanation}</div>
-          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${resolution.stages.length}, minmax(0, 1fr))`, gap: 6, marginTop: 10 }}>
-            {resolution.stages.map((stage, index) => (
-              <div key={`${stage.label}-${index}`} className="fp-stage" style={{ '--fp-stage-delay': `${index * 90}ms`, border: `1px solid ${FB.border}`, borderRadius: 8, padding: '7px 6px', background: FB.inset } as CSSProperties}>
-                <div style={{ fontSize: 9.5, color: FB.textFaint, fontWeight: 900 }}>{stage.label}</div>
-                <div className="fb-num" style={{ fontSize: 15, color: stage.color, fontWeight: 950 }}>{stage.value}</div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
+      {resolution && <ResolutionCard resolution={resolution} />}
 
-      {coachDiagnosis && !coachMode && state.phase === 'play' && (
-        <section className="fp-resolve" style={{ ...card(), padding: '10px 12px', marginTop: 10, borderColor: 'rgba(242,189,61,0.5)', background: 'rgba(242,189,61,0.06)' }}>
-          <div style={{ ...sectionLabel, color: FB.gold }}>Coach</div>
-          <div style={{ fontSize: 12, color: FB.text, fontWeight: 850, lineHeight: 1.4, marginTop: 4 }}>{coachDiagnosis}</div>
-        </section>
-      )}
+      {coachDiagnosis && !coachMode && state.phase === 'play' && <CoachDiagnosisCard text={coachDiagnosis} />}
 
       {state.cashIn && (
-        <section
-          key={`${state.cashIn.points}:${state.cashIn.situation}:${state.cashIn.reason}`}
-          style={{ ...card(), padding: 13, marginTop: 10, borderColor: FB.gold, background: 'linear-gradient(135deg,#33260e,#1b202b)', overflow: 'hidden' }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 10 }}>
-            <div>
-              <div className="fp-cashed-stamp" style={{ display: 'inline-block', border: `2px solid ${FB.gold}`, borderRadius: 6, color: FB.gold, padding: '3px 9px', fontSize: 13, fontWeight: 950, letterSpacing: 1.5 }}>
-                CASHED
-              </div>
-              <div style={{ fontSize: 12, color: FB.text, fontWeight: 900, marginTop: 6 }}>{state.cashIn.reason}</div>
-            </div>
-            <div style={{ border: `1px solid rgba(242,189,61,0.55)`, borderRadius: FP_RADIUS.pill, color: FB.gold, padding: '4px 8px', fontSize: 10, fontWeight: 950, whiteSpace: 'nowrap' }}>
-              {formatMeter(state.cashIn.meter)} momentum -&gt; Explosive x{state.cashIn.bigPlay.toFixed(2)}
-            </div>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr)', gap: 12, alignItems: 'end', marginTop: 8 }}>
-            <div className="fb-num fp-points-land" style={{ fontSize: 58, color: FB.gold, fontWeight: 950, lineHeight: 0.88 }}>{state.cashIn.points}</div>
-            <div style={{ display: 'grid', gap: 5, minWidth: 0 }}>
-              <div style={{ fontSize: 12.5, color: FB.text, fontWeight: 950, lineHeight: 1.15 }}>{state.cashIn.situation}</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-                <Metric label="Momentum" value={formatMeter(state.cashIn.meter)} color="#cbbdff" />
-                <Metric label="Run" value={runCode} color={FB.text} small />
-              </div>
-            </div>
-          </div>
-          <div style={{ fontSize: 10.5, color: FB.textFaint, marginTop: 8, lineHeight: 1.3 }}>
-            {FOURTH_PHASE_TEAMS[state.team].shortName} | {state.jokers.map((joker) => jokerDefinition(joker).name).join(' / ') || 'No jokers'}
-          </div>
-          <button onClick={copyCashCard} style={{ ...btnGhost, width: '100%', marginTop: 10, borderColor: 'rgba(242,189,61,0.55)', color: FB.gold }}>
-            {shareCopied ? 'Copied' : 'Copy cash card'}
-          </button>
-        </section>
+        <CashInCard
+          cashIn={state.cashIn}
+          runCode={runCode}
+          teamShort={FOURTH_PHASE_TEAMS[state.team].shortName}
+          jokerNames={state.jokers.map((joker) => jokerDefinition(joker).name)}
+          copied={shareCopied}
+          onCopy={copyCashCard}
+        />
       )}
 
       <section style={{ marginTop: 10 }}>
@@ -1788,65 +1425,18 @@ export default function FourthPhaseLab({ onHome }: Props) {
         </div>
       </section>
 
-      <section style={{ ...card(), padding: 12, marginTop: 10, borderColor: preview?.didCash ? FB.gold : preview?.bust ? 'rgba(240,117,138,0.55)' : FB.border }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
-          <div style={{ minWidth: 0 }}>
-          <div style={sectionLabel}>This series</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 2, flexWrap: 'wrap' }}>
-              {previewVerb && <EffectVerbChip verb={previewVerb} />}
-              <div style={{ fontSize: 15, color: FB.text, fontWeight: 950 }}>
-                {preview
-                  ? preview.situation.label
-                  : state.lastPlay
-                    ? `Last: ${state.lastPlay.situation.label} | ${state.lastPlay.points}`
-                    : 'No series selected'}
-              </div>
-            </div>
-          </div>
-          <div className="fb-num" style={{ fontSize: 30, color: preview?.didCash ? FB.gold : FB.text, fontWeight: 950 }}>
-            {preview ? preview.points : 0}
-          </div>
-        </div>
-        {preview && (
-          <>
-            {/* Run one stays in two nouns (Yards, Momentum); the full equation
-                with Leverage/Explosive appears once the tutorial is done. */}
-            {!coachMode && <div style={{ fontSize: 11.5, color: FB.textDim, fontWeight: 850, marginTop: 8 }}>
-              <span className="fb-num" style={{ color: '#5fb4ff' }}>{preview.yards} Yards</span>
-              {' × '}
-              <span className="fb-num" style={{ color: '#ff7c93' }}>{Math.max(0.1, 1 + preview.execution).toFixed(2)} Leverage</span>
-              {' × '}
-              <span className="fb-num" style={{ color: '#f4c24f' }}>{preview.bigPlay.toFixed(2)} Explosive</span>
-              {' = '}
-              <span className="fb-num" style={{ color: FB.text }}>{preview.points}</span>
-            </div>}
-            {preview.bust && (
-              <div style={{ fontSize: 11, color: FB.red, fontWeight: 800, marginTop: 8 }}>
-                Bad call: these phases make no clean series. Penalty score and momentum bleeds.
-              </div>
-            )}
-            {bossWarning && (
-              <div style={{ fontSize: 11, color: FB.red, fontWeight: 900, marginTop: 8 }}>
-                {bossWarning}
-              </div>
-            )}
-            {previewBleeds && (
-              <div style={{ border: `1px solid rgba(169,135,255,0.5)`, borderRadius: 8, color: '#cbbdff', background: 'rgba(169,135,255,0.08)', padding: '7px 9px', fontSize: 11, fontWeight: 850, marginTop: 8 }}>
-                Hot momentum ignored: it bleeds to {formatMeter(preview.meterAfter)} if you run this. Add Offense to cash it instead.
-              </div>
-            )}
-            {reorderHint && (
-              <button
-                onClick={coachOrderSelected}
-                style={{ ...btnGhost, width: '100%', marginTop: 8, borderColor: FB.gold, color: FB.gold }}
-              >
-                {reorderHint.unlocksCash ? 'Reorder to cash momentum' : 'Better order available'}: +{reorderHint.delta} points
-              </button>
-            )}
-            <AfterThisLine points={preview.points} targetRemaining={targetRemaining} playsLeft={playsLeft} />
-          </>
-        )}
-      </section>
+      <SeriesPreviewPanel
+        preview={preview}
+        previewVerb={previewVerb}
+        lastPlay={state.lastPlay}
+        coachMode={coachMode}
+        bossWarning={bossWarning}
+        previewBleeds={previewBleeds}
+        reorderHint={reorderHint}
+        onCoachOrder={coachOrderSelected}
+        targetRemaining={targetRemaining}
+        playsLeft={playsLeft}
+      />
 
       {!coachMode && state.lastPlay && (
         <section style={{ ...card(), padding: 12, marginTop: 10 }}>
@@ -2057,1087 +1647,3 @@ const bottomBar: CSSProperties = {
   backdropFilter: 'blur(8px)',
   WebkitBackdropFilter: 'blur(8px)',
 };
-
-// Fictional team-patch emblem: a stitched shield with a monogram. Pure
-// decoration for playbook inserts and the binder cover — no real-team marks.
-function PatchEmblem({ accent, initials, size = 44 }: { accent: string; initials: string; size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden="true" style={{ display: 'block' }}>
-      <path d="M24 3l17 5v14c0 11-7.2 18.6-17 23C14.2 40.6 7 33 7 22V8z" fill="#1d2129" stroke={accent} strokeWidth="2" />
-      <path d="M24 7.4l13.4 4V22c0 8.9-5.7 15.2-13.4 19C16.3 37.2 10.6 30.9 10.6 22V11.4z" fill="none" stroke={accent} strokeWidth="1" opacity="0.55" strokeDasharray="2.5 2" />
-      <text x="24" y="28" textAnchor="middle" fontSize="13" fontWeight="900" fill={accent} fontFamily={FP_FONT_HEAD}>{initials}</text>
-    </svg>
-  );
-}
-
-function FootballGlyph({ size = 16 }: { size?: number }) {
-  return (
-    <svg width={size} height={Math.round(size * 0.62)} viewBox="0 0 24 15" aria-hidden="true" style={{ display: 'block' }}>
-      <ellipse cx="12" cy="7.5" rx="11" ry="6.8" fill="#7a4a20" stroke="#3d2510" strokeWidth="1" />
-      <path d="M7.5 7.5h9" stroke="#f2ede4" strokeWidth="1.3" strokeLinecap="round" />
-      <path d="M9.3 5.8v3.4M11.2 5.5v4M13 5.5v4M14.8 5.8v3.4" stroke="#f2ede4" strokeWidth="1.1" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-// The one sentence a cold player must never lose: what to score, in how many
-// calls, and the loop that gets them there. Lives at the top of the status panel
-// and restates itself for the War Room and end states.
-function ObjectiveHeader({
-  labPhase,
-  driveIndex,
-  drives,
-  targetRemaining,
-  playsLeft,
-  meterHot,
-  meterWillCash,
-}: {
-  labPhase: LabPhase;
-  driveIndex: number;
-  drives: number;
-  targetRemaining: number;
-  playsLeft: number;
-  meterHot: boolean;
-  meterWillCash: boolean;
-}) {
-  let headline: ReactNode;
-  let hint: ReactNode = null;
-  if (labPhase === 'warRoom') {
-    headline = <>Drive {driveIndex + 1} cleared. Draft help for Drive {driveIndex + 2}.</>;
-  } else if (labPhase === 'won') {
-    headline = <>All {drives} drives cleared. Run won.</>;
-  } else if (labPhase === 'lost') {
-    headline = <>Run over: the drive stalled {targetRemaining} short.</>;
-  } else {
-    headline = (
-      <>
-        Drive {driveIndex + 1} of {drives}: score{' '}
-        <span className="fb-num" style={{ color: FB.gold }}>{targetRemaining}</span> more in{' '}
-        <span className="fb-num" style={{ color: playsLeft <= 2 ? FB.red : FB.green }}>{playsLeft}</span>{' '}
-        {playsLeft === 1 ? 'call' : 'calls'}
-      </>
-    );
-    hint = meterWillCash ? (
-      <>This call <b style={{ color: FB.gold }}>cashes momentum</b>. Run it.</>
-    ) : meterHot ? (
-      <>Momentum is hot: <b style={{ color: '#5fb4ff' }}>Offense</b> cashes it now.</>
-    ) : (
-      <>Build <b style={{ color: '#a987ff' }}>Crowd</b> {'→'} cash with <b style={{ color: '#5fb4ff' }}>Offense</b>.</>
-    );
-  }
-  return (
-    <div style={{ borderBottom: `1px solid ${FB.borderSoft}`, paddingBottom: 8 }}>
-      <div style={{ fontSize: 14.5, color: FB.text, fontWeight: 950, lineHeight: 1.25 }}>{headline}</div>
-      {hint && <div style={{ fontSize: 11.5, color: FB.textDim, fontWeight: 850, marginTop: 3 }}>{hint}</div>}
-    </div>
-  );
-}
-
-function GameStatusPanel({
-  labPhase,
-  driveIndex,
-  drives,
-  driveScore,
-  target,
-  targetRemaining,
-  progress,
-  meter,
-  meterCap,
-  meterFill,
-  meterHint,
-  meterHot,
-  meterWillCash,
-  playsLeft,
-  maxPlays,
-  coachMode,
-  hideMeter,
-  activeBoss,
-  scoutingBoss,
-  bossArrivesDrive,
-  gain,
-}: {
-  labPhase: LabPhase;
-  driveIndex: number;
-  drives: number;
-  driveScore: number;
-  target: number;
-  targetRemaining: number;
-  progress: number;
-  meter: number;
-  meterCap: number;
-  meterFill: number;
-  meterHint: string;
-  meterHot: boolean;
-  meterWillCash: boolean;
-  playsLeft: number;
-  maxPlays: number;
-  coachMode: boolean;
-  /** Tutorial step 0: momentum hasn't been introduced yet, so the tile hides. */
-  hideMeter?: boolean;
-  activeBoss: FourthPhaseBossProfile | null;
-  scoutingBoss: FourthPhaseBossProfile | null;
-  bossArrivesDrive: number;
-  /** Last series' points, floated over the drive target right after Run Series. */
-  gain: { points: number; cashed: boolean; key: number } | null;
-}) {
-  const pressureLabel = coachMode ? 'Coach Mode' : activeBoss ? 'Boss Active' : 'Scouting';
-  const pressureColor = coachMode ? FB.green : activeBoss ? FB.red : FB.gold;
-  const pressureBody = coachMode
-    ? 'Learn the call sheet first.'
-    : activeBoss
-      ? `${activeBoss.name}: ${activeBoss.effect}`
-      : scoutingBoss
-        ? `Drive ${bossArrivesDrive}: ${scoutingBoss.name}. ${scoutingBoss.effect}`
-        : 'Open field. No boss pressure.';
-
-  return (
-    <section style={{ ...card(), ...meterStyle(meter, meterCap), padding: 12, overflow: 'hidden', position: 'relative', background: 'linear-gradient(180deg,#1a1f2a,#10141c)', marginTop: 2 }}>
-      <div className="fb-yard" style={{ position: 'absolute', inset: 0, opacity: 0.32 }} />
-      <div style={{ position: 'relative', display: 'grid', gap: 10 }}>
-        <ObjectiveHeader
-          labPhase={labPhase}
-          driveIndex={driveIndex}
-          drives={drives}
-          targetRemaining={targetRemaining}
-          playsLeft={playsLeft}
-          meterHot={meterHot}
-          meterWillCash={meterWillCash}
-        />
-        <div style={{ display: 'grid', gridTemplateColumns: hideMeter ? 'minmax(0, 1fr)' : 'minmax(0, 1.05fr) minmax(132px, .95fr)', gap: 8, alignItems: 'stretch' }}>
-          <div style={{ ...statTile, background: 'rgba(7,11,16,0.74)', position: 'relative' }}>
-            <div style={{ ...sectionLabel, color: FB.textDim }}>Drive Target</div>
-            {gain && gain.points > 0 && (
-              <span
-                key={gain.key}
-                className="fb-num fp-float-gain"
-                aria-hidden="true"
-                style={{ fontSize: 19, fontWeight: 950, color: gain.cashed ? FB.gold : FB.green, textShadow: '0 1px 4px rgba(0,0,0,0.7)' }}
-              >
-                +{gain.points}
-              </span>
-            )}
-            <div key={driveScore} className="fb-led fb-pop" style={{ fontSize: 31, color: FB.text, fontWeight: 950, lineHeight: 0.95, marginTop: 3 }}>
-              {driveScore}<span style={{ fontSize: 14, color: FB.textFaint }}> / {target}</span>
-            </div>
-            <FieldProgress progress={progress} surgeKey={gain && gain.points >= 100 ? gain.key : null} />
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginTop: 7 }}>
-              <span style={{ fontSize: 10.5, color: FB.textFaint }}>{targetRemaining} left</span>
-              <span style={{ fontSize: 10.5, color: FB.textDim, fontWeight: 850 }}>{playsLeft} calls</span>
-            </div>
-          </div>
-
-          {!hideMeter && <div style={{ ...statTile, background: meterWillCash ? 'linear-gradient(180deg,#282009,#0a0f16)' : 'rgba(7,11,16,0.74)', borderColor: meterWillCash ? FB.gold : meterHot ? '#4e426f' : FB.borderSoft }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                <PhaseIcon phase="crowd" size={12} />
-                <div style={{ ...sectionLabel, color: meterWillCash ? FB.gold : '#cbbdff' }}>Momentum</div>
-              </div>
-              <div key={formatMeter(meter)} className="fb-led fb-pop" style={{ fontSize: 22, color: meterWillCash ? FB.gold : '#efe9ff', fontWeight: 950, lineHeight: 1 }}>
-                {formatMeter(meter)}
-              </div>
-            </div>
-            <div style={{ position: 'relative', height: 15, borderRadius: FP_RADIUS.card, background: '#181420', border: '1px solid #322b48', overflow: 'hidden', marginTop: 9 }}>
-              <div style={{ width: `${meterFill * 100}%`, height: '100%', background: 'linear-gradient(90deg,#4f9cff,#ad91ff,#f2bd3d)', transition: 'width 180ms ease-out' }} />
-              <div style={{ position: 'absolute', inset: 0, backgroundImage: 'repeating-linear-gradient(90deg, transparent 0px, transparent calc(6.25% - 2px), #0a0d13 calc(6.25% - 2px), #0a0d13 6.25%)' }} />
-            </div>
-            <div style={{ display: 'grid', gap: 3, marginTop: 7 }}>
-              <span style={{ color: FB.textFaint, fontSize: 10 }}>cap {formatMeter(meterCap)}</span>
-              <span style={{ color: meterWillCash ? FB.gold : meterHot ? '#cbbdff' : FB.textDim, fontSize: 10.5, fontWeight: 850, lineHeight: 1.25 }}>{meterHint}</span>
-            </div>
-          </div>}
-        </div>
-
-        <div style={{ border: `1px solid ${activeBoss ? 'rgba(240,117,138,0.55)' : coachMode ? 'rgba(73,209,126,0.45)' : 'rgba(242,189,61,0.42)'}`, borderRadius: FP_RADIUS.card, background: activeBoss ? 'rgba(240,117,138,0.08)' : 'rgba(242,189,61,0.07)', padding: '8px 9px', display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 9, alignItems: 'baseline' }}>
-          <span style={{ ...sectionLabel, color: pressureColor, whiteSpace: 'nowrap' }}>{pressureLabel}</span>
-          <span style={{ color: activeBoss ? '#ff9aac' : FB.textDim, fontSize: 11, fontWeight: 850, lineHeight: 1.3 }}>{pressureBody}</span>
-        </div>
-
-        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 4 }}>
-          {Array.from({ length: maxPlays }).map((_, i) => (
-            <span
-              key={i}
-              aria-hidden="true"
-              style={{
-                width: 13,
-                height: 5,
-                borderRadius: 2,
-                background: i < playsLeft ? FB.green : '#1c232e',
-                border: `1px solid ${i < playsLeft ? '#1f6b44' : '#232c38'}`,
-              }}
-            />
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// Drive progress drawn as a field: turf bands, yard lines, hash marks, a striped
-// end zone, and the ball marching toward the goal line as driveScore climbs.
-// Pure presentation. Progress is the same driveScore/target ratio as before.
-// `surgeKey` fires the breakaway streak when a single series rips 100+ points.
-function FieldProgress({ progress, surgeKey }: { progress: number; surgeKey: number | null }) {
-  const pos = Math.min(1, Math.max(0, progress));
-  return (
-    <div
-      style={{
-        position: 'relative',
-        height: 46,
-        borderRadius: 8,
-        overflow: 'hidden',
-        border: '1px solid #1d3527',
-        marginTop: 10,
-        background: 'repeating-linear-gradient(90deg, #0c1f14 0px, #0c1f14 22px, #102a1b 22px, #102a1b 44px)',
-      }}
-    >
-      <div style={{ position: 'absolute', inset: 0, backgroundImage: 'repeating-linear-gradient(90deg, rgba(255,255,255,0.13) 0px, rgba(255,255,255,0.13) 1px, transparent 1px, transparent 8.8%)' }} />
-      <div style={{ position: 'absolute', top: '32%', bottom: '32%', left: 0, right: '12%', backgroundImage: 'repeating-linear-gradient(90deg, rgba(255,255,255,0.14) 0px, rgba(255,255,255,0.14) 1px, transparent 1px, transparent 11px)', opacity: 0.35 }} />
-      <div style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: `${(pos * 88).toFixed(2)}%`, background: 'linear-gradient(90deg, rgba(52,199,113,0.10), rgba(240,180,41,0.22))', transition: 'width 400ms ease-out' }} />
-      <div style={{ position: 'absolute', top: 0, bottom: 0, right: 0, width: '12%', background: 'repeating-linear-gradient(45deg, #251f07 0px, #251f07 5px, #2e2609 5px, #2e2609 10px)', borderLeft: '2px solid rgba(240,180,41,0.85)', display: 'grid', placeItems: 'center' }}>
-        <span style={{ fontSize: 8.5, fontWeight: 950, color: FB.gold, letterSpacing: 0, writingMode: 'vertical-rl' }}>GOAL</span>
-      </div>
-      {surgeKey != null && <div key={surgeKey} className="fp-breakaway-streak" aria-hidden="true" />}
-      <div style={{ position: 'absolute', top: '50%', left: `${(2 + pos * 86).toFixed(2)}%`, transform: 'translate(-50%, -50%)', transition: 'left 400ms cubic-bezier(.2,.9,.3,1.15)', filter: surgeKey != null ? 'drop-shadow(0 0 8px rgba(242,189,61,0.9))' : 'drop-shadow(0 1px 3px rgba(0,0,0,0.65))' }}>
-        <FootballGlyph size={20} />
-      </div>
-    </div>
-  );
-}
-
-// Verb-first series labels. A cold player learns "this call CASHES / BUILDS /
-// SETS UP" before they learn any formal Situation names.
-const EFFECT_VERB_COLOR: Record<ReturnType<typeof playEffectVerb>, string> = {
-  CASHES: '#f4c24f',
-  SCORES: '#5fb4ff',
-  BUILDS: '#a987ff',
-  'SETS UP': '#34c771',
-  'BAD CALL': '#f0758a',
-};
-
-function EffectVerbChip({ verb }: { verb: ReturnType<typeof playEffectVerb> }) {
-  const color = EFFECT_VERB_COLOR[verb];
-  return (
-    <span
-      style={{
-        border: `1px solid ${color}`,
-        borderRadius: FP_RADIUS.badge,
-        color,
-        background: 'rgba(7,11,16,0.56)',
-        fontSize: 10,
-        fontWeight: 950,
-        letterSpacing: 0.4,
-        padding: '2px 6px',
-        whiteSpace: 'nowrap',
-      }}
-    >
-      {verb}
-    </span>
-  );
-}
-
-// Combo badges styled as stickers slapped on the binder page.
-function ComboChips({ entries }: { entries: ReturnType<typeof comboLedgerEntries> }) {
-  return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, margin: '-2px 0 8px' }}>
-      {entries.map((entry, index) => (
-        <span
-          key={`${entry.label}-${index}`}
-          className="fp-sticker"
-          title={entry.detail}
-          style={{ fontSize: 9, letterSpacing: 0.5, whiteSpace: 'nowrap', transform: `rotate(${index % 2 === 0 ? -1 : 0.8}deg)` }}
-        >
-          {entry.label}
-        </span>
-      ))}
-    </div>
-  );
-}
-
-// "After this: 120 to clear, 5 calls left" — the preview answers the objective,
-// not just the score.
-function AfterThisLine({ points, targetRemaining, playsLeft }: { points: number; targetRemaining: number; playsLeft: number }) {
-  const clears = points >= targetRemaining;
-  const remainingAfter = Math.max(0, targetRemaining - points);
-  const playsAfter = Math.max(0, playsLeft - 1);
-  return (
-    <div style={{ fontSize: 11, color: clears ? FB.gold : FB.textFaint, fontWeight: clears ? 950 : 800, marginTop: 8 }}>
-      {clears
-        ? 'This series clears the drive.'
-        : `After this: ${remainingAfter} to clear, ${playsAfter} ${playsAfter === 1 ? 'call' : 'calls'} left.`}
-    </div>
-  );
-}
-
-function Metric({ label, value, color, small }: { label: string; value: string; color: string; small?: boolean }) {
-  return (
-    <div style={{ ...statTile }}>
-      <div style={{ fontSize: 10, color: FB.textFaint, fontWeight: 900 }}>{label}</div>
-      <div className="fb-num" style={{ fontSize: small ? 12 : 16, color, fontWeight: 950 }}>{value}</div>
-    </div>
-  );
-}
-
-// Trading-card face frame: off-white stock (foil edge on editions), plus a
-// gold collector ring when selected. Shared by hand cards and call-script cards.
-function cardFaceFrame(card: FourthPhaseCard, selected: boolean, ring: boolean): CSSProperties {
-  const base = card.edition ? foilFace() : stockFace();
-  return {
-    ...base,
-    ...(ring
-      ? {
-        borderColor: card.edition ? 'transparent' : FB.gold,
-        boxShadow: '0 0 0 2px rgba(217,164,65,0.5), 0 8px 16px -10px rgba(0,0,0,0.65)',
-        transform: 'translateY(-2px)',
-      }
-      : { boxShadow: '0 3px 8px -5px rgba(0,0,0,0.55)' }),
-    outline: selected && !ring ? `2px solid ${FB.gold}` : undefined,
-  };
-}
-
-const CARD_BAND_TEXT = '#f6f2e8';
-
-// The colored header band that makes "blue Offense card" readable at a glance.
-function CardBand({ card, rankSize = 16 }: { card: FourthPhaseCard; rankSize?: number }) {
-  return (
-    <div style={{ background: PHASE_BAND[card.phase], display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4, padding: '3px 7px' }}>
-      <span className="fb-num" style={{ fontSize: rankSize, fontWeight: 950, color: CARD_BAND_TEXT, lineHeight: 1 }}>{card.rank}</span>
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 8.5, color: CARD_BAND_TEXT, fontWeight: 950, letterSpacing: 0.6 }}>
-        <PhaseIcon phase={card.phase} size={10} color={CARD_BAND_TEXT} />
-        {PHASE_SHORT[card.phase]}
-      </span>
-    </div>
-  );
-}
-
-function CardChips({ card, size = 7.5 }: { card: FourthPhaseCard; size?: number }) {
-  const chips = cardPlayChips(card);
-  if (!chips.length) return null;
-  return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 4 }}>
-      {chips.map((chip) => (
-        <span key={chip} style={{ border: `1px solid ${PHASE_INK[card.phase]}`, borderRadius: FP_RADIUS.badge, color: PHASE_INK[card.phase], fontSize: size, fontWeight: 950, padding: '1px 4px', background: 'rgba(255,255,255,0.4)' }}>
-          {chip}
-        </span>
-      ))}
-    </div>
-  );
-}
-
-function HandCard({ card, selected, tone, onClick }: { card: FourthPhaseCard; selected: boolean; tone?: 'highlight' | 'dim'; onClick: () => void }) {
-  const badge = cardBadge(card);
-  const coachHighlight = tone === 'highlight';
-  const coachDim = tone === 'dim' && !selected;
-  return (
-    <button
-      onClick={onClick}
-      title={cardDisplayName(card)}
-      aria-pressed={selected}
-      className="fp-pressable"
-      style={{
-        ...cardFaceFrame(card, selected, selected || coachHighlight),
-        minHeight: 118,
-        padding: 0,
-        textAlign: 'left',
-        cursor: 'pointer',
-        display: 'flex',
-        flexDirection: 'column',
-        opacity: coachDim ? 0.42 : 1,
-        transition: 'opacity 120ms ease-out, box-shadow 120ms ease-out, transform 120ms ease-out',
-        overflow: 'hidden',
-      }}
-    >
-      <CardBand card={card} />
-      <div className="fp-grain" style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '6px 7px 4px' }}>
-        <div>
-          <div style={{ fontFamily: FP_FONT_HEAD, fontSize: 12, fontWeight: 900, color: FP_STOCK.ink, lineHeight: 1.05, textTransform: 'uppercase', letterSpacing: 0.3, wordBreak: 'break-word' }}>
-            {card.roleName}
-          </div>
-          <CardChips card={card} />
-        </div>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4, marginTop: 5 }}>
-            <span style={{ fontSize: 9, color: PHASE_INK[card.phase], fontWeight: 900, minWidth: 0 }}>{cardContributionLabel(card)}</span>
-            <span className="fb-num" style={{ fontSize: 11.5, color: FP_STOCK.ink, fontWeight: 950, flexShrink: 0 }}>{card.value}</span>
-          </div>
-          {badge && (
-            <div style={{ display: 'inline-flex', border: `1px solid ${badge.color}`, borderRadius: FP_RADIUS.badge, color: badge.color, fontSize: 7.5, fontWeight: 950, marginTop: 3, padding: '1px 4px', background: 'rgba(255,255,255,0.45)' }}>{badge.label}</div>
-          )}
-          <div style={{ borderTop: `1px solid ${FP_STOCK.line}`, marginTop: 4, paddingTop: 2, display: 'flex', justifyContent: 'space-between', fontSize: 6.8, color: FP_STOCK.inkSoft, fontWeight: 800, letterSpacing: 0.6 }}>
-            <span>FP-{card.rank}</span>
-            <span>SERIES {PHASE_SERIES[card.phase]}</span>
-          </div>
-        </div>
-      </div>
-    </button>
-  );
-}
-
-function MiniCard({
-  card,
-  selected,
-  dragProps,
-  onClick,
-}: {
-  card: FourthPhaseCard;
-  selected: boolean;
-  dragProps: DragBind;
-  onClick: () => void;
-}) {
-  const badge = cardBadge(card);
-  return (
-    <button
-      {...dragProps}
-      onClick={onClick}
-      title={cardDisplayName(card)}
-      aria-pressed={selected}
-      className="fp-pressable"
-      style={{
-        ...cardFaceFrame(card, selected, selected),
-        minWidth: 86,
-        minHeight: 76,
-        padding: 0,
-        textAlign: 'left',
-        cursor: 'grab',
-        display: 'flex',
-        flexDirection: 'column',
-        overflow: 'hidden',
-      }}
-    >
-      <CardBand card={card} rankSize={13} />
-      <div className="fp-grain" style={{ flex: 1, padding: '4px 6px 4px' }}>
-        <div style={{ fontFamily: FP_FONT_HEAD, fontSize: 10.5, fontWeight: 900, color: FP_STOCK.ink, lineHeight: 1.05, textTransform: 'uppercase', letterSpacing: 0.2, wordBreak: 'break-word' }}>
-          {card.roleName}
-        </div>
-        <CardChips card={card} size={7} />
-        <div style={{ fontSize: 8.5, color: PHASE_INK[card.phase], fontWeight: 900, marginTop: 3 }}>{cardContributionLabel(card)}</div>
-        {badge && (
-          <div style={{ fontSize: 7.5, color: badge.color, fontWeight: 950, marginTop: 2 }}>{badge.label}</div>
-        )}
-      </div>
-    </button>
-  );
-}
-
-function WarRoom({
-  money,
-  discounts,
-  draft,
-  jokers,
-  pendingDraft,
-  buysThisWarRoom,
-  nextDriveNumber,
-  nextTarget,
-  nextBoss,
-  coachLine,
-  onDraft,
-  onReplace,
-  onCancelReplace,
-  onReroll,
-  onSkip,
-  coachPick,
-}: {
-  money: number;
-  discounts: number;
-  draft: FourthPhaseWarRoomOffer[];
-  jokers: FourthPhaseJokerState[];
-  pendingDraft?: FourthPhaseWarRoomOffer;
-  buysThisWarRoom: number;
-  nextDriveNumber: number;
-  nextTarget: number;
-  nextBoss: FourthPhaseBossProfile | null;
-  /** The coach naming the next drive's problem before the offers appear. */
-  coachLine: string;
-  onDraft: (offer: FourthPhaseWarRoomOffer) => void;
-  onReplace: (index: number) => void;
-  onCancelReplace: () => void;
-  onReroll: () => void;
-  onSkip: () => void;
-  coachPick: CoachPick | null;
-}) {
-  if (pendingDraft) {
-    const incoming = pendingDraft.joker ? jokerDefinition(pendingDraft.joker) : null;
-    if (!incoming) return null;
-    return (
-      <section className="fp-grain" style={{ ...card(), padding: 12, marginTop: 10, borderColor: FP_WOOD.edge, background: FP_WOOD.table }}>
-        <div style={{ ...sectionLabel, color: FB.gold }}>Sideline full</div>
-        <div style={{ fontSize: 15, color: FB.text, fontWeight: 950, marginTop: 3 }}>Release one for {incoming.name}</div>
-        <div style={{ fontSize: 10.5, color: FB.textFaint, marginTop: 3 }}>The new joker takes the slot you pick.</div>
-        <div style={{ display: 'grid', gap: 6, marginTop: 10 }}>
-          {jokers.map((joker, index) => {
-            const def = jokerDefinition(joker);
-            return (
-              <button
-                key={joker.id}
-                onClick={() => onReplace(index)}
-                style={{
-                  borderRadius: FP_RADIUS.card,
-                  border: `1px solid ${FB.red}`,
-                  background: FB.panelRaised,
-                  color: FB.text,
-                  padding: 10,
-                  textAlign: 'left',
-                  cursor: 'pointer',
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
-                  <span style={{ fontSize: 13, fontWeight: 950 }}>Slot {index + 1}: {def.name}</span>
-                  <span style={{ fontSize: 11, color: FB.red, fontWeight: 950 }}>release</span>
-                </div>
-                <div style={{ fontSize: 11, color: FB.textDim, marginTop: 3 }}>{def.effect}</div>
-              </button>
-            );
-          })}
-        </div>
-        <button onClick={onCancelReplace} style={{ ...btnGhost, width: '100%', marginTop: 10 }}>Keep my lineup (cancel)</button>
-      </section>
-    );
-  }
-  const orderedDraft = coachPick
-    ? [...draft].sort((a, b) => Number(b.id === coachPick.id) - Number(a.id === coachPick.id))
-    : draft;
-  return (
-    <section className="fp-grain" style={{ ...card(), padding: 12, marginTop: 10, borderColor: FP_WOOD.edge, background: FP_WOOD.table, boxShadow: 'inset 0 1px 0 rgba(255,226,166,0.07)' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 10, alignItems: 'start' }}>
-        <div>
-          <div style={{ ...sectionLabel, color: FB.gold }}>War Room</div>
-          <div style={{ fontSize: 14, color: FB.text, fontWeight: 950, marginTop: 2 }}>
-            Drive {nextDriveNumber - 1} cleared. Adjustments for Drive {nextDriveNumber}.
-          </div>
-          <div style={{ fontSize: 11, color: FB.textDim, fontWeight: 800, marginTop: 3 }}>
-            Install up to {FOURTH_PHASE_WAR_ROOM_BUY_LIMIT} adjustments, or save the cap.
-          </div>
-        </div>
-        <div style={{ ...statTile, textAlign: 'right', minWidth: 84 }}>
-          <div style={{ ...sectionLabel, fontSize: 9.5 }}>Cash</div>
-          <div className="fb-led" style={{ color: FB.gold, fontSize: 22, fontWeight: 950, lineHeight: 1 }}>${money}</div>
-        </div>
-      </div>
-
-      {/* The coach speaks first: the next drive's problem, in his voice. The
-          offers below are answers to this line, not shelf items. */}
-      <div style={{ borderLeft: `3px solid ${FB.gold}`, background: 'rgba(242,189,61,0.06)', borderRadius: '0 8px 8px 0', padding: '9px 11px', marginTop: 10 }}>
-        <div style={{ fontSize: 12, color: FB.text, fontWeight: 850, lineHeight: 1.45, fontStyle: 'italic' }}>
-          {'“'}{coachLine}{'”'}
-        </div>
-        <div style={{ fontSize: 10, color: FB.textFaint, fontWeight: 900, marginTop: 4, letterSpacing: 1 }}>— COACH</div>
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 10 }}>
-        <Metric label="Next goal" value={`${nextTarget}`} color={FB.text} />
-        <Metric label="Installs" value={`${buysThisWarRoom}/${FOURTH_PHASE_WAR_ROOM_BUY_LIMIT}`} color={FB.gold} />
-      </div>
-      {nextBoss && (
-        <div style={{ border: `1px solid rgba(240,117,138,0.55)`, borderRadius: FP_RADIUS.card, background: 'rgba(240,117,138,0.08)', padding: '8px 9px', marginTop: 8 }}>
-          <div style={{ ...sectionLabel, color: FB.red }}>Next boss</div>
-          <div style={{ color: '#ff9aac', fontSize: 11.5, fontWeight: 900, marginTop: 2 }}>{nextBoss.name}: {nextBoss.effect}</div>
-        </div>
-      )}
-      {discounts > 0 && (
-        <div style={{ border: `1px solid rgba(242,189,61,0.42)`, borderRadius: FP_RADIUS.card, color: FB.gold, background: 'rgba(242,189,61,0.07)', padding: '7px 9px', fontSize: 10.5, fontWeight: 850, marginTop: 8 }}>
-          Special Teams discount: -$1 per token on an offer ({discounts} banked, max -$2 each)
-        </div>
-      )}
-      <div style={{ display: 'grid', gap: 9, marginTop: 10 }}>
-        {orderedDraft.map((offer, offerIndex) => {
-          const def = offer.joker ? jokerDefinition(offer.joker) : null;
-          const { cost: effectiveCost, used } = discountedOfferCost(offer.cost, discounts);
-          const affordable = money >= effectiveCost;
-          const isCoachPick = coachPick?.id === offer.id;
-          const isPractice = offer.kind === 'practice';
-          // Jokers are premium inserts on card stock; practice drills are the
-          // coach's note cards. Rarity shows as the left accent stripe.
-          const stripe = def?.rarity === 'legendary' ? FB.gold : def?.rarity === 'rare' ? '#7a5fc0' : isPractice ? '#8a8156' : FP_STOCK.line;
-          return (
-            <button
-              key={offer.id}
-              onClick={() => onDraft(offer)}
-              disabled={!affordable}
-              className="fp-grain"
-              style={{
-                ...(def?.rarity === 'legendary' ? foilFace() : stockFace()),
-                ...(isPractice ? { background: '#efe4b8' } : null),
-                borderColor: def?.rarity === 'legendary' ? 'transparent' : isCoachPick ? FB.gold : isPractice ? '#cfc08a' : FP_STOCK.line,
-                padding: 10,
-                textAlign: 'left',
-                cursor: affordable ? 'pointer' : 'not-allowed',
-                opacity: affordable ? 1 : 0.55,
-                transform: isPractice ? `rotate(${offerIndex % 2 === 0 ? -0.4 : 0.4}deg)` : undefined,
-                boxShadow: isCoachPick
-                  ? `inset 3px 0 0 ${stripe}, 0 0 0 2px rgba(217,164,65,0.5), 0 4px 10px -6px rgba(0,0,0,0.6)`
-                  : `inset 3px 0 0 ${stripe}, 0 4px 10px -6px rgba(0,0,0,0.6)`,
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline' }}>
-                <span className="fp-head" style={{ fontSize: 13.5, fontWeight: 900, color: FP_STOCK.ink, letterSpacing: 0.5 }}>{offer.label}</span>
-                <span className="fb-num" style={{ fontSize: 10.5, color: '#8a6a1e', fontWeight: 950, whiteSpace: 'nowrap', letterSpacing: 0.5 }}>
-                  {isPractice ? 'DRILL' : 'INSTALL'}{' · '}
-                  {used > 0 && <s style={{ color: FP_STOCK.inkSoft, marginRight: 3 }}>${offer.cost}</s>}
-                  ${effectiveCost}
-                </span>
-              </div>
-              {isCoachPick && (
-                <div className="fp-sticker" style={{ fontSize: 9.5, marginTop: 6 }}>
-                  COACH'S CALL: {coachPick.reason}
-                </div>
-              )}
-              <div style={{ fontSize: 11, color: '#45413a', marginTop: 4, lineHeight: 1.35 }}>{offer.detail}</div>
-              {offer.tags.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 7 }}>
-                  {offer.tags.map((tag) => (
-                    <span key={tag} style={{ border: `1px solid ${FP_STOCK.line}`, borderRadius: 5, color: FP_STOCK.inkSoft, fontSize: 9.5, fontWeight: 900, padding: '2px 5px', background: 'rgba(255,255,255,0.35)' }}>
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </button>
-          );
-        })}
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 10 }}>
-        <button
-          onClick={onReroll}
-          disabled={money < FOURTH_PHASE_WAR_ROOM_REROLL_COST}
-          style={{ ...btnGhost, opacity: money >= FOURTH_PHASE_WAR_ROOM_REROLL_COST ? 1 : 0.45 }}
-        >
-          New looks ${FOURTH_PHASE_WAR_ROOM_REROLL_COST}
-        </button>
-        <button onClick={onSkip} style={btnGhost}>
-          {buysThisWarRoom > 0 ? 'Take the field' : 'Save the cap +$3'}
-        </button>
-      </div>
-    </section>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// App-flow screens. The game state machine (LabState.phase) is untouched by
-// these: they only stage what the player sees, Balatro-style — title, then
-// team/stake select, then a drive intro beat before every kickoff.
-// ---------------------------------------------------------------------------
-
-function Shell({ impactClass, children }: { impactClass?: string; children: ReactNode }) {
-  return (
-    <div className={impactClass ? `fp-shell ${impactClass}` : 'fp-shell'} style={{ minHeight: '100svh', padding: '10px 12px 96px' }}>
-      <div className="fp-screen-in fp-table-col" style={{ maxWidth: 560, margin: '0 auto' }}>{children}</div>
-    </div>
-  );
-}
-
-function StakeBadge({ level }: { level: number }) {
-  const stake = fourthPhaseStake(level);
-  return (
-    <span style={{ fontSize: 9, fontWeight: 950, color: stake.color, border: `1px solid ${stake.color}`, borderRadius: FP_RADIUS.pill, padding: '1px 7px', letterSpacing: 0.6, whiteSpace: 'nowrap' }}>
-      {stake.shortName.toUpperCase()}
-    </span>
-  );
-}
-
-function SoundToggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
-  return (
-    <button
-      onClick={onToggle}
-      aria-label={on ? 'Mute sound' : 'Unmute sound'}
-      aria-pressed={on}
-      title={on ? 'Sound on' : 'Sound off'}
-      style={{ ...btnGhost, minWidth: 40, padding: '0 8px', fontSize: 14, color: on ? FB.gold : FB.textFaint }}
-    >
-      {on ? '\u{1F50A}' : '\u{1F507}'}
-    </button>
-  );
-}
-
-function GameHeader({ runCode, stakeLevel, soundOn, onToggleSound, onTitle, onNewRun }: { runCode: string; stakeLevel: number; soundOn: boolean; onToggleSound: () => void; onTitle: () => void; onNewRun: () => void }) {
-  return (
-    <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
-      <button onClick={onTitle} style={{ ...btnGhost, minWidth: 64 }}>Home</button>
-      <div style={{ textAlign: 'center' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-          <FootballGlyph size={14} />
-          <span className="fp-head" style={{ fontSize: 12, color: FB.gold, fontWeight: 900, letterSpacing: 2 }}>Fourth Phase</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 3 }}>
-          <span style={{ ...tapeLabel, fontSize: 9 }}>{runCode}</span>
-          <StakeBadge level={stakeLevel} />
-        </div>
-      </div>
-      <div style={{ display: 'flex', gap: 6 }}>
-        <SoundToggle on={soundOn} onToggle={onToggleSound} />
-        <button onClick={onNewRun} style={{ ...btnGhost }}>New run</button>
-      </div>
-    </header>
-  );
-}
-
-function UnlockBanner({ title, detail, color }: { title: string; detail: string; color: string }) {
-  return (
-    <div className="fp-resolve" style={{ border: `1px solid ${color}`, borderRadius: FP_RADIUS.card, background: 'rgba(242,189,61,0.07)', padding: '9px 10px', marginTop: 10, textAlign: 'left' }}>
-      <div style={{ fontSize: 11.5, color, fontWeight: 950 }}>{title}</div>
-      <div style={{ fontSize: 11, color: FB.textDim, marginTop: 3, lineHeight: 1.35 }}>{detail}</div>
-    </div>
-  );
-}
-
-function TitleScreen({
-  canContinue,
-  onContinue,
-  onPlay,
-  onDaily,
-  dailyLabel,
-  todayDailyDone,
-  dailyStreak,
-  localBest,
-  wins,
-  soundOn,
-  hapticsOn,
-  onToggleSound,
-  onToggleHaptics,
-  onExit,
-}: {
-  canContinue: boolean;
-  onContinue: () => void;
-  onPlay: () => void;
-  onDaily: () => void;
-  dailyLabel: string;
-  todayDailyDone: boolean;
-  dailyStreak: number;
-  localBest: number | null;
-  wins: number;
-  soundOn: boolean;
-  hapticsOn: boolean;
-  onToggleSound: () => void;
-  onToggleHaptics: () => void;
-  onExit?: () => void;
-}) {
-  return (
-    <div style={{ display: 'grid', gap: 10, minHeight: 'calc(100svh - 140px)', alignContent: 'center' }}>
-      {/* Binder cover: worn leather, stitched border, card-set logo */}
-      <div
-        className="fp-grain"
-        style={{
-          background: FP_WOOD.leather,
-          border: `1px solid ${FP_WOOD.edge}`,
-          borderRadius: 14,
-          padding: 10,
-          marginBottom: 8,
-          boxShadow: 'inset 0 1px 0 rgba(255,226,166,0.08), 0 14px 30px -18px rgba(0,0,0,0.85)',
-        }}
-      >
-        <div style={{ border: `1px dashed ${FP_WOOD.stitch}`, borderRadius: 9, padding: '22px 14px 18px', textAlign: 'center' }}>
-          <div style={{ display: 'flex', justifyContent: 'center' }}>
-            <PatchEmblem accent={FB.gold} initials="FP" size={58} />
-          </div>
-          <div className="fp-head" style={{ fontSize: 40, fontWeight: 900, color: FB.gold, letterSpacing: 5, marginTop: 12, lineHeight: 1, textShadow: '0 1px 0 rgba(0,0,0,0.6)' }}>
-            Fourth Phase
-          </div>
-          <div className="fp-head" style={{ fontSize: 11, color: FB.textDim, fontWeight: 800, letterSpacing: 3, marginTop: 7 }}>
-            A football playbook roguelike
-          </div>
-          <div style={{ fontSize: 12, color: FB.textDim, fontWeight: 800, marginTop: 12 }}>
-            <span style={{ color: '#5fb4ff' }}>Offense</span> · <span style={{ color: '#ff7c93' }}>Defense</span> · <span style={{ color: FB.gold }}>Special Teams</span> · <span style={{ color: '#a987ff' }}>Crowd</span>
-          </div>
-          <div style={{ fontSize: 11, color: FB.textFaint, marginTop: 4 }}>Clear three drives. Beat the boss defense.</div>
-        </div>
-      </div>
-      {canContinue && (
-        <button onClick={onContinue} style={{ ...btnPrimary, minHeight: 52 }}>Continue run</button>
-      )}
-      <button onClick={onPlay} style={canContinue ? { ...btnGhost, minHeight: 52, fontSize: 14, color: FB.text } : { ...btnPrimary, minHeight: 52 }}>
-        {canContinue ? 'New run' : 'Play'}
-      </button>
-      <button onClick={onDaily} style={{ ...btnGhost, minHeight: 48, borderColor: '#5b4a86', color: '#cbbdff', fontSize: 13 }}>
-        {todayDailyDone ? `Daily ${dailyLabel} | practice (streak ${dailyStreak})` : `Daily Challenge | ${dailyLabel}`}
-      </button>
-      <div style={{ ...sectionLabel, marginTop: 4 }}>Collection</div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginTop: -4 }}>
-        <Metric label="Career wins" value={`${wins}`} color={FB.green} />
-        <Metric label="Local best" value={localBest != null ? `${localBest}` : '—'} color={FB.gold} />
-        <Metric label="Daily streak" value={`${dailyStreak}`} color="#cbbdff" />
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-        <button onClick={onToggleSound} aria-pressed={soundOn} style={{ ...btnGhost, color: soundOn ? FB.gold : FB.textFaint }}>
-          {soundOn ? '\u{1F50A}' : '\u{1F507}'} Sound {soundOn ? 'on' : 'off'}
-        </button>
-        <button onClick={onToggleHaptics} aria-pressed={hapticsOn} style={{ ...btnGhost, color: hapticsOn ? FB.gold : FB.textFaint }}>
-          {'\u{1F4F3}'} Haptics {hapticsOn ? 'on' : 'off'}
-        </button>
-      </div>
-      <HowToPlay defaultOpen={false} />
-      {onExit && (
-        <button onClick={onExit} style={{ background: 'transparent', border: 'none', color: FB.textFaint, fontSize: 11, fontWeight: 800, cursor: 'pointer', marginTop: 2 }}>
-          Exit
-        </button>
-      )}
-    </div>
-  );
-}
-
-function TeamSelectScreen({
-  progress,
-  pickTeam,
-  pickStake,
-  onPickTeam,
-  onPickStake,
-  onStart,
-  onBack,
-  importCode,
-  importError,
-  onImportCode,
-  onImport,
-}: {
-  progress: FourthPhaseProgress;
-  pickTeam: FourthPhaseTeamKey;
-  pickStake: number;
-  onPickTeam: (team: FourthPhaseTeamKey) => void;
-  onPickStake: (level: number) => void;
-  onStart: () => void;
-  onBack: () => void;
-  importCode: string;
-  importError: string;
-  onImportCode: (value: string) => void;
-  onImport: () => void;
-}) {
-  const unlocks = fourthPhaseTeamUnlocks(progress);
-  const maxStake = fourthPhaseMaxStake(progress, pickTeam);
-  const stake = fourthPhaseStake(pickStake);
-  const team = FOURTH_PHASE_TEAMS[pickTeam];
-  // The stake ladder is a ceremony a first-time player hasn't earned: before any
-  // career win every team is capped at Rookie anyway, so the picker is pure
-  // friction. It appears once there's a win to build a ladder on.
-  const stakesUnlocked = progress.wins > 0;
-  return (
-    <div>
-      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
-        <button onClick={onBack} style={{ ...btnGhost, minWidth: 74 }}>Back</button>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 11, color: FB.gold, fontWeight: 900 }}>CHOOSE YOUR PLAYBOOK</div>
-          <div style={{ fontSize: 10.5, color: FB.textFaint }}>then pick a stake</div>
-        </div>
-        <div style={{ minWidth: 74 }} />
-      </header>
-
-      <div style={{ display: 'grid', gap: 8 }}>
-        {teamKeys.map((key) => {
-          const profile = FOURTH_PHASE_TEAMS[key];
-          const unlock = unlocks[key];
-          const selected = key === pickTeam;
-          const bestStake = progress.stakeWins[key] ?? 0;
-          const signature = jokerDefinition({ id: profile.signatureJoker });
-          const accent = TEAM_ACCENT[key];
-          const initials = profile.shortName.split(/[\s&]+/).filter(Boolean).map((word) => word[0]).join('').slice(0, 2).toUpperCase();
-          if (!unlock.unlocked) {
-            // Locked playbooks read as empty binder slots waiting for the insert.
-            return (
-              <div key={key} className="fp-sleeve" style={{ display: 'block', padding: '11px 12px', minHeight: 68 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
-                  <span className="fp-head" style={{ fontSize: 13, color: FB.textFaint, fontWeight: 900, letterSpacing: 1 }}>{profile.shortName}</span>
-                  <span className="fp-head" style={{ fontSize: 9.5, color: FB.textFaint, fontWeight: 900, letterSpacing: 1 }}>Empty slot</span>
-                </div>
-                <div style={{ fontSize: 11, color: FB.textFaint, marginTop: 5, lineHeight: 1.35 }}>
-                  {unlock.requirement}
-                  {unlock.progressLabel ? <span style={{ color: FB.textDim, fontWeight: 850 }}> ({unlock.progressLabel})</span> : null}
-                </div>
-              </div>
-            );
-          }
-          // Unlocked playbooks are premium insert cards: patch, scheme title,
-          // playbook nickname, identity line, and the signature joker sticker.
-          return (
-            <button
-              key={key}
-              onClick={() => onPickTeam(key)}
-              style={{
-                ...stockFace(12),
-                padding: 0,
-                textAlign: 'left',
-                cursor: 'pointer',
-                overflow: 'hidden',
-                borderColor: selected ? FB.gold : FP_STOCK.line,
-                boxShadow: selected
-                  ? `inset 4px 0 0 ${accent}, 0 0 0 2px rgba(217,164,65,0.5), 0 10px 20px -14px rgba(0,0,0,0.7)`
-                  : `inset 4px 0 0 ${accent}, 0 3px 10px -6px rgba(0,0,0,0.6)`,
-              }}
-            >
-              <div className="fp-grain" style={{ display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr)', gap: 10, padding: '11px 12px', alignItems: 'start' }}>
-                <PatchEmblem accent={accent} initials={initials} size={44} />
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
-                    <span className="fp-head" style={{ fontSize: 16, fontWeight: 900, color: FP_STOCK.ink, letterSpacing: 1 }}>{profile.shortName}</span>
-                    {bestStake > 0 && (
-                      <span style={{ fontSize: 9, fontWeight: 950, color: '#1e6b40', whiteSpace: 'nowrap' }}>
-                        ✓ {fourthPhaseStake(bestStake).shortName.toUpperCase()}
-                      </span>
-                    )}
-                  </div>
-                  <div className="fp-head" style={{ fontSize: 10, color: FP_STOCK.inkSoft, fontWeight: 900, letterSpacing: 1.6, marginTop: 1 }}>
-                    {profile.name}
-                  </div>
-                  <div style={{ fontSize: 11, color: '#45413a', marginTop: 4, lineHeight: 1.35 }}>{profile.identity}</div>
-                  <div className="fp-sticker" style={{ fontSize: 9, marginTop: 7, lineHeight: 1.3 }}>
-                    SIGNATURE INSERT: {signature.name} — {signature.effect}
-                  </div>
-                </div>
-              </div>
-            </button>
-          );
-        })}
-      </div>
-
-      {stakesUnlocked && <section style={{ ...card(), padding: 11, marginTop: 12 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <div style={sectionLabel}>Stake</div>
-          <div style={{ fontSize: 10.5, color: FB.textFaint }}>win a stake to unlock the next</div>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${FOURTH_PHASE_STAKES.length}, 1fr)`, gap: 6, marginTop: 8 }}>
-          {FOURTH_PHASE_STAKES.map((option) => {
-            const locked = option.level > maxStake;
-            const selected = option.level === pickStake;
-            return (
-              <button
-                key={option.level}
-                onClick={() => !locked && onPickStake(option.level)}
-                disabled={locked}
-                style={{
-                  minHeight: 44,
-                  borderRadius: FP_RADIUS.control,
-                  border: `1px solid ${selected ? option.color : FB.border}`,
-                  background: selected ? 'rgba(242,189,61,0.08)' : FB.panelRaised,
-                  color: locked ? FB.textFaint : option.color,
-                  fontSize: 11,
-                  fontWeight: 950,
-                  cursor: locked ? 'not-allowed' : 'pointer',
-                  opacity: locked ? 0.45 : 1,
-                }}
-              >
-                {locked ? '🔒 ' : ''}{option.shortName}
-              </button>
-            );
-          })}
-        </div>
-        <div style={{ fontSize: 11, color: stake.color, fontWeight: 900, marginTop: 9 }}>{stake.name} — {stake.tagline}</div>
-        <ul style={{ margin: '6px 0 0', paddingLeft: 18, display: 'grid', gap: 2 }}>
-          {stake.modifiers.map((modifier) => (
-            <li key={modifier} style={{ fontSize: 11, color: FB.textDim, lineHeight: 1.35 }}>{modifier}</li>
-          ))}
-        </ul>
-      </section>}
-
-      <button onClick={onStart} className="fp-pressable" style={{ ...btnPrimary, width: '100%', minHeight: 52, marginTop: 12 }}>
-        {stakesUnlocked ? `Kickoff — ${team.shortName} · ${stake.shortName} Stake` : `Kickoff — ${team.shortName}`}
-      </button>
-
-      <section style={{ ...card(), padding: 10, marginTop: 12 }}>
-        <div style={sectionLabel}>Import a run code</div>
-        <div style={{ fontSize: 10.5, color: FB.textFaint, marginTop: 3 }}>Replays any shared run exactly — team, boss, and stake included.</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 6, marginTop: 8 }}>
-          <input
-            value={importCode}
-            onChange={(event) => onImportCode(event.target.value)}
-            placeholder="FP-BAL-1A2B3-S2"
-            aria-label="Run code"
-            style={{
-              minHeight: 38,
-              borderRadius: FP_RADIUS.control,
-              border: `1px solid ${importError ? FB.red : FB.border}`,
-              background: FB.inset,
-              color: FB.text,
-              padding: '0 10px',
-              fontSize: 12,
-              fontWeight: 800,
-            }}
-          />
-          <button onClick={onImport} style={{ ...btnGhost, minHeight: 38, padding: '0 12px' }}>Import</button>
-        </div>
-        {importError && <div style={{ fontSize: 10.5, color: FB.red, marginTop: 5 }}>{importError}</div>}
-      </section>
-    </div>
-  );
-}
-
-function DriveIntroScreen({
-  driveNumber,
-  drives,
-  target,
-  teamName,
-  teamIdentity,
-  stakeLevel,
-  boss,
-  upcomingBoss,
-  bossArrivesDrive,
-  plays,
-  redraws,
-  money,
-  jokers,
-  dailyLabel,
-  onKickoff,
-}: {
-  driveNumber: number;
-  drives: number;
-  target: number;
-  teamName: string;
-  teamIdentity: string;
-  stakeLevel: number;
-  boss: FourthPhaseBossProfile | null;
-  upcomingBoss: FourthPhaseBossProfile | null;
-  bossArrivesDrive: number;
-  plays: number;
-  redraws: number;
-  money: number;
-  jokers: string[];
-  dailyLabel?: string;
-  onKickoff: () => void;
-}) {
-  return (
-    <div style={{ display: 'grid', gap: 10, minHeight: 'calc(100svh - 190px)', alignContent: 'center' }}>
-      <section style={{ ...card(), padding: 16, textAlign: 'center', borderColor: boss ? FB.red : FB.gold, background: 'linear-gradient(180deg,#1a1f2a,#10141c)' }}>
-        {dailyLabel && (
-          <div style={{ marginBottom: 8 }}>
-            <span style={{ ...tapeLabel, fontSize: 9.5 }}>DAILY CHALLENGE {dailyLabel}</span>
-          </div>
-        )}
-        <div style={{ ...sectionLabel, color: FB.textFaint }}>Drive</div>
-        <div className="fb-num" style={{ fontSize: 56, color: FB.text, fontWeight: 950, lineHeight: 0.95 }}>
-          {driveNumber}<span style={{ fontSize: 22, color: FB.textFaint }}> / {drives}</span>
-        </div>
-        <div style={{ fontSize: 12, color: FB.textDim, fontWeight: 850, marginTop: 10 }}>
-          Score <span className="fb-num" style={{ color: FB.gold, fontSize: 15 }}>{target}</span> in {plays} calls
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 6, alignItems: 'center', marginTop: 8 }}>
-          <span style={{ fontSize: 12, color: FB.text, fontWeight: 950 }}>{teamName}</span>
-          <StakeBadge level={stakeLevel} />
-        </div>
-        <div style={{ fontSize: 10.5, color: FB.textFaint, marginTop: 3, lineHeight: 1.3 }}>{teamIdentity}</div>
-
-        {boss ? (
-          <div style={{ border: `1px solid rgba(240,117,138,0.6)`, borderRadius: FP_RADIUS.card, background: 'rgba(240,117,138,0.09)', padding: '10px 11px', marginTop: 12 }}>
-            <div style={{ ...sectionLabel, color: FB.red }}>Boss defense on the field</div>
-            <div style={{ fontSize: 13, color: '#ff9aac', fontWeight: 950, marginTop: 3 }}>{boss.name}</div>
-            <div style={{ fontSize: 11, color: FB.textDim, marginTop: 2, lineHeight: 1.35 }}>{boss.effect}</div>
-          </div>
-        ) : upcomingBoss ? (
-          <div style={{ border: `1px solid rgba(242,189,61,0.42)`, borderRadius: FP_RADIUS.card, background: 'rgba(242,189,61,0.06)', padding: '9px 11px', marginTop: 12 }}>
-            <div style={{ ...sectionLabel, color: FB.gold }}>Scouting report</div>
-            <div style={{ fontSize: 11, color: FB.textDim, marginTop: 3, lineHeight: 1.35 }}>
-              <span style={{ color: FB.gold, fontWeight: 950 }}>{upcomingBoss.name}</span> takes the field on Drive {bossArrivesDrive}. {upcomingBoss.effect}
-            </div>
-          </div>
-        ) : null}
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginTop: 12 }}>
-          <Metric label="Calls" value={`${plays}`} color={FB.green} />
-          <Metric label="Redraws" value={`${redraws}`} color="#5fb4ff" />
-          <Metric label="Cash" value={`$${money}`} color={FB.gold} />
-        </div>
-        {jokers.length > 0 && (
-          <div style={{ fontSize: 10.5, color: '#cbbdff', fontWeight: 850, marginTop: 10, lineHeight: 1.35 }}>
-            Sideline: {jokers.join(' / ')}
-          </div>
-        )}
-        <button onClick={onKickoff} className="fp-pressable" style={{ ...btnPrimary, width: '100%', minHeight: 52, marginTop: 14, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-          <FootballGlyph size={16} />
-          {driveNumber === 1 ? 'Kickoff' : `Start Drive ${driveNumber}`}
-        </button>
-      </section>
-    </div>
-  );
-}

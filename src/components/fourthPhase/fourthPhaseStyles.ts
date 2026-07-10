@@ -1,5 +1,12 @@
 import type { CSSProperties } from 'react';
-import type { Phase } from '../../lib/fourthPhase';
+import type {
+  CardEdition,
+  FourthPhaseCard,
+  FourthPhaseTeamKey,
+  Phase,
+  PlayEffectVerb,
+  PlayerTrait,
+} from '../../lib/fourthPhase';
 
 // ---------------------------------------------------------------------------
 // "Trading Card Locker Room" design tokens.
@@ -163,3 +170,66 @@ export const tapeLabel: CSSProperties = {
   transform: 'rotate(-1deg)',
   boxShadow: '0 1px 3px rgba(0,0,0,0.45)',
 };
+
+/** Accent used for each playbook's patch/emblem on the select screen. */
+export const TEAM_ACCENT: Record<FourthPhaseTeamKey, string> = {
+  balanced: '#d9a441',
+  airRaid: '#62b7ff',
+  smashmouth: '#d97f4a',
+  blackAndBlue: '#e2637a',
+  loudHouse: '#ad91ff',
+  specialTeamsChaos: '#49d17e',
+};
+
+/** Verb-first series labels: what this call DOES, before its formal name. */
+export const EFFECT_VERB_COLOR: Record<PlayEffectVerb, string> = {
+  CASHES: '#f4c24f',
+  SCORES: '#5fb4ff',
+  BUILDS: '#a987ff',
+  'SETS UP': '#34c771',
+  'BAD CALL': '#f0758a',
+};
+
+// Editions and traits change the math (deck.ts / engine.ts); the card face must
+// say so or big numbers look like hidden rolls. Badge colors are dark "ink"
+// tones because they print on light card stock.
+const EDITION_BADGE: Record<CardEdition, { label: string; color: string }> = {
+  allPro: { label: 'ALL-PRO', color: '#8a6a1e' },
+  inRhythm: { label: 'RHYTHM', color: '#1f4d7d' },
+  homeRun: { label: 'HOME RUN', color: '#8a6a1e' },
+  crowdFavorite: { label: 'CROWD FAV', color: '#54408c' },
+};
+
+const TRAIT_BADGE: Record<PlayerTrait, { label: string; color: string }> = {
+  reliable: { label: 'RELIABLE', color: '#1e6b40' },
+  explosive: { label: 'EXPLOSIVE', color: '#8a6a1e' },
+  clutch: { label: 'CLUTCH', color: '#1e6b40' },
+  hometownHero: { label: 'HOMETOWN', color: '#54408c' },
+  injuryProne: { label: 'FRAGILE', color: '#8a2f3e' },
+  lockerRoomCancer: { label: 'DRAMA', color: '#8a2f3e' },
+  agingVet: { label: 'AGING VET', color: '#8a2f3e' },
+  holdout: { label: 'HOLDOUT', color: '#8a2f3e' },
+};
+
+export function cardBadge(card: FourthPhaseCard): { label: string; color: string } | null {
+  if (card.edition) return EDITION_BADGE[card.edition];
+  if (card.modifier) return TRAIT_BADGE[card.modifier];
+  return null;
+}
+
+// Trading-card face frame: off-white stock (foil edge on editions), plus a
+// gold collector ring when selected. Shared by hand cards and call-script cards.
+export function cardFaceFrame(card: FourthPhaseCard, selected: boolean, ring: boolean): CSSProperties {
+  const base = card.edition ? foilFace() : stockFace();
+  return {
+    ...base,
+    ...(ring
+      ? {
+        borderColor: card.edition ? 'transparent' : FP.gold,
+        boxShadow: '0 0 0 2px rgba(217,164,65,0.5), 0 8px 16px -10px rgba(0,0,0,0.65)',
+        transform: 'translateY(-2px)',
+      }
+      : { boxShadow: '0 3px 8px -5px rgba(0,0,0,0.55)' }),
+    outline: selected && !ring ? `2px solid ${FP.gold}` : undefined,
+  };
+}

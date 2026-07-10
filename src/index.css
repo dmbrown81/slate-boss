@@ -115,6 +115,32 @@ button:focus-visible,
   box-shadow: 0 1px 3px rgba(0,0,0,0.4);
 }
 
+/* Holo sheen that sweeps across edition (foil) card faces */
+@keyframes fp-foil-sheen {
+  0% { transform: translateX(-160%) skewX(-18deg); }
+  55% { transform: translateX(420%) skewX(-18deg); }
+  100% { transform: translateX(420%) skewX(-18deg); }
+}
+.fp-foil-live { position: relative; }
+.fp-foil-live::after {
+  content: '';
+  position: absolute;
+  top: -20%;
+  bottom: -20%;
+  left: 0;
+  width: 30%;
+  background: linear-gradient(
+    100deg,
+    rgba(255,255,255,0) 0%,
+    rgba(214,238,255,0.34) 42%,
+    rgba(238,205,255,0.28) 58%,
+    rgba(255,255,255,0) 100%
+  );
+  transform: translateX(-160%) skewX(-18deg);
+  animation: fp-foil-sheen 4.6s ease-in-out infinite;
+  pointer-events: none;
+}
+
 /* ── Gridiron utilities ───────────────────────────────────────── */
 @keyframes fb-pop {
   0% { transform: scale(0.7); opacity: 0; }
@@ -362,6 +388,10 @@ button:focus-visible,
   .fp-drive-banner,
   .fp-breakaway-streak {
     animation: none !important;
+  }
+
+  .fp-foil-live::after {
+    display: none;
   }
 
   .fp-cin-card,
