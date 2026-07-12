@@ -429,9 +429,15 @@ Result:
 | Setup | +1 draw, +$2, +1 discount |
 | Momentum after series | x2.45 |
 
-## 10. Base Deck
+## 10. Card Library And Active Deck
 
-The base deck has 52 cards: 13 ranks in each of 4 phases.
+The collectible library has 52 inserts: 13 ranks in each of 4 phases. A run
+does **not** shuffle all 52. Each playbook starts with a distinct 28-card game
+plan, may grow to 30 through the War Room, and then requires cuts. See
+`FOURTH_PHASE_PLAYBOOK_DECK_SYSTEM_2026-07-11.md` for the six exact lists,
+drive-act rules, and current War Room mutation economy.
+
+The tables below describe the full library, not any one starting deck.
 
 Rank values:
 
@@ -455,36 +461,36 @@ Rank values:
 
 | Rank | Value | Role | Face Label |
 | --- | --- | --- | --- |
-| 2 | 2 | QB Sneak | +2 Yards |
-| 3 | 3 | Slot Motion | +3 Yards |
-| 4 | 4 | Quick Out | +4 Yards |
-| 5 | 5 | RPO Keep | +5 Yards |
-| 6 | 6 | Power Back | +6 Yards |
-| 7 | 7 | Deep Over | +7 Yards |
-| 8 | 8 | No-Huddle | +8 Yards |
-| 9 | 9 | Red-Zone Target | +9 Yards |
-| 10 | 10 | Shot Play | +10 Yards |
-| J | 10 | Play Action | +10 Yards |
-| Q | 10 | Chain Mover | +10 Yards |
-| K | 10 | Feature Back | +10 Yards |
-| A | 11 | Franchise Quarterback | +11 Yards |
+| 2 | 2 | QB Keep | +2 Yards |
+| 3 | 3 | Bubble Screen | +3 Yards |
+| 4 | 4 | Stick Quick | +4 Yards |
+| 5 | 5 | Zone Read RPO | +5 Yards |
+| 6 | 6 | Inside Zone | +6 Yards |
+| 7 | 7 | Mesh Crossers | +7 Yards |
+| 8 | 8 | Tempo Drive | +8 Yards |
+| 9 | 9 | Boundary Fade | +9 Yards |
+| 10 | 10 | Four Verticals | +10 Yards |
+| J | 10 | Play Action Boot | +10 Yards |
+| Q | 10 | Y-Cross | +10 Yards |
+| K | 10 | Duo | +10 Yards |
+| A | 11 | Choice Route | +11 Yards |
 
 ### Defense
 
 | Rank | Value | Role | Face Label |
 | --- | --- | --- | --- |
-| 2 | 2 | Run Fit | Leverage |
+| 2 | 2 | 4-3 Run Fit | Leverage |
 | 3 | 3 | Edge Set | Leverage |
 | 4 | 4 | Rally Tackle | Leverage |
-| 5 | 5 | Robber Drop | Leverage |
+| 5 | 5 | Robber Coverage | Leverage |
 | 6 | 6 | A-Gap Mug | Leverage |
-| 7 | 7 | Press Corner | Leverage |
+| 7 | 7 | Press Man | Leverage |
 | 8 | 8 | Zero Blitz | Leverage |
-| 9 | 9 | Third-Down Stop | Leverage |
-| 10 | 10 | Strip Sack | Leverage |
+| 9 | 9 | Sim Pressure | Leverage |
+| 10 | 10 | Strip Pressure | Leverage |
 | J | 10 | Coverage Disguise | Leverage |
 | Q | 10 | Ball Hawk | Leverage |
-| K | 10 | Sack Artist | Leverage |
+| K | 10 | Edge Pressure | Leverage |
 | A | 11 | Green Dot | Leverage |
 
 ### Special Teams
@@ -494,13 +500,13 @@ Rank values:
 | 2 | 2 | Coverage Lane | Hidden Yards |
 | 3 | 3 | Pooch Kick | Hidden Yards |
 | 4 | 4 | Gunner | Hidden Yards |
-| 5 | 5 | Coffin Corner | Hidden Yards |
+| 5 | 5 | Corner Punt | Hidden Yards |
 | 6 | 6 | Return Lane | Hidden Yards |
 | 7 | 7 | Hands Team | Hidden Yards |
 | 8 | 8 | Fake Punt | Hidden Yards |
 | 9 | 9 | Directional Punt | Hidden Yards |
 | 10 | 10 | Pin Deep | Hidden Yards |
-| J | 10 | Automatic | Hidden Yards |
+| J | 10 | Automatic Kicker | Hidden Yards |
 | Q | 10 | Return Captain | Hidden Yards |
 | K | 10 | Hidden Yards | Hidden Yards |
 | A | 11 | The Weapon | Hidden Yards |
@@ -510,18 +516,18 @@ Rank values:
 | Rank | Value | Role | Face Label |
 | --- | --- | --- | --- |
 | 2 | 2 | Student Section | +0.2 momentum |
-| 3 | 3 | Pregame Buzz | +0.2 momentum |
+| 3 | 3 | Chant Leader | +0.2 momentum |
 | 4 | 4 | Drumline | +0.2 momentum |
 | 5 | 5 | Towel Wave | +0.2 momentum |
 | 6 | 6 | On Their Feet | +0.2 momentum |
-| 7 | 7 | Under the Lights | +0.4 momentum |
-| 8 | 8 | Whiteout | +0.4 momentum |
-| 9 | 9 | Deafening | +0.4 momentum |
-| 10 | 10 | Third-Down Roar | +0.4 momentum |
-| J | 10 | Hostile Environment | +0.6 momentum |
-| Q | 10 | Homecoming | +0.6 momentum |
-| K | 10 | Rivalry Week | +0.6 momentum |
-| A | 11 | Home Field | +1.0 momentum |
+| 7 | 7 | Rising Noise | +0.4 momentum |
+| 8 | 8 | Noise Wall | +0.4 momentum |
+| 9 | 9 | Stadium Shake | +0.4 momentum |
+| 10 | 10 | Pressure Roar | +0.4 momentum |
+| J | 10 | Full-Throat Roar | +0.6 momentum |
+| Q | 10 | Crowd Swell | +0.6 momentum |
+| K | 10 | Fever Pitch | +0.6 momentum |
+| A | 11 | House Eruption | +1.0 momentum |
 
 ## 11. Traits And Editions
 
@@ -547,23 +553,23 @@ Rank values:
 
 | Key | Team | Short | Signature Joker | Identity |
 | --- | --- | --- | --- | --- |
-| `balanced` | Ironwood Engineers | Balanced | The Genius | All four phases are live from snap one. |
-| `airRaid` | Canyon Comets | Air Raid | Hurry-Up | Offense and Crowd can explode, but the floor is thinner. |
-| `smashmouth` | Foundry Maulers | Smashmouth | Lunch Pail | Low-rank Offense and Special Teams grind out safe value. |
-| `blackAndBlue` | Harbor Bruisers | Black & Blue | Takeaway Artist | Defense and hidden yards build the floor without needing a hot crowd. |
-| `loudHouse` | Summit Stampede | Stampede | Sold Out | The crowd swings momentum fast, but the base offense has to be drafted carefully. |
-| `specialTeamsChaos` | River City Sparks | ST Chaos | Special Teams Coordinator | Hidden yards, draw, and money create odd scoring windows. |
+| `balanced` | The Complete Game | Pro Style | The Genius | Balanced run, quick game, play action, and all four phases. |
+| `airRaid` | The Aerial Show | Air Raid | Hurry-Up | Pass-heavy spacing with Mesh, Y-Cross, and Four Verticals. |
+| `smashmouth` | Ground & Pound | Power | Lunch Pail | Inside Zone, Duo, and Play Action form the backbone. |
+| `blackAndBlue` | The Junkyard | Pressure | Takeaway Artist | Pressure and takeaways create short-field shots. |
+| `loudHouse` | Home Field Advantage | Spread | Sold Out | Tempo spacing and Crowd momentum create explosive scripts. |
+| `specialTeamsChaos` | The Hidden Game | Multiple | Special Teams Coordinator | Hidden yards and mixed scripts open odd windows. |
 
 ### Team Deck Mutations
 
 | Team | Mutation |
 | --- | --- |
-| Balanced | No card mutations. |
+| Pro Style | No library-wide card mutations. |
 | Air Raid | High-rank Offense and Crowd, ranks 9-A, get +1 value. Offense gets Home Run. Crowd gets Crowd Favorite. |
-| Smashmouth | Low-rank Offense and Special Teams, ranks 2-8, get +2 value. Offense gets Reliable. |
-| Black & Blue | All Defense and Special Teams get +1 value. Defense gets Reliable. |
-| Stampede | All Crowd cards get +1 displayed value and Crowd Favorite. Base Crowd momentum still comes from rank. |
-| ST Chaos | All Special Teams cards get +2 value and Explosive. |
+| Power | Low-rank Offense and Special Teams, ranks 2-8, get +2 value. Offense gets Reliable. |
+| Pressure | All Defense and Special Teams get +1 value. Defense gets Reliable. |
+| Spread | All Crowd cards get +1 displayed value and Crowd Favorite. Base Crowd momentum still comes from rank. |
+| Multiple | All Special Teams cards get +2 value and Explosive. |
 
 ### Targets
 
@@ -571,12 +577,12 @@ Targets include a deterministic `bump` from 0 to 9.
 
 | Team | Drive 1 | Drive 2 | Drive 3 |
 | --- | --- | --- | --- |
-| Balanced | `276 + bump` | `540 + bump` | `916 + bump` |
-| Air Raid | `296 + bump` | `576 + bump` | `978 + bump` |
-| Smashmouth | `232 + bump` | `456 + bump` | `778 + bump` |
-| Black & Blue | `262 + bump` | `512 + bump` | `870 + bump` |
-| Stampede | `208 + bump` | `408 + bump` | `694 + bump` |
-| ST Chaos | `212 + bump` | `416 + bump` | `708 + bump` |
+| Pro Style | `279 + bump` | `547 + bump` | `929 + bump` |
+| Air Raid | `335 + bump` | `653 + bump` | `1109 + bump` |
+| Power | `194 + bump` | `380 + bump` | `648 + bump` |
+| Pressure | `256 + bump` | `500 + bump` | `850 + bump` |
+| Spread | `186 + bump` | `364 + bump` | `618 + bump` |
+| Multiple | `191 + bump` | `374 + bump` | `637 + bump` |
 
 ## 13. Bosses
 

@@ -14,10 +14,16 @@ import { Metric } from './fpShared';
 import {
   FOURTH_PHASE_WAR_ROOM_BUY_LIMIT,
   FOURTH_PHASE_WAR_ROOM_REROLL_COST,
+  FOURTH_PHASE_DRIVE_ACT_LABEL,
+  PHASE_COLOR,
+  PHASE_SHORT,
+  cardContributionLabel,
   discountedOfferCost,
+  fourthPhaseDeckPhaseCounts,
   jokerDefinition,
   type CoachPick,
   type FourthPhaseBossProfile,
+  type FourthPhaseCard,
   type FourthPhaseJokerState,
   type FourthPhaseWarRoomOffer,
 } from '../../lib/fourthPhase';
@@ -29,6 +35,7 @@ export function WarRoom({
   discounts,
   draft,
   jokers,
+  deck,
   pendingDraft,
   buysThisWarRoom,
   nextDriveNumber,
@@ -37,6 +44,7 @@ export function WarRoom({
   coachLine,
   onDraft,
   onReplace,
+  onReplaceCard,
   onCancelReplace,
   onReroll,
   onSkip,
@@ -46,6 +54,7 @@ export function WarRoom({
   discounts: number;
   draft: FourthPhaseWarRoomOffer[];
   jokers: FourthPhaseJokerState[];
+  deck: FourthPhaseCard[];
   pendingDraft?: FourthPhaseWarRoomOffer;
   buysThisWarRoom: number;
   nextDriveNumber: number;
@@ -55,12 +64,50 @@ export function WarRoom({
   coachLine: string;
   onDraft: (offer: FourthPhaseWarRoomOffer) => void;
   onReplace: (index: number) => void;
+  onReplaceCard: (cardId: string) => void;
   onCancelReplace: () => void;
   onReroll: () => void;
   onSkip: () => void;
   coachPick: CoachPick | null;
 }) {
+  const deckCounts = fourthPhaseDeckPhaseCounts(deck);
   if (pendingDraft) {
+    if (pendingDraft.card) {
+      const incoming = pendingDraft.card;
+      return (
+        <section className="fp-grain" style={{ ...card(), padding: 12, marginTop: 10, borderColor: FP_WOOD.edge, background: FP_WOOD.table }}>
+          <div style={{ ...sectionLabel, color: FB.gold }}>Game plan full</div>
+          <div style={{ fontSize: 15, color: FB.text, fontWeight: 950, marginTop: 3 }}>Cut one for {incoming.roleName}</div>
+          <div style={{ fontSize: 10.5, color: FB.textFaint, marginTop: 3 }}>
+            Keep the active deck at 30. The reserve insert takes the slot you choose.
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 10 }}>
+            {deck.map((candidate) => (
+              <button
+                key={candidate.id}
+                onClick={() => onReplaceCard(candidate.id)}
+                style={{
+                  borderRadius: FP_RADIUS.card,
+                  border: `1px solid ${PHASE_COLOR[candidate.phase]}`,
+                  background: FB.panelRaised,
+                  color: FB.text,
+                  padding: 8,
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
+                  <span style={{ fontSize: 11.5, fontWeight: 950 }}>{candidate.roleName}</span>
+                  <span style={{ fontSize: 9, color: PHASE_COLOR[candidate.phase], fontWeight: 950 }}>{PHASE_SHORT[candidate.phase]}</span>
+                </div>
+                <div style={{ fontSize: 9.5, color: FB.textFaint, marginTop: 3 }}>{cardContributionLabel(candidate)} · cut</div>
+              </button>
+            ))}
+          </div>
+          <button onClick={onCancelReplace} style={{ ...btnGhost, width: '100%', marginTop: 10 }}>Keep my game plan (cancel)</button>
+        </section>
+      );
+    }
     const incoming = pendingDraft.joker ? jokerDefinition(pendingDraft.joker) : null;
     if (!incoming) return null;
     return (
@@ -128,10 +175,28 @@ export function WarRoom({
         <div style={{ fontSize: 10, color: FB.textFaint, fontWeight: 900, marginTop: 4, letterSpacing: 1 }}>— COACH</div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginTop: 10 }}>
         <Metric label="Next goal" value={`${nextTarget}`} color={FB.text} />
         <Metric label="Installs" value={`${buysThisWarRoom}/${FOURTH_PHASE_WAR_ROOM_BUY_LIMIT}`} color={FB.gold} />
+        <Metric label="Game plan" value={`${deck.length}/30`} color="#5fb4ff" />
       </div>
+      <details style={{ border: `1px solid ${FB.border}`, borderRadius: FP_RADIUS.card, background: FB.panelRaised, marginTop: 8, textAlign: 'left' }}>
+        <summary style={{ cursor: 'pointer', padding: '8px 9px', color: FB.textDim, fontSize: 10.5, fontWeight: 900 }}>
+          Review game plan · OFF {deckCounts.offense} · DEF {deckCounts.defense} · ST {deckCounts.specialTeams} · CRD {deckCounts.crowd}
+        </summary>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5, maxHeight: 230, overflowY: 'auto', padding: '0 8px 8px' }}>
+          {[...deck].sort((a, b) => a.phase.localeCompare(b.phase) || b.value - a.value).map((gamePlanCard) => (
+            <div key={gamePlanCard.id} style={{ borderLeft: `2px solid ${PHASE_COLOR[gamePlanCard.phase]}`, background: FB.panel, borderRadius: 5, padding: '5px 6px', minWidth: 0 }}>
+              <div style={{ fontSize: 9.5, color: FB.text, fontWeight: 900, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {gamePlanCard.roleName}{gamePlanCard.installed ? ' ★' : ''}
+              </div>
+              <div style={{ fontSize: 7.5, color: FB.textFaint, fontWeight: 850, marginTop: 2 }}>
+                {PHASE_SHORT[gamePlanCard.phase]} · {FOURTH_PHASE_DRIVE_ACT_LABEL[gamePlanCard.driveAct].toUpperCase()}
+              </div>
+            </div>
+          ))}
+        </div>
+      </details>
       {nextBoss && (
         <div style={{ border: `1px solid rgba(240,117,138,0.55)`, borderRadius: FP_RADIUS.card, background: 'rgba(240,117,138,0.08)', padding: '8px 9px', marginTop: 8 }}>
           <div style={{ ...sectionLabel, color: FB.red }}>Next boss</div>
@@ -150,9 +215,18 @@ export function WarRoom({
           const affordable = money >= effectiveCost;
           const isCoachPick = coachPick?.id === offer.id;
           const isPractice = offer.kind === 'practice';
+          const isCard = offer.kind === 'card';
           // Jokers are premium inserts on card stock; practice drills are the
           // coach's note cards. Rarity shows as the left accent stripe.
-          const stripe = def?.rarity === 'legendary' ? FB.gold : def?.rarity === 'rare' ? '#7a5fc0' : isPractice ? '#8a8156' : FP_STOCK.line;
+          const stripe = def?.rarity === 'legendary'
+            ? FB.gold
+            : def?.rarity === 'rare'
+              ? '#7a5fc0'
+              : isPractice
+                ? '#8a8156'
+                : offer.card
+                  ? PHASE_COLOR[offer.card.phase]
+                  : FP_STOCK.line;
           return (
             <button
               key={offer.id}
@@ -176,7 +250,7 @@ export function WarRoom({
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline' }}>
                 <span className="fp-head" style={{ fontSize: 13.5, fontWeight: 900, color: FP_STOCK.ink, letterSpacing: 0.5 }}>{offer.label}</span>
                 <span className="fb-num" style={{ fontSize: 10.5, color: '#8a6a1e', fontWeight: 950, whiteSpace: 'nowrap', letterSpacing: 0.5 }}>
-                  {isPractice ? 'DRILL' : 'INSTALL'}{' · '}
+                  {isPractice ? 'DRILL' : isCard ? 'ADD CARD' : 'INSTALL'}{' · '}
                   {used > 0 && <s style={{ color: FP_STOCK.inkSoft, marginRight: 3 }}>${offer.cost}</s>}
                   ${effectiveCost}
                 </span>

@@ -12,6 +12,8 @@ const FP_GRUDGE_KEY = 'fourth_phase_grudge_v1';
 export interface FourthPhaseRunMeta {
   dailyLabel?: string;
   dailyPractice?: boolean;
+  /** First-run teaching only; normal seeds use the drive-aware opening draw. */
+  tutorialOpening?: boolean;
 }
 
 export interface FourthPhaseRunRecord {
@@ -127,13 +129,14 @@ export function saveFourthPhaseCompletion(record: FourthPhaseRunRecord, dailyPra
 }
 
 // ---------------------------------------------------------------------------
-// Named daily modifiers. One deterministic twist per UTC day, declared before
-// entry, so the daily is a puzzle with a proper noun instead of just a seed.
+// Game-day conditions are NOT playable cards. One deterministic condition per
+// UTC day is declared before entry, so the daily is a puzzle with a proper noun
+// instead of a temporally impossible event shuffled into the player's hand.
 // All effects are run-parameter changes (money, redraws, targets, meter cap) —
 // the scoring engine is untouched, so the preview stays exact by construction.
 // ---------------------------------------------------------------------------
 
-export interface FourthPhaseDailyModifier {
+export interface FourthPhaseGameDayCondition {
   key: string;
   name: string;
   detail: string;
@@ -143,7 +146,7 @@ export interface FourthPhaseDailyModifier {
   meterCapMax?: number;
 }
 
-const DAILY_MODIFIERS: FourthPhaseDailyModifier[] = [
+const GAME_DAY_CONDITIONS: FourthPhaseGameDayCondition[] = [
   { key: 'primeTime', name: 'PRIME TIME', detail: 'Targets +10%. The whole country is watching.', targetScale: 1.1 },
   { key: 'shortWeek', name: 'SHORT WEEK', detail: 'One fewer redraw per drive. Thursday-night legs.', redrawsDelta: -1 },
   { key: 'homecoming', name: 'HOMECOMING', detail: 'Start with +$4. The boosters showed up.', startMoneyDelta: 4 },
@@ -151,9 +154,9 @@ const DAILY_MODIFIERS: FourthPhaseDailyModifier[] = [
   { key: 'sundayClassic', name: 'SUNDAY CLASSIC', detail: 'No twist. Just you, the seed, and the scoreboard.' },
 ];
 
-export function dailyModifierFor(label: string): FourthPhaseDailyModifier {
+export function dailyModifierFor(label: string): FourthPhaseGameDayCondition {
   const seed = stringSeed(`fourth-phase-daily-mod:${label}`);
-  return DAILY_MODIFIERS[Math.abs(seed) % DAILY_MODIFIERS.length];
+  return GAME_DAY_CONDITIONS[Math.abs(seed) % GAME_DAY_CONDITIONS.length];
 }
 
 export function isTutorialDone(): boolean {

@@ -5,7 +5,10 @@ football card roguelike. Build drive series from play-call cards across
 Offense, Defense, Special Teams, and Crowd; football sequencing like Run into
 Play Action, Takeaway into Shot, and same-formation scripts creates readable
 bonuses while Crowd still builds Momentum and Offense cashes it. Clear three
-drive targets with a boss on the final drive. Everything is local-first,
+drive targets with a boss on the final drive. Six playbooks use distinct
+28-card starting game plans; the War Room installs coached-up reserve cards,
+and seeded drive-aware pools hold closing calls until Drive 3. Named game-day
+conditions change run parameters and never appear as playable cards. Everything is local-first,
 deterministic, and fictional — no real teams, players, money, or prizes.
 
 - App entry: `src/App.tsx` renders `src/components/fourthPhase/FourthPhaseLab.tsx`.
@@ -44,7 +47,8 @@ npm run balance:fourthphase -- 3000
 
 The Fourth Phase balance harness is the source of truth for tuning. Its hard
 gates: synergy pilot win 75-85%, no-draft 55-65%, draft gap >= +15 win points,
-per-team spread <= 6 points, Loud House not bottom, meter tightness <= 35%.
+median coached-up card installs >= 2, per-team spread <= 6 points, Loud House
+not bottom, meter tightness <= 35%.
 Use `300`/`1000` samples only while exploring; the gates are tuned for 3000
 samples and smaller runs fail on noise alone.
 
@@ -78,6 +82,8 @@ still apply).
 - Deterministic gameplay: seeded RNG from `src/lib/rng.ts` only; no
   `Math.random` in gameplay paths.
 - Field position is deferred behind `docs/FOURTH_PHASE_FIELD_POSITION_GATE.md`.
+- Real-game play catalogs in `docs/reference/` are research-only calibration;
+  only generic football concepts and fictional presentation may ship.
 - The first screen stays playable — no landing page in front of the game.
 
 ## Useful Files

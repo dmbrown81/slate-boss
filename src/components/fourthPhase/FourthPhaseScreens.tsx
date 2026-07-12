@@ -19,10 +19,12 @@ import {
   FOURTH_PHASE_STAKES,
   FOURTH_PHASE_TEAMS,
   coachPhilosophy,
+  fourthPhaseDeckPhaseCounts,
   fourthPhaseMaxStake,
   fourthPhaseStake,
   fourthPhaseTeamUnlocks,
   jokerDefinition,
+  prepareFourthPhaseTeamDeck,
   type FourthPhaseBossProfile,
   type FourthPhaseProgress,
   type FourthPhaseTeamKey,
@@ -130,7 +132,7 @@ export function TitleScreen({
       </button>
       {dailyModifier && (
         <div style={{ fontSize: 10.5, color: '#cbbdff', fontWeight: 900, textAlign: 'center', marginTop: -4 }}>
-          {dailyModifier.name}
+          GAME-DAY CONDITION · {dailyModifier.name}
           <span style={{ color: FB.textFaint, fontWeight: 800 }}> — {dailyModifier.detail}</span>
         </div>
       )}
@@ -219,6 +221,8 @@ export function TeamSelectScreen({
           const selected = key === pickTeam;
           const bestStake = progress.stakeWins[key] ?? 0;
           const signature = jokerDefinition({ id: profile.signatureJoker });
+          const startingDeck = prepareFourthPhaseTeamDeck(key);
+          const phaseCounts = fourthPhaseDeckPhaseCounts(startingDeck);
           const accent = TEAM_ACCENT[key];
           const initials = profile.shortName.split(/[\s&]+/).filter(Boolean).map((word) => word[0]).join('').slice(0, 2).toUpperCase();
           if (!unlock.unlocked) {
@@ -269,6 +273,12 @@ export function TeamSelectScreen({
                     {profile.name}
                   </div>
                   <div style={{ fontSize: 11, color: '#45413a', marginTop: 4, lineHeight: 1.35 }}>{profile.identity}</div>
+                  <div style={{ fontSize: 9.5, color: FP_STOCK.inkSoft, fontWeight: 900, marginTop: 5, lineHeight: 1.35 }}>
+                    {startingDeck.length}-CARD GAME PLAN · OFF {phaseCounts.offense} · DEF {phaseCounts.defense} · ST {phaseCounts.specialTeams} · CRD {phaseCounts.crowd}
+                  </div>
+                  <div style={{ fontSize: 10, color: '#45413a', fontWeight: 850, marginTop: 3, lineHeight: 1.3 }}>
+                    Core package: {profile.corePackage}
+                  </div>
                   <div style={{ fontSize: 10.5, color: FP_STOCK.inkSoft, fontWeight: 800, fontStyle: 'italic', marginTop: 4, lineHeight: 1.3 }}>
                     {'“'}{coachPhilosophy(key)}{'”'} — Coach
                   </div>
@@ -405,7 +415,7 @@ export function DriveIntroScreen({
             <span style={{ ...tapeLabel, fontSize: 9.5 }}>DAILY CHALLENGE {dailyLabel}</span>
             {dailyModifier && (
               <div style={{ fontSize: 11, color: '#cbbdff', fontWeight: 900, marginTop: 6 }}>
-                {dailyModifier.name}
+                GAME-DAY CONDITION · {dailyModifier.name}
                 <span style={{ color: FB.textDim, fontWeight: 800 }}> — {dailyModifier.detail}</span>
               </div>
             )}

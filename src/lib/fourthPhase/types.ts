@@ -1,5 +1,8 @@
 export type Phase = 'offense' | 'defense' | 'specialTeams' | 'crowd';
 
+/** The football act where a playbook insert is most likely to surface. */
+export type DriveAct = 'opening' | 'counterpunch' | 'closing';
+
 export const PHASES: readonly Phase[] = ['offense', 'defense', 'specialTeams', 'crowd'];
 
 export type Rank = '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '10' | 'J' | 'Q' | 'K' | 'A';
@@ -35,6 +38,10 @@ export interface FourthPhaseCard {
   tier: CardTier;
   roleName: string;
   tags: string[];
+  /** Draw pacing only. It never changes scoring and is always seed-reproducible. */
+  driveAct: DriveAct;
+  /** A coached-up War Room install. Exact bonuses are shared engine constants. */
+  installed?: true;
   modifier?: PlayerTrait;
   edition?: CardEdition;
 }
@@ -161,7 +168,7 @@ export interface FourthPhaseScoreContext {
   halftimeCounter?: SituationKey;
 }
 
-export type FourthPhaseWarRoomOfferKind = 'joker' | 'practice';
+export type FourthPhaseWarRoomOfferKind = 'joker' | 'practice' | 'card';
 
 export interface FourthPhaseWarRoomOffer {
   id: string;
@@ -172,6 +179,8 @@ export interface FourthPhaseWarRoomOffer {
   tags: string[];
   joker?: FourthPhaseJokerState;
   situation?: SituationKey;
+  /** A reserve playbook insert that can be installed into the active deck. */
+  card?: FourthPhaseCard;
 }
 
 export interface FourthPhaseScoreResult {

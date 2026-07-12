@@ -12,6 +12,7 @@ import {
 import { PhaseIcon } from './FourthPhaseGuide';
 import { CardWatermark } from './fpCardArt';
 import {
+  FOURTH_PHASE_DRIVE_ACT_LABEL,
   PHASE_SHORT,
   cardContributionLabel,
   cardDisplayName,
@@ -97,7 +98,7 @@ export function HandCard({ card, selected, tone, onClick }: { card: FourthPhaseC
             <div style={{ display: 'inline-flex', border: `1px solid ${badge.color}`, borderRadius: FP_RADIUS.badge, color: badge.color, fontSize: 7.5, fontWeight: 950, marginTop: 3, padding: '1px 4px', background: 'rgba(255,255,255,0.45)' }}>{badge.label}</div>
           )}
           <div style={{ borderTop: `1px solid ${FP_STOCK.line}`, marginTop: 4, paddingTop: 2, display: 'flex', justifyContent: 'space-between', fontSize: 6.8, color: FP_STOCK.inkSoft, fontWeight: 800, letterSpacing: 0.6 }}>
-            <span>FP-{card.rank}</span>
+            <span>{FOURTH_PHASE_DRIVE_ACT_LABEL[card.driveAct].toUpperCase()}</span>
             <span>SERIES {PHASE_SERIES[card.phase]}</span>
           </div>
         </div>
@@ -146,6 +147,9 @@ export function MiniCard({
           </div>
           <CardChips card={card} size={7} />
           <div style={{ fontSize: 8.5, color: PHASE_INK[card.phase], fontWeight: 900, marginTop: 3 }}>{cardContributionLabel(card)}</div>
+          <div style={{ fontSize: 6.8, color: FP_STOCK.inkSoft, fontWeight: 900, marginTop: 2, letterSpacing: 0.45 }}>
+            {FOURTH_PHASE_DRIVE_ACT_LABEL[card.driveAct].toUpperCase()}
+          </div>
           {badge && (
             <div style={{ fontSize: 7.5, color: badge.color, fontWeight: 950, marginTop: 2 }}>{badge.label}</div>
           )}
