@@ -4,6 +4,7 @@ import {
   PHASES,
   RANKS,
   type CardTier,
+  type DriveAct,
   type FourthPhaseCard,
   type FourthPhaseTeamKey,
   type Phase,
@@ -26,6 +27,11 @@ export const RANK_VALUE: Record<Rank, number> = {
   A: 11,
 };
 
+/** A War Room card must be run-shaping, not a cosmetic reserve swap. */
+export const FOURTH_PHASE_INSTALL_STRENGTH = 7;
+export const FOURTH_PHASE_INSTALL_LEVERAGE = 0.14;
+export const FOURTH_PHASE_INSTALL_CROWD_CHARGE = 0.8;
+
 const RANK_TIER: Record<Rank, CardTier> = {
   '2': 'rotation',
   '3': 'rotation',
@@ -44,19 +50,19 @@ const RANK_TIER: Record<Rank, CardTier> = {
 
 const ROLE_NAMES: Record<Phase, Record<Rank, string>> = {
   offense: {
-    '2': 'QB Sneak',
-    '3': 'Bubble Motion',
+    '2': 'QB Keep',
+    '3': 'Bubble Screen',
     '4': 'Stick Quick',
     '5': 'Zone Read RPO',
     '6': 'Inside Zone',
     '7': 'Mesh Crossers',
     '8': 'Tempo Drive',
-    '9': 'Red-Zone Fade',
-    '10': 'Four Verts',
+    '9': 'Boundary Fade',
+    '10': 'Four Verticals',
     J: 'Play Action Boot',
     Q: 'Y-Cross',
     K: 'Duo',
-    A: 'Deep Choice',
+    A: 'Choice Route',
   },
   defense: {
     '2': '4-3 Run Fit',
@@ -67,7 +73,7 @@ const ROLE_NAMES: Record<Phase, Record<Rank, string>> = {
     '7': 'Press Man',
     '8': 'Zero Blitz',
     '9': 'Sim Pressure',
-    '10': 'Strip Sack',
+    '10': 'Strip Pressure',
     J: 'Coverage Disguise',
     Q: 'Ball Hawk',
     K: 'Edge Pressure',
@@ -77,31 +83,57 @@ const ROLE_NAMES: Record<Phase, Record<Rank, string>> = {
     '2': 'Coverage Lane',
     '3': 'Pooch Kick',
     '4': 'Gunner',
-    '5': 'Coffin Corner',
+    '5': 'Corner Punt',
     '6': 'Return Lane',
     '7': 'Hands Team',
     '8': 'Fake Punt',
     '9': 'Directional Punt',
     '10': 'Pin Deep',
-    J: 'Automatic',
+    J: 'Automatic Kicker',
     Q: 'Return Captain',
     K: 'Hidden Yards',
     A: 'The Weapon',
   },
   crowd: {
     '2': 'Student Section',
-    '3': 'Pregame Buzz',
+    '3': 'Chant Leader',
     '4': 'Drumline',
     '5': 'Towel Wave',
     '6': 'On Their Feet',
-    '7': 'Under the Lights',
-    '8': 'Whiteout',
-    '9': 'Deafening',
-    '10': 'Third-Down Roar',
-    J: 'Hostile Environment',
-    Q: 'Homecoming',
-    K: 'Rivalry Week',
-    A: 'Home Field',
+    '7': 'Rising Noise',
+    '8': 'Noise Wall',
+    '9': 'Stadium Shake',
+    '10': 'Pressure Roar',
+    J: 'Full-Throat Roar',
+    Q: 'Crowd Swell',
+    K: 'Fever Pitch',
+    A: 'House Eruption',
+  },
+};
+
+// The three-drive run has a football arc. These labels influence only which
+// inserts are spotlighted in the opening hand of each drive; scoring remains
+// entirely phase/rank/tag driven and preview-honest.
+const DRIVE_ACT: Record<Phase, Record<Rank, DriveAct>> = {
+  offense: {
+    '2': 'closing', '3': 'opening', '4': 'opening', '5': 'opening', '6': 'opening',
+    '7': 'counterpunch', '8': 'counterpunch', '9': 'closing', '10': 'closing',
+    J: 'counterpunch', Q: 'closing', K: 'counterpunch', A: 'closing',
+  },
+  defense: {
+    '2': 'opening', '3': 'opening', '4': 'opening', '5': 'counterpunch', '6': 'counterpunch',
+    '7': 'counterpunch', '8': 'closing', '9': 'counterpunch', '10': 'closing',
+    J: 'counterpunch', Q: 'closing', K: 'closing', A: 'closing',
+  },
+  specialTeams: {
+    '2': 'opening', '3': 'opening', '4': 'opening', '5': 'counterpunch', '6': 'counterpunch',
+    '7': 'closing', '8': 'counterpunch', '9': 'counterpunch', '10': 'closing',
+    J: 'closing', Q: 'counterpunch', K: 'closing', A: 'closing',
+  },
+  crowd: {
+    '2': 'opening', '3': 'opening', '4': 'opening', '5': 'opening', '6': 'counterpunch',
+    '7': 'counterpunch', '8': 'counterpunch', '9': 'counterpunch', '10': 'closing',
+    J: 'closing', Q: 'closing', K: 'closing', A: 'closing',
   },
 };
 
@@ -193,6 +225,7 @@ const TAG_CHIP_LABELS: Record<string, string> = {
   'setup:tempo': 'TEMPO',
   'setup:shortField': 'SHORT FIELD',
   'setup:space': 'SPACE',
+  'warRoom:installed': 'COACHED UP',
 };
 
 export const PHASE_LABEL: Record<Phase, string> = {
@@ -235,7 +268,7 @@ export const PHASE_JOB: Record<Phase, string> = {
  */
 export function cardContributionLabel(card: FourthPhaseCard): string {
   if (card.phase === 'offense') return `+${card.value} Yards`;
-  if (card.phase === 'crowd') return `+${crowdChargeForRank(card.rank).toFixed(1)} momentum`;
+  if (card.phase === 'crowd') return `+${(crowdChargeForRank(card.rank) + (card.installed ? FOURTH_PHASE_INSTALL_CROWD_CHARGE : 0)).toFixed(1)} momentum`;
   if (card.phase === 'defense') return 'Leverage';
   return 'Hidden Yards';
 }
@@ -254,6 +287,8 @@ export function tagChipLabel(tag: string): string {
 
 export function cardPlayChips(card: FourthPhaseCard): string[] {
   const priority = card.tags.filter((tag) => (
+    tag === 'warRoom:installed'
+    ||
     tag.startsWith('formation:')
     || tag === 'kind:playAction'
     || tag === 'kind:rpo'
@@ -281,6 +316,7 @@ export function createFourthPhaseDeck(): FourthPhaseCard[] {
         tier: RANK_TIER[rank],
         roleName: ROLE_NAMES[phase][rank],
         tags: [phase, RANK_TIER[rank], ...PLAY_TAGS[phase][rank]],
+        driveAct: DRIVE_ACT[phase][rank],
       });
     }
   }
@@ -309,7 +345,8 @@ function bump(card: FourthPhaseCard, amount: number, tag: string): FourthPhaseCa
   return { ...card, value: card.value + amount, tags: [...card.tags, tag] };
 }
 
-export function prepareFourthPhaseTeamDeck(team: FourthPhaseTeamKey): FourthPhaseCard[] {
+/** The full collectible library after a playbook applies its identity editions. */
+export function prepareFourthPhaseCardLibrary(team: FourthPhaseTeamKey): FourthPhaseCard[] {
   return createFourthPhaseDeck().map((card) => {
     if (team === 'balanced') return card;
     if (team === 'airRaid' && (card.phase === 'offense' || card.phase === 'crowd') && ['9', '10', 'J', 'Q', 'K', 'A'].includes(card.rank)) {
@@ -329,4 +366,69 @@ export function prepareFourthPhaseTeamDeck(team: FourthPhaseTeamKey): FourthPhas
     }
     return card;
   });
+}
+
+export const FOURTH_PHASE_STARTING_DECK_SIZE = 28;
+
+const STARTING_RANKS: Record<FourthPhaseTeamKey, Record<Phase, readonly Rank[]>> = {
+  balanced: {
+    offense: ['3', '4', '5', '6', '7', '10', 'J', 'K'],
+    defense: ['2', '4', '5', '6', '9', 'J', 'Q'],
+    specialTeams: ['2', '3', '4', '6', '9', 'K'],
+    crowd: ['2', '3', '4', '5', '6', '7', '10'],
+  },
+  airRaid: {
+    offense: ['3', '4', '5', '7', '8', '9', '10', 'J', 'Q', 'A'],
+    defense: ['4', '5', '7', '9', 'J'],
+    specialTeams: ['3', '4', '6', 'Q'],
+    crowd: ['2', '3', '4', '5', '6', '7', '8', '9', '10'],
+  },
+  smashmouth: {
+    offense: ['2', '3', '4', '5', '6', '7', '9', 'J', 'K'],
+    defense: ['2', '3', '4', '5', '6', '9', 'K'],
+    specialTeams: ['2', '3', '4', '5', '6', '9', 'K'],
+    crowd: ['2', '3', '4', '5', '6'],
+  },
+  blackAndBlue: {
+    offense: ['3', '4', '7', '9', '10', 'Q'],
+    defense: ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q'],
+    specialTeams: ['2', '4', '5', '9', '10', 'K'],
+    crowd: ['2', '4', '6', '7', '10'],
+  },
+  loudHouse: {
+    offense: ['3', '4', '5', '7', '8', '10', 'Q', 'A'],
+    defense: ['4', '5', '9', 'J'],
+    specialTeams: ['3', '4', '6', '9', 'Q'],
+    crowd: ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q'],
+  },
+  specialTeamsChaos: {
+    offense: ['3', '4', '5', '7', '9', '10'],
+    defense: ['2', '4', '6', '9', 'Q'],
+    specialTeams: ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'],
+    crowd: ['2', '4', '6', '7', '10'],
+  },
+};
+
+/** The compact game-plan deck a playbook actually takes into the run. */
+export function prepareFourthPhaseTeamDeck(team: FourthPhaseTeamKey): FourthPhaseCard[] {
+  const ranks = STARTING_RANKS[team];
+  const active = new Set(PHASES.flatMap((phase) => ranks[phase].map((rank) => `${phase}-${rank}`)));
+  const deck = prepareFourthPhaseCardLibrary(team).filter((card) => active.has(card.id));
+  if (deck.length !== FOURTH_PHASE_STARTING_DECK_SIZE) {
+    throw new Error(`${team} starting deck has ${deck.length} cards; expected ${FOURTH_PHASE_STARTING_DECK_SIZE}`);
+  }
+  return deck;
+}
+
+export function fourthPhaseDeckPhaseCounts(cards: readonly FourthPhaseCard[]): Record<Phase, number> {
+  return cards.reduce<Record<Phase, number>>(
+    (counts, card) => ({ ...counts, [card.phase]: counts[card.phase] + 1 }),
+    { offense: 0, defense: 0, specialTeams: 0, crowd: 0 },
+  );
+}
+
+/** Cards in the collectible library that are not currently installed. */
+export function fourthPhaseReserveCards(team: FourthPhaseTeamKey, activeCards: readonly FourthPhaseCard[]): FourthPhaseCard[] {
+  const activeIds = new Set(activeCards.map((card) => card.id));
+  return prepareFourthPhaseCardLibrary(team).filter((card) => !activeIds.has(card.id));
 }

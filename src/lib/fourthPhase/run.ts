@@ -1,5 +1,16 @@
 import { mulberry32, stringSeed, type RNG } from '../rng';
-import { prepareFourthPhaseTeamDeck, shuffleFourthPhase } from './deck';
+import {
+  PHASE_JOB,
+  PHASE_SHORT,
+  FOURTH_PHASE_INSTALL_CROWD_CHARGE,
+  FOURTH_PHASE_INSTALL_LEVERAGE,
+  FOURTH_PHASE_INSTALL_STRENGTH,
+  cardContributionLabel,
+  cardPlayChips,
+  fourthPhaseReserveCards,
+  prepareFourthPhaseTeamDeck,
+  shuffleFourthPhase,
+} from './deck';
 import { BASE_METER, BASE_METER_CAP } from './meter';
 import { applyFourthPhaseDrawStart } from './engine';
 import { FOURTH_PHASE_JOKER_POOL } from './jokers';
@@ -19,6 +30,7 @@ import type {
 export const FOURTH_PHASE_HAND_SIZE = 8;
 export const FOURTH_PHASE_PLAY_LIMIT = 5;
 export const FOURTH_PHASE_JOKER_LIMIT = 5;
+export const FOURTH_PHASE_DECK_MAX_SIZE = 30;
 export const FOURTH_PHASE_DRIVES = 3;
 export const FOURTH_PHASE_DISCARDS = 2;
 /** Plays allowed per drive before a stalled drive is a loss. Shared by the lab UI and the balance harness. */
@@ -47,6 +59,14 @@ export interface FourthPhaseTeamProfile {
   shortName: string;
   signatureJoker: FourthPhaseJokerId;
   identity: string;
+  /** The real concepts a player should expect to draw and build around. */
+  corePackage: string;
+}
+
+export interface FourthPhaseBuildIdentity {
+  label: string;
+  detail: string;
+  installedCount: number;
 }
 
 // Playbooks are named like coaching philosophies, not fake franchises: the
@@ -59,6 +79,7 @@ export const FOURTH_PHASE_TEAMS: Record<FourthPhaseTeamKey, FourthPhaseTeamProfi
     shortName: 'Pro Style',
     signatureJoker: 'theGenius',
     identity: 'Balanced script: run game, quick game, play action, and all four phases are live.',
+    corePackage: 'Inside Zone • Stick • Mesh • Play Action Boot',
   },
   airRaid: {
     key: 'airRaid',
@@ -66,6 +87,7 @@ export const FOURTH_PHASE_TEAMS: Record<FourthPhaseTeamKey, FourthPhaseTeamProfi
     shortName: 'Air Raid',
     signatureJoker: 'hurryUp',
     identity: 'Pass-heavy spacing: Mesh, Y-Cross, Four Verts, and a thinner run-game floor.',
+    corePackage: 'Bubble Screen • Mesh • Y-Cross • Four Verticals',
   },
   smashmouth: {
     key: 'smashmouth',
@@ -73,6 +95,7 @@ export const FOURTH_PHASE_TEAMS: Record<FourthPhaseTeamKey, FourthPhaseTeamProfi
     shortName: 'Power',
     signatureJoker: 'silentCount',
     identity: 'Run-first body blows: Inside Zone, Duo, and Play Action are the backbone.',
+    corePackage: 'QB Keep • Inside Zone • Duo • Play Action Boot',
   },
   blackAndBlue: {
     key: 'blackAndBlue',
@@ -80,6 +103,7 @@ export const FOURTH_PHASE_TEAMS: Record<FourthPhaseTeamKey, FourthPhaseTeamProfi
     shortName: 'Pressure',
     signatureJoker: 'pickSixSpecialist',
     identity: 'Defense-first package: pressure and takeaways create short-field shots.',
+    corePackage: 'A-Gap Mug • Sim Pressure • Strip Pressure • Boundary Fade',
   },
   loudHouse: {
     key: 'loudHouse',
@@ -87,6 +111,7 @@ export const FOURTH_PHASE_TEAMS: Record<FourthPhaseTeamKey, FourthPhaseTeamProfi
     shortName: 'Spread',
     signatureJoker: 'twelfthMan',
     identity: 'Tempo spacing: quick game and crowd momentum turn clean scripts explosive.',
+    corePackage: 'Bubble Screen • Stick • Tempo • Pressure Roar',
   },
   specialTeamsChaos: {
     key: 'specialTeamsChaos',
@@ -94,8 +119,29 @@ export const FOURTH_PHASE_TEAMS: Record<FourthPhaseTeamKey, FourthPhaseTeamProfi
     shortName: 'Multiple',
     signatureJoker: 'fieldGeneral',
     identity: 'Oddball answers: hidden yards, field flips, and mixed scripts open strange windows.',
+    corePackage: 'Pooch Kick • Fake Punt • Return Lane • Hidden Yards',
   },
 };
+
+/** A plain-language receipt for the deck the player actually finished with. */
+export function fourthPhaseBuildIdentity(cards: readonly FourthPhaseCard[], team: FourthPhaseTeamKey): FourthPhaseBuildIdentity {
+  const counts = cards.reduce<Record<FourthPhaseCard['phase'], number>>(
+    (result, card) => ({ ...result, [card.phase]: result[card.phase] + 1 }),
+    { offense: 0, defense: 0, specialTeams: 0, crowd: 0 },
+  );
+  const phase = (Object.entries(counts) as [FourthPhaseCard['phase'], number][])
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0][0];
+  const installed = cards.filter((card) => card.installed);
+  const installedNames = installed.slice(0, 3).map((card) => card.roleName);
+  const phaseLabel = phase === 'specialTeams' ? 'Hidden-Yards' : phase === 'crowd' ? 'Momentum' : phase === 'defense' ? 'Pressure' : 'Offense';
+  return {
+    label: `${FOURTH_PHASE_TEAMS[team].shortName} · ${phaseLabel} lean · ${installed.length} coached up`,
+    detail: installedNames.length
+      ? `Your defining installs: ${installedNames.join(', ')}${installed.length > installedNames.length ? ` +${installed.length - installedNames.length} more` : ''}.`
+      : 'You finished on the untouched starting game plan.',
+    installedCount: installed.length,
+  };
+}
 
 export interface FourthPhaseBossProfile {
   key: FourthPhaseBossKey;
@@ -175,12 +221,12 @@ export function randomFourthPhaseBoss(seed: number, team: FourthPhaseTeamKey): F
 export function fourthPhaseTargets(team: FourthPhaseTeamKey, seed: number): [number, number, number] {
   const rng = mulberry32(stringSeed(`fourth-phase-targets:${seed}:${team}`));
   const bump = Math.floor(rng() * 10);
-  if (team === 'airRaid') return [282 + bump, 548 + bump, 930 + bump];
-  if (team === 'smashmouth') return [232 + bump, 456 + bump, 778 + bump];
-  if (team === 'blackAndBlue') return [262 + bump, 512 + bump, 870 + bump];
-  if (team === 'loudHouse') return [208 + bump, 408 + bump, 694 + bump];
-  if (team === 'specialTeamsChaos') return [212 + bump, 416 + bump, 708 + bump];
-  return [276 + bump, 540 + bump, 916 + bump];
+  if (team === 'airRaid') return [335 + bump, 653 + bump, 1109 + bump];
+  if (team === 'smashmouth') return [194 + bump, 380 + bump, 648 + bump];
+  if (team === 'blackAndBlue') return [256 + bump, 500 + bump, 850 + bump];
+  if (team === 'loudHouse') return [186 + bump, 364 + bump, 618 + bump];
+  if (team === 'specialTeamsChaos') return [191 + bump, 374 + bump, 637 + bump];
+  return [279 + bump, 547 + bump, 929 + bump];
 }
 
 export function createFourthPhaseRun(team: FourthPhaseTeamKey = 'balanced', seed = stringSeed(`fourth-phase:${Date.now()}`)): FourthPhaseRunSeed {
@@ -226,6 +272,59 @@ export function drawFourthPhaseCards(
   return { deck: drawPile, discard: discardPile, drawn };
 }
 
+export type FourthPhaseDriveAct = 'opening' | 'counterpunch' | 'closing';
+
+export const FOURTH_PHASE_DRIVE_ACT_LABEL: Record<FourthPhaseDriveAct, string> = {
+  opening: 'Opening Script',
+  counterpunch: 'Counterpunch',
+  closing: 'Closing Drive',
+};
+
+export function fourthPhaseDriveAct(driveIndex: number): FourthPhaseDriveAct {
+  if (driveIndex <= 0) return 'opening';
+  if (driveIndex === 1) return 'counterpunch';
+  return 'closing';
+}
+
+/**
+ * Seeded game-flow draw policy. Opening and counterpunch calls are live in the
+ * first two drives; explicitly closing calls stay dormant until Drive 3. Three
+ * act-appropriate inserts are promoted into the opening hand. This makes a
+ * closing roar or pressure call arrive with the climax without hidden score
+ * rolls or leaking "fourth-quarter" language into the opening drive.
+ */
+export function buildFourthPhaseDrivePile(
+  cards: readonly FourthPhaseCard[],
+  seed: number,
+  driveIndex: number,
+  spotlightCount = 3,
+): FourthPhaseCard[] {
+  const act = fourthPhaseDriveAct(driveIndex);
+  const eligible = driveIndex >= 2
+    ? [...cards]
+    : cards.filter((card) => card.driveAct !== 'closing');
+  const installed = shuffleFourthPhase(
+    eligible.filter((card) => card.installed),
+    mulberry32(stringSeed(`fourth-phase-drive-installed:${seed}:${driveIndex}`)),
+  );
+  const installedIds = new Set(installed.map((card) => card.id));
+  const spotlight = shuffleFourthPhase(
+    eligible.filter((card) => card.driveAct === act && !installedIds.has(card.id)),
+    mulberry32(stringSeed(`fourth-phase-drive-spotlight:${seed}:${driveIndex}`)),
+  );
+  const flexible = shuffleFourthPhase(
+    eligible.filter((card) => card.driveAct !== act && !installedIds.has(card.id)),
+    mulberry32(stringSeed(`fourth-phase-drive-flex:${seed}:${driveIndex}`)),
+  );
+  const featured = [...installed, ...spotlight].slice(0, Math.max(0, spotlightCount));
+  const featuredIds = new Set(featured.map((card) => card.id));
+  const remainder = shuffleFourthPhase(
+    [...installed, ...spotlight, ...flexible].filter((card) => !featuredIds.has(card.id)),
+    mulberry32(stringSeed(`fourth-phase-drive-rest:${seed}:${driveIndex}`)),
+  );
+  return [...featured, ...remainder];
+}
+
 export function draftFourthPhaseJokers(owned: readonly FourthPhaseJokerState[], seed: number, driveIndex: number): FourthPhaseJokerState[] {
   const ownedIds = new Set(owned.map((joker) => joker.id));
   const pool = FOURTH_PHASE_JOKER_POOL.filter((joker) => !ownedIds.has(joker.id));
@@ -266,6 +365,22 @@ function offerTagsForJoker(jokerId: FourthPhaseJokerId, team: FourthPhaseTeamKey
   if (team === 'loudHouse' && tags.includes('feeds Crowd cash-in')) tags.unshift('team identity');
   if (boss === 'roadGame' && ['roadWarriors', 'homeCooking', 'sustainedDrive'].includes(jokerId)) tags.unshift('fixes Road Game');
   if (boss !== 'none' && ['closer', 'pressBoxAngle', 'redZonePackage'].includes(jokerId)) tags.unshift(bossTag(boss) ?? 'boss answer');
+  return [...new Set(tags)].slice(0, 3);
+}
+
+function offerTagsForCard(card: FourthPhaseCard, team: FourthPhaseTeamKey, boss: FourthPhaseBossKey): string[] {
+  const tags = [`${PHASE_SHORT[card.phase]} ${PHASE_JOB[card.phase]}`, FOURTH_PHASE_DRIVE_ACT_LABEL[card.driveAct]];
+  if (team === 'airRaid' && card.phase === 'offense' && card.tags.includes('kind:pass')) tags.unshift('team identity');
+  if (team === 'smashmouth' && card.phase === 'offense' && card.tags.includes('kind:run')) tags.unshift('team identity');
+  if (team === 'blackAndBlue' && card.phase === 'defense') tags.unshift('team identity');
+  if (team === 'loudHouse' && card.phase === 'crowd') tags.unshift('team identity');
+  if (team === 'specialTeamsChaos' && card.phase === 'specialTeams') tags.unshift('team identity');
+  if (boss === 'stackedBox' && card.phase !== 'offense') tags.unshift('boss answer');
+  if (boss === 'noFlyZone' && card.phase !== 'offense') tags.unshift('boss answer');
+  if (boss === 'roadGame' && card.phase !== 'crowd') tags.unshift('boss answer');
+  if (boss === 'turnoverDrill' && card.phase !== 'defense') tags.unshift('boss answer');
+  if (boss === 'fieldPositionWar' && card.phase !== 'specialTeams') tags.unshift('boss answer');
+  if (boss === 'preventDefense' && !card.tags.includes('kind:shot')) tags.unshift('boss answer');
   return [...new Set(tags)].slice(0, 3);
 }
 
@@ -365,6 +480,8 @@ export function generateFourthPhaseWarRoomOffers(
   practice: FourthPhasePracticeBook = {},
   /** The boss actually taking the field NEXT drive; triggers the SCOUTED guarantee. */
   nextBoss: FourthPhaseBossKey = 'none',
+  /** The mutable game-plan deck; reserve offers are selected from its missing inserts. */
+  activeCards: readonly FourthPhaseCard[] = prepareFourthPhaseTeamDeck(team),
 ): FourthPhaseWarRoomOffer[] {
   const ownedIds = new Set(owned.map((joker) => joker.id));
   const pool = FOURTH_PHASE_JOKER_POOL.filter((joker) => !ownedIds.has(joker.id));
@@ -381,7 +498,34 @@ export function generateFourthPhaseWarRoomOffers(
     tags: offerTagsForJoker(def.id, team, boss),
     joker: { id: def.id },
   });
-  const jokerOffers = ordered.slice(0, 3).map(offerFor);
+  const jokerOffers = ordered.slice(0, 1).map(offerFor);
+  const reserve = shuffleFourthPhase(
+    fourthPhaseReserveCards(team, activeCards),
+    mulberry32(stringSeed(`fourth-phase-card-offers:${seed}:${driveIndex}:${reroll}:${activeCards.length}`)),
+  );
+  const nextAct = fourthPhaseDriveAct(driveIndex + 1);
+  const actMatch = reserve.find((card) => card.driveAct === nextAct);
+  const selectedReserve = [actMatch, ...reserve.filter((card) => card.id !== actMatch?.id)].filter(
+    (card): card is FourthPhaseCard => Boolean(card),
+  ).slice(0, 2);
+  const cardOffers: FourthPhaseWarRoomOffer[] = selectedReserve.map((reserveCard) => {
+    const card: FourthPhaseCard = {
+      ...reserveCard,
+      value: reserveCard.value + FOURTH_PHASE_INSTALL_STRENGTH,
+      installed: true,
+      tags: [...reserveCard.tags, 'warRoom:installed'],
+    };
+    const chips = cardPlayChips(card);
+    return {
+      id: `card:${card.id}`,
+      kind: 'card',
+      cost: card.tier === 'franchise' || card.tier === 'playmaker' ? 5 : card.tier === 'captain' || card.tier === 'scheme' ? 4 : 3,
+      label: card.roleName,
+      detail: `COACHED UP: +${FOURTH_PHASE_INSTALL_STRENGTH} call strength, +${FOURTH_PHASE_INSTALL_LEVERAGE.toFixed(2)} Leverage${card.phase === 'crowd' ? `, +${FOURTH_PHASE_INSTALL_CROWD_CHARGE.toFixed(1)} momentum` : ''}. ${cardContributionLabel(card)}${chips.length ? ` • ${chips.join(' + ')}` : ''}.`,
+      tags: offerTagsForCard(card, team, boss),
+      card,
+    };
+  });
   // The coach names next drive's problem before the offers appear; the shop
   // must never shrug at it. Pre-boss drafts guarantee a response lane through
   // the practice drill (a plan, not a power spike — guaranteeing the premium
@@ -406,7 +550,7 @@ export function generateFourthPhaseWarRoomOffers(
       : practiceTags(situation, team, boss),
     situation,
   };
-  return [...jokerOffers, drill];
+  return [...cardOffers, ...jokerOffers, drill];
 }
 
 export function activeBossForDrive(run: Pick<FourthPhaseRunSeed, 'boss'>, driveIndex: number, bossFromDrive = 2): FourthPhaseBossKey {

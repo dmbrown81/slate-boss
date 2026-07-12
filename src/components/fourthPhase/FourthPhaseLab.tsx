@@ -63,6 +63,7 @@ import {
   BASE_METER_CAP,
   FOURTH_PHASE_BOSSES,
   FOURTH_PHASE_DISCOUNT_TOKEN_CAP,
+  FOURTH_PHASE_DECK_MAX_SIZE,
   FOURTH_PHASE_DRIVES,
   FOURTH_PHASE_JOKER_LIMIT,
   FOURTH_PHASE_MAX_PLAYS_PER_DRIVE,
@@ -74,6 +75,7 @@ import {
   applyFourthPhaseDrawStart,
   bossVoice,
   bossWarningForPlay,
+  buildFourthPhaseDrivePile,
   buildPlayExplanation,
   buildRunShareCardData,
   callOfTheGameLine,
@@ -91,6 +93,7 @@ import {
   formatMeter,
   FOURTH_PHASE_STAKES,
   fourthPhaseMaxStake,
+  fourthPhaseBuildIdentity,
   fourthPhaseRunCode,
   fourthPhaseStake,
   generateFourthPhaseWarRoomOffers,
@@ -104,7 +107,6 @@ import {
   playEffectVerb,
   SITUATION_LABELS,
   scoreFourthPhasePlay,
-  shuffleFourthPhase,
   tutorialCheckdownIsValid,
   type BestSeriesRecord,
   type FourthPhaseBossKey,
@@ -134,6 +136,8 @@ interface LabState {
   awaitingKickoff: boolean;
   boss: FourthPhaseBossKey;
   targets: [number, number, number];
+  /** The persistent 28–30 card game plan. Drive piles are eligible views of this deck. */
+  activeDeck: FourthPhaseCard[];
   drawPile: FourthPhaseCard[];
   discardPile: FourthPhaseCard[];
   hand: FourthPhaseCard[];
@@ -173,14 +177,14 @@ interface LabState {
 
 function scriptedOpening(deck: FourthPhaseCard[]): FourthPhaseCard[] {
   const desired = [
-    'offense-2',
-    'crowd-7',
-    'crowd-J',
+    'offense-3',
+    'crowd-2',
+    'crowd-4',
     'offense-K',
     'specialTeams-4',
     'defense-4',
-    'offense-3',
-    'crowd-A',
+    'offense-4',
+    'crowd-7',
   ];
   const byId = new Map(deck.map((card) => [card.id, card]));
   const opening = desired.map((id) => byId.get(id)).filter((card): card is FourthPhaseCard => Boolean(card));
@@ -196,7 +200,8 @@ function createInitialState(
 ): LabState {
   const run = createFourthPhaseRun(team, seed);
   const stake = fourthPhaseStake(stakeLevel);
-  const orderedDeck = scriptedOpening(run.deck);
+  const openingPool = buildFourthPhaseDrivePile(run.deck, seed, 0);
+  const orderedDeck = meta.tutorialOpening ? scriptedOpening(openingPool) : openingPool;
   const draw = drawFourthPhaseCards(orderedDeck, [], stake.handSize, mulberry32(stringSeed(`${seed}:opening`)));
   // The daily's named twist is a run-parameter change (money/redraws/targets/
   // meter cap) — never a scoring change, so the preview stays exact. Practice
@@ -209,6 +214,7 @@ function createInitialState(
     awaitingKickoff: true,
     boss: run.boss,
     targets: run.targets.map((target) => Math.round(target * stake.targetScale * (modifier?.targetScale ?? 1))) as [number, number, number],
+    activeDeck: run.deck,
     drawPile: draw.deck,
     discardPile: draw.discard,
     hand: draw.drawn,
@@ -513,7 +519,12 @@ export default function FourthPhaseLab({ onHome }: Props) {
   // codes and dailies never fight the coach script.
   function restart(team: FourthPhaseTeamKey, seed?: number, meta: FourthPhaseRunMeta = {}, stakeLevel = 1) {
     const tutorial = !isTutorialDone() && !meta.dailyLabel && stakeLevel === 1;
-    setState(createInitialState(team, seed ?? (tutorial ? firstRunSeed(team) : undefined), meta, stakeLevel));
+    setState(createInitialState(
+      team,
+      seed ?? (tutorial ? firstRunSeed(team) : undefined),
+      { ...meta, tutorialOpening: tutorial },
+      stakeLevel,
+    ));
     setTutorialStep(tutorial ? 0 : -1);
     setRunStarted(true);
     setScreen('game');
@@ -886,6 +897,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
             0,
             current.practice,
             activeBossForDrive(current, current.driveIndex + 1, fourthPhaseStake(current.stake).bossFromDrive),
+            baseUpdate.activeDeck,
           ),
           money: warRoomMoney,
           meter: BASE_METER,
@@ -942,9 +954,10 @@ export default function FourthPhaseLab({ onHome }: Props) {
     // Daily modifiers re-apply at every drive boundary (redraws and the meter
     // cap reset per drive, so the twist must too).
     const modifier = current.dailyLabel ? dailyModifierFor(current.dailyLabel) : null;
-    const fullPile = shuffleFourthPhase(
-      [...current.drawPile, ...current.hand, ...current.discardPile],
-      mulberry32(stringSeed(`${current.seed}:drive:${nextDrive}`)),
+    const fullPile = buildFourthPhaseDrivePile(
+      current.activeDeck,
+      current.seed,
+      nextDrive,
     );
     const baseCap = Math.max(BASE_METER_CAP, current.meterCap);
     const meter = applyFourthPhaseDrawStart(
@@ -1019,6 +1032,11 @@ export default function FourthPhaseLab({ onHome }: Props) {
       setState((current) => ({ ...current, pendingDraft: offer }));
       return;
     }
+    if (offer.kind === 'card' && offer.card && state.activeDeck.length >= FOURTH_PHASE_DECK_MAX_SIZE) {
+      feelEvent('card_tap');
+      setState((current) => ({ ...current, pendingDraft: offer }));
+      return;
+    }
     feelEvent('buy');
     setState((current) => {
       const { cost, used } = discountedOfferCost(offer.cost, current.discounts);
@@ -1029,6 +1047,10 @@ export default function FourthPhaseLab({ onHome }: Props) {
       if (offer.kind === 'practice' && offer.situation) {
         const practice = { ...current.practice, [offer.situation]: Math.min(3, (current.practice[offer.situation] ?? 0) + 1) };
         return finishPurchase(current, offer, current.jokers, practice, current.money - cost, current.discounts - used);
+      }
+      if (offer.kind === 'card' && offer.card) {
+        const withCard = { ...current, activeDeck: [...current.activeDeck, offer.card] };
+        return finishPurchase(withCard, offer, current.jokers, current.practice, current.money - cost, current.discounts - used);
       }
       return current;
     });
@@ -1044,6 +1066,22 @@ export default function FourthPhaseLab({ onHome }: Props) {
       if (current.money < cost) return current;
       const nextJokers = current.jokers.map((joker, i) => (i === index ? pending.joker! : joker));
       return finishPurchase(current, pending, nextJokers, current.practice, current.money - cost, current.discounts - used);
+    });
+  }
+
+  function confirmReplaceCard(cardId: string) {
+    if (state.phase !== 'warRoom' || !state.pendingDraft?.card) return;
+    feelEvent('buy');
+    setState((current) => {
+      const pending = current.pendingDraft;
+      if (!pending?.card || current.phase !== 'warRoom') return current;
+      const { cost, used } = discountedOfferCost(pending.cost, current.discounts);
+      if (current.money < cost) return current;
+      const next = {
+        ...current,
+        activeDeck: [...current.activeDeck.filter((card) => card.id !== cardId), pending.card],
+      };
+      return finishPurchase(next, pending, current.jokers, current.practice, current.money - cost, current.discounts - used);
     });
   }
 
@@ -1076,6 +1114,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
           rerollsThisWarRoom,
           current.practice,
           activeBossForDrive(current, current.driveIndex + 1, fourthPhaseStake(current.stake).bossFromDrive),
+          current.activeDeck,
         ),
       };
     });
@@ -1229,6 +1268,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
           discounts={state.discounts}
           draft={state.draft}
           jokers={state.jokers}
+          deck={state.activeDeck}
           pendingDraft={state.pendingDraft}
           buysThisWarRoom={state.buysThisWarRoom}
           nextDriveNumber={state.driveIndex + 2}
@@ -1242,6 +1282,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
           )}
           onDraft={buyOffer}
           onReplace={confirmReplaceJoker}
+          onReplaceCard={confirmReplaceCard}
           onCancelReplace={cancelReplaceJoker}
           onReroll={rerollWarRoom}
           onSkip={skipWarRoom}
@@ -1275,6 +1316,7 @@ export default function FourthPhaseLab({ onHome }: Props) {
     const strandedMeter = !won && state.lastPlay && state.lastPlay.meterAfter > BASE_METER + 0.5 ? state.lastPlay.meterAfter : null;
     const priorRuns = loadFourthPhaseHistory().filter((entry) => entry.id !== state.completion?.id);
     const careerBestSeries = priorRuns.length > 0 && state.bestPlay > Math.max(...priorRuns.map((entry) => entry.bestPlay));
+    const buildIdentity = fourthPhaseBuildIdentity(state.activeDeck, state.team);
     return (
       <Shell impactClass={shellImpact}>
         {cinematicOverlay}
@@ -1336,6 +1378,11 @@ export default function FourthPhaseLab({ onHome }: Props) {
             <Metric label="Best series" value={`${state.bestPlay}`} color={FB.gold} />
             <Metric label="Drives" value={`${won ? FOURTH_PHASE_DRIVES : state.driveIndex + 1}/${FOURTH_PHASE_DRIVES}`} color="#5fb4ff" />
             <Metric label="Boss" value={FOURTH_PHASE_BOSSES[state.boss].name} color={FB.red} small />
+          </div>
+          <div style={{ border: `1px solid ${FB.border}`, borderRadius: FP_RADIUS.card, background: FB.panelRaised, padding: '9px 10px', marginTop: 10, textAlign: 'left' }}>
+            <div style={{ ...sectionLabel, color: '#5fb4ff' }}>Your build</div>
+            <div style={{ color: FB.text, fontSize: 12, fontWeight: 950, marginTop: 3 }}>{buildIdentity.label}</div>
+            <div style={{ color: FB.textFaint, fontSize: 10.5, lineHeight: 1.35, marginTop: 3 }}>{buildIdentity.detail}</div>
           </div>
           {nextStakeUnlocked && (
             <UnlockBanner

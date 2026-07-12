@@ -6,6 +6,7 @@ import { mulberry32, stringSeed, type RNG } from '../src/lib/rng';
 import {
   BASE_METER,
   BASE_METER_CAP,
+  FOURTH_PHASE_DECK_MAX_SIZE,
   FOURTH_PHASE_DISCOUNT_TOKEN_CAP,
   FOURTH_PHASE_HAND_SIZE,
   FOURTH_PHASE_JOKER_LIMIT,
@@ -16,6 +17,7 @@ import {
   FOURTH_PHASE_WAR_ROOM_REROLL_COST,
   activeBossForDrive,
   applyFourthPhaseDrawStart,
+  buildFourthPhaseDrivePile,
   coachPickForWarRoom,
   createFourthPhaseRun,
   discountedOfferCost,
@@ -26,7 +28,6 @@ import {
   jokerDefinition,
   meterTightness,
   scoreFourthPhasePlay,
-  shuffleFourthPhase,
   type ScoreLedgerEntry,
   type FourthPhaseCard,
   type FourthPhaseJokerId,
@@ -72,6 +73,8 @@ interface SimResult {
   comboFires: number;
   comboPlays: number;
   comboClears: number;
+  /** Number of coached-up reserve cards in the persistent game plan. */
+  mutations: number;
   team: FourthPhaseTeamKey;
 }
 
@@ -258,9 +261,38 @@ function practiceValue(situation: SituationKey, practice: FourthPhasePracticeBoo
 }
 
 function offerValue(offer: FourthPhaseWarRoomOffer, team: FourthPhaseTeamKey, bossDriveSoon: boolean, practice: FourthPhasePracticeBook): number {
+  if (offer.kind === 'card' && offer.card) return cardValue(offer.card, team);
   if (offer.kind === 'joker' && offer.joker) return jokerValue(offer.joker, team, bossDriveSoon);
   if (offer.kind === 'practice' && offer.situation) return practiceValue(offer.situation, practice, team, bossDriveSoon);
   return 0;
+}
+
+const TEAM_PHASE_VALUE: Record<FourthPhaseTeamKey, Partial<Record<Phase, number>>> = {
+  balanced: { offense: 8, defense: 8, specialTeams: 8, crowd: 8 },
+  airRaid: { offense: 18, crowd: 12 },
+  smashmouth: { offense: 18, specialTeams: 10, defense: 8 },
+  blackAndBlue: { defense: 20, offense: 8 },
+  loudHouse: { crowd: 20, offense: 12 },
+  specialTeamsChaos: { specialTeams: 22, crowd: 6 },
+};
+
+function cardValue(card: FourthPhaseCard, team: FourthPhaseTeamKey): number {
+  let value = 22 + card.value * 2.5 + (TEAM_PHASE_VALUE[team][card.phase] ?? 0);
+  if (card.installed) value += 40;
+  if (card.tags.includes('kind:shot') || card.tags.includes('kind:takeaway')) value += 7;
+  if (card.tags.includes('kind:playAction') || card.tags.includes('kind:fieldFlip')) value += 6;
+  if (card.tags.includes('kind:run') || card.tags.includes('kind:quickGame')) value += team === 'smashmouth' || team === 'airRaid' ? 5 : 2;
+  return value;
+}
+
+function addCard(deck: FourthPhaseCard[], picked: FourthPhaseCard, team: FourthPhaseTeamKey): FourthPhaseCard[] {
+  if (deck.some((card) => card.id === picked.id)) return deck;
+  if (deck.length < FOURTH_PHASE_DECK_MAX_SIZE) return [...deck, picked];
+  const values = deck.map((card) => cardValue(card, team));
+  const weakestValue = Math.min(...values);
+  const weakestIndex = values.indexOf(weakestValue);
+  if (cardValue(picked, team) <= weakestValue + 2) return deck;
+  return deck.map((card, index) => (index === weakestIndex ? picked : card));
 }
 
 function addJoker(jokers: FourthPhaseJokerState[], picked: FourthPhaseJokerState, team: FourthPhaseTeamKey, bossDriveSoon: boolean): FourthPhaseJokerState[] {
@@ -274,24 +306,30 @@ function addJoker(jokers: FourthPhaseJokerState[], picked: FourthPhaseJokerState
 
 function applyOffer(
   offer: FourthPhaseWarRoomOffer,
+  deck: FourthPhaseCard[],
   jokers: FourthPhaseJokerState[],
   practice: FourthPhasePracticeBook,
   team: FourthPhaseTeamKey,
   bossDriveSoon: boolean,
-): { jokers: FourthPhaseJokerState[]; practice: FourthPhasePracticeBook } {
+): { deck: FourthPhaseCard[]; jokers: FourthPhaseJokerState[]; practice: FourthPhasePracticeBook } {
+  if (offer.kind === 'card' && offer.card) {
+    return { deck: addCard(deck, offer.card, team), jokers, practice };
+  }
   if (offer.kind === 'joker' && offer.joker) {
-    return { jokers: addJoker(jokers, offer.joker, team, bossDriveSoon), practice };
+    return { deck, jokers: addJoker(jokers, offer.joker, team, bossDriveSoon), practice };
   }
   if (offer.kind === 'practice' && offer.situation) {
     return {
+      deck,
       jokers,
       practice: { ...practice, [offer.situation]: Math.min(3, (practice[offer.situation] ?? 0) + 1) },
     };
   }
-  return { jokers, practice };
+  return { deck, jokers, practice };
 }
 
 function runWarRoom(
+  deck: FourthPhaseCard[],
   jokers: FourthPhaseJokerState[],
   practice: FourthPhasePracticeBook,
   money: number,
@@ -302,8 +340,9 @@ function runWarRoom(
   boss: ReturnType<typeof activeBossForDrive>,
   policy: Policy,
   rng: RNG,
-): { jokers: FourthPhaseJokerState[]; practice: FourthPhasePracticeBook; money: number; discounts: number } {
-  if (policy === 'none') return { jokers, practice, money: money + 3, discounts };
+): { deck: FourthPhaseCard[]; jokers: FourthPhaseJokerState[]; practice: FourthPhasePracticeBook; money: number; discounts: number } {
+  if (policy === 'none') return { deck, jokers, practice, money: money + 3, discounts };
+  let nextDeck = deck;
   let nextJokers = jokers;
   let nextPractice = practice;
   let nextMoney = money;
@@ -311,7 +350,7 @@ function runWarRoom(
   let buys = 0;
   let rerolls = 0;
   const bossDriveSoon = driveIndex >= 1 || boss !== 'none';
-  let offers = generateFourthPhaseWarRoomOffers(nextJokers, seed, driveIndex, team, boss, rerolls, nextPractice, boss);
+  let offers = generateFourthPhaseWarRoomOffers(nextJokers, seed, driveIndex, team, boss, rerolls, nextPractice, boss, nextDeck);
 
   // Same token math the Lab UI uses (discountedOfferCost) — the harness must buy
   // at the prices a real player would see.
@@ -323,11 +362,11 @@ function runWarRoom(
     const pick = coachPickForWarRoom(offers, team, boss);
     const offer = pick ? offers.find((candidate) => candidate.id === pick.id) : undefined;
     if (offer && effectiveCost(offer.cost) <= nextMoney) {
-      const applied = applyOffer(offer, nextJokers, nextPractice, team, bossDriveSoon);
+      const applied = applyOffer(offer, nextDeck, nextJokers, nextPractice, team, bossDriveSoon);
       const priced = discountedOfferCost(offer.cost, nextDiscounts);
-      return { jokers: applied.jokers, practice: applied.practice, money: nextMoney - priced.cost, discounts: nextDiscounts - priced.used };
+      return { deck: applied.deck, jokers: applied.jokers, practice: applied.practice, money: nextMoney - priced.cost, discounts: nextDiscounts - priced.used };
     }
-    return { jokers: nextJokers, practice: nextPractice, money: nextMoney + 3, discounts: nextDiscounts };
+    return { deck: nextDeck, jokers: nextJokers, practice: nextPractice, money: nextMoney + 3, discounts: nextDiscounts };
   }
 
   while (buys < FOURTH_PHASE_WAR_ROOM_BUY_LIMIT) {
@@ -337,8 +376,9 @@ function runWarRoom(
     if (policy === 'random') {
       if (rng() < (buys === 0 ? 0.28 : 0.48)) break;
       const offer = affordable[Math.floor(rng() * affordable.length)];
-      const applied = applyOffer(offer, nextJokers, nextPractice, team, bossDriveSoon);
+      const applied = applyOffer(offer, nextDeck, nextJokers, nextPractice, team, bossDriveSoon);
       const priced = discountedOfferCost(offer.cost, nextDiscounts);
+      nextDeck = applied.deck;
       nextJokers = applied.jokers;
       nextPractice = applied.practice;
       nextMoney -= priced.cost;
@@ -354,12 +394,13 @@ function runWarRoom(
     if (bestValue < 42 && rerolls < 1 && nextMoney >= FOURTH_PHASE_WAR_ROOM_REROLL_COST + Math.min(...offers.map((offer) => effectiveCost(offer.cost)))) {
       nextMoney -= FOURTH_PHASE_WAR_ROOM_REROLL_COST;
       rerolls += 1;
-      offers = generateFourthPhaseWarRoomOffers(nextJokers, seed, driveIndex, team, boss, rerolls, nextPractice, boss);
+      offers = generateFourthPhaseWarRoomOffers(nextJokers, seed, driveIndex, team, boss, rerolls, nextPractice, boss, nextDeck);
       continue;
     }
     if (bestValue < 30) break;
-    const applied = applyOffer(best, nextJokers, nextPractice, team, bossDriveSoon);
+    const applied = applyOffer(best, nextDeck, nextJokers, nextPractice, team, bossDriveSoon);
     const priced = discountedOfferCost(best.cost, nextDiscounts);
+    nextDeck = applied.deck;
     nextJokers = applied.jokers;
     nextPractice = applied.practice;
     nextMoney -= priced.cost;
@@ -369,7 +410,7 @@ function runWarRoom(
   }
 
   if (buys === 0) nextMoney += 3;
-  return { jokers: nextJokers, practice: nextPractice, money: nextMoney, discounts: nextDiscounts };
+  return { deck: nextDeck, jokers: nextJokers, practice: nextPractice, money: nextMoney, discounts: nextDiscounts };
 }
 
 function simulateGame(team: FourthPhaseTeamKey, seed: number, policy: Policy, stakeLevel = 1): SimResult {
@@ -380,7 +421,8 @@ function simulateGame(team: FourthPhaseTeamKey, seed: number, policy: Policy, st
   // Stake 1 keeps the historical rng key so gate numbers stay reproducible.
   const rngKey = stakeLevel === 1 ? `fourth-phase-sim:${seed}:${team}:${policy}` : `fourth-phase-sim:${seed}:${team}:${policy}:s${stakeLevel}`;
   const rng = mulberry32(stringSeed(rngKey));
-  let drawPile = run.deck;
+  let activeDeck = [...run.deck];
+  let drawPile = buildFourthPhaseDrivePile(activeDeck, seed, 0);
   let discardPile: FourthPhaseCard[] = [];
   let handState = drawToHand([], drawPile, discardPile, stake.handSize, rng, stake.handSize);
   let hand = handState.hand;
@@ -408,8 +450,7 @@ function simulateGame(team: FourthPhaseTeamKey, seed: number, policy: Policy, st
     const boss = activeBossForDrive(run, driveIndex, stake.bossFromDrive);
     const halftimeCounter = driveIndex === 1 && boss === 'none' ? halftimeCounterFor(prevDriveRepeats) ?? undefined : undefined;
     if (driveIndex > 0) {
-      const fullPile = shuffleFourthPhase([...drawPile, ...discardPile, ...hand], rng);
-      drawPile = fullPile;
+      drawPile = buildFourthPhaseDrivePile(activeDeck, seed, driveIndex);
       discardPile = [];
       handState = drawToHand([], drawPile, discardPile, stake.handSize, rng, stake.handSize);
       hand = handState.hand;
@@ -485,13 +526,14 @@ function simulateGame(team: FourthPhaseTeamKey, seed: number, policy: Policy, st
     }
 
     if (driveScore < targets[driveIndex]) {
-      return { won: false, score: totalScore, failDrive: driveIndex + 1, endingMoney: money, peakScore, peakMeter, tightPlays, plays, comboFires, comboPlays, comboClears, team };
+      return { won: false, score: totalScore, failDrive: driveIndex + 1, endingMoney: money, peakScore, peakMeter, tightPlays, plays, comboFires, comboPlays, comboClears, mutations: activeDeck.filter((card) => card.installed).length, team };
     }
     prevDriveRepeats = repeatedSituations;
 
     money += 5 + driveIndex * 2;
     if (driveIndex < targets.length - 1) {
-      const drafted = runWarRoom(jokers, practice, money, discountTokens, seed, driveIndex, team, activeBossForDrive(run, driveIndex + 1, stake.bossFromDrive), policy, rng);
+      const drafted = runWarRoom(activeDeck, jokers, practice, money, discountTokens, seed, driveIndex, team, activeBossForDrive(run, driveIndex + 1, stake.bossFromDrive), policy, rng);
+      activeDeck = drafted.deck;
       jokers = drafted.jokers;
       practice = drafted.practice;
       money = drafted.money;
@@ -499,7 +541,7 @@ function simulateGame(team: FourthPhaseTeamKey, seed: number, policy: Policy, st
     }
   }
 
-  return { won: true, score: totalScore, failDrive: 0, endingMoney: money, peakScore, peakMeter, tightPlays, plays, comboFires, comboPlays, comboClears, team };
+  return { won: true, score: totalScore, failDrive: 0, endingMoney: money, peakScore, peakMeter, tightPlays, plays, comboFires, comboPlays, comboClears, mutations: activeDeck.filter((card) => card.installed).length, team };
 }
 
 function summarize(label: string, results: readonly SimResult[]) {
@@ -511,7 +553,7 @@ function summarize(label: string, results: readonly SimResult[]) {
   const comboFires = results.reduce((sum, result) => sum + result.comboFires, 0);
   const comboPlays = results.reduce((sum, result) => sum + result.comboPlays, 0);
   const comboClears = results.reduce((sum, result) => sum + result.comboClears, 0);
-  console.log(`${label.padEnd(9)} win=${((wins / results.length) * 100).toFixed(1)}% fail=${(((results.length - wins) / results.length) * 100).toFixed(1)}% median=${median(scores).toFixed(0)} p90=${percentile(scores, 0.9).toFixed(0)} p99=${percentile(scores, 0.99).toFixed(0)} peak=${percentile(results.map((result) => result.peakScore), 0.99).toFixed(0)} money_med=${median(endingMoney).toFixed(0)} tight=${plays ? ((tightPlays / plays) * 100).toFixed(1) : '0.0'}% combo_plays=${plays ? ((comboPlays / plays) * 100).toFixed(1) : '0.0'}% combo_clears=${plays ? ((comboClears / plays) * 100).toFixed(1) : '0.0'}% combo_fires=${comboFires}`);
+  console.log(`${label.padEnd(9)} win=${((wins / results.length) * 100).toFixed(1)}% fail=${(((results.length - wins) / results.length) * 100).toFixed(1)}% median=${median(scores).toFixed(0)} p90=${percentile(scores, 0.9).toFixed(0)} p99=${percentile(scores, 0.99).toFixed(0)} peak=${percentile(results.map((result) => result.peakScore), 0.99).toFixed(0)} money_med=${median(endingMoney).toFixed(0)} installs_med=${median(results.map((result) => result.mutations)).toFixed(0)} tight=${plays ? ((tightPlays / plays) * 100).toFixed(1) : '0.0'}% combo_plays=${plays ? ((comboPlays / plays) * 100).toFixed(1) : '0.0'}% combo_clears=${plays ? ((comboClears / plays) * 100).toFixed(1) : '0.0'}% combo_fires=${comboFires}`);
 }
 
 console.log(`Fourth Phase balance harness -- ${sampleCount} simulated lab games per policy`);
@@ -568,6 +610,7 @@ const gates = [
   { label: 'synergy win in 75-85%', pass: synergyWin >= 0.75 && synergyWin <= 0.85, detail: `${(synergyWin * 100).toFixed(1)}%` },
   { label: 'no-draft win in 55-65%', pass: noneWin >= 0.55 && noneWin <= 0.65, detail: `${(noneWin * 100).toFixed(1)}%` },
   { label: 'draft gap >= 15 pts', pass: rewardWinGap >= 0.15, detail: `+${(rewardWinGap * 100).toFixed(1)} pts vs no-draft` },
+  { label: 'card mutations are core (median >= 2)', pass: median(byPolicy.synergy.map((result) => result.mutations)) >= 2, detail: `${median(byPolicy.synergy.map((result) => result.mutations)).toFixed(0)} median coached-up installs` },
   { label: 'build gap >= 8 pts', pass: buildGap >= 0.08, detail: `${(buildGap * 100).toFixed(1)} pts vs random` },
   { label: 'per-team spread <= 6 pts', pass: teamSpread <= 0.06, detail: `${(teamSpread * 100).toFixed(1)} pts` },
   { label: 'Loud House not bottom team', pass: loudHouseWin > minTeamWin, detail: `Loud House ${(loudHouseWin * 100).toFixed(1)}%, floor ${(minTeamWin * 100).toFixed(1)}%` },

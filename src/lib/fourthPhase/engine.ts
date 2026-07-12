@@ -9,7 +9,13 @@ import {
   clampMeter,
   crowdChargeForRank,
 } from './meter';
-import { cardTagsWithPrefix, hasCardTag, tagChipLabel } from './deck';
+import {
+  FOURTH_PHASE_INSTALL_CROWD_CHARGE,
+  FOURTH_PHASE_INSTALL_LEVERAGE,
+  cardTagsWithPrefix,
+  hasCardTag,
+  tagChipLabel,
+} from './deck';
 import { baseMutableScore, jokerDefinition, type JokerHookContext, type MutableFourthPhaseScore } from './jokers';
 import { recognizeFourthPhaseSituation } from './situations';
 import type {
@@ -62,6 +68,10 @@ function cardValueForScore(card: FourthPhaseCard): number {
 }
 
 function cardTraitScore(card: FourthPhaseCard, score: MutableFourthPhaseScore, context: FourthPhaseScoreContext) {
+  if (card.installed) {
+    score.execution += FOURTH_PHASE_INSTALL_LEVERAGE;
+    ledger(score, { channel: 'execution', label: 'Coached Up', value: `+${FOURTH_PHASE_INSTALL_LEVERAGE.toFixed(2)} Leverage`, detail: card.roleName });
+  }
   if (card.phase === 'offense') {
     let yardDelta = 0;
     if (card.edition === 'allPro') yardDelta += 2;
@@ -328,7 +338,7 @@ export function scoreFourthPhasePlay(cards: readonly FourthPhaseCard[], partialC
     cardTraitScore(card, score, context);
     applyCallSequenceCombo(cards, cardIndex, score);
     if (card.phase === 'crowd') {
-      applyCharge(cards, situation, context, score, crowdChargeForRank(card.rank), 'crowdCard', card.roleName);
+      applyCharge(cards, situation, context, score, crowdChargeForRank(card.rank) + (card.installed ? FOURTH_PHASE_INSTALL_CROWD_CHARGE : 0), 'crowdCard', card.roleName);
     } else if (card.edition === 'crowdFavorite') {
       applyCharge(cards, situation, context, score, 0.2, 'situation', `${card.roleName} crowd favorite`);
     }

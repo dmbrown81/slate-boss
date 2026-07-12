@@ -195,6 +195,7 @@ export function bossWarningForPlay({ boss, result, cards, repeatedSituations = {
 }
 
 function offerRarityScore(offer: FourthPhaseWarRoomOffer): number {
+  if (offer.card) return 28 + offer.card.value * 2;
   if (!offer.joker) return 0;
   const rarity = jokerDefinition(offer.joker).rarity;
   if (rarity === 'legendary') return 18;
@@ -210,6 +211,8 @@ function reasonForTags(tags: readonly string[]): string {
   if (tags.includes('phase glue')) return 'Phase glue';
   if (tags.includes('defensive floor')) return 'Defensive floor';
   if (tags.includes('order puzzle')) return 'Order puzzle';
+  if (tags.includes('opening script')) return 'Opening script';
+  if (tags.includes('closing answer')) return 'Closing answer';
   return 'Best value now';
 }
 
@@ -226,6 +229,7 @@ export function coachPickForWarRoom(offers: readonly FourthPhaseWarRoomOffer[], 
       if (offer.tags.includes('defensive floor')) value += team === 'blackAndBlue' ? 220 : 110;
       if (boss !== 'none' && offer.tags.length) value += 40;
       if (offer.kind === 'practice') value += 28;
+      if (offer.kind === 'card') value += 42;
       value += offerRarityScore(offer);
       value -= offer.cost;
       return value;

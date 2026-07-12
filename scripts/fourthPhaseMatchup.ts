@@ -5,13 +5,18 @@
 import {
   BASE_METER,
   BASE_METER_CAP,
+  FOURTH_PHASE_STARTING_DECK_SIZE,
+  FOURTH_PHASE_TEAMS,
   SITUATION_TEST_CASES,
   bossWarningForPlay,
   buildPlayExplanation,
+  buildFourthPhaseDrivePile,
   coachPickForWarRoom,
   comboLedgerEntries,
   createFourthPhaseDeck,
+  prepareFourthPhaseTeamDeck,
   generateFourthPhaseWarRoomOffers,
+  fourthPhaseBuildIdentity,
   isTrueCrowdBeforeOffenseCash,
   plainPlaySummary,
   playEffectVerb,
@@ -20,6 +25,7 @@ import {
   type FourthPhaseCard,
   type FourthPhaseBossKey,
   type Phase,
+  type FourthPhaseTeamKey,
 } from '../src/lib/fourthPhase';
 
 let failures = 0;
@@ -49,6 +55,29 @@ function cardsFor(phases: readonly Phase[]): FourthPhaseCard[] {
 }
 
 console.log('Fourth Phase matchup proof\n');
+
+console.log('Playbook deck and game-flow contracts:');
+const teamKeys = Object.keys(FOURTH_PHASE_TEAMS) as FourthPhaseTeamKey[];
+const startingDecks = teamKeys.map((team) => ({ team, deck: prepareFourthPhaseTeamDeck(team) }));
+for (const { team, deck: teamDeck } of startingDecks) {
+  assert(`${team} starts with a compact game plan`, teamDeck.length === FOURTH_PHASE_STARTING_DECK_SIZE, `${teamDeck.length} cards`);
+  assert(`${team} deck has unique inserts`, new Set(teamDeck.map((item) => item.id)).size === teamDeck.length, `${new Set(teamDeck.map((item) => item.id)).size}/${teamDeck.length} unique`);
+}
+assert(
+  'all six playbooks start from distinct card lists',
+  new Set(startingDecks.map(({ deck: teamDeck }) => teamDeck.map((item) => item.id).sort().join('|'))).size === teamKeys.length,
+  `${teamKeys.length} distinct lists`,
+);
+const balancedDeck = prepareFourthPhaseTeamDeck('balanced');
+const openingPileA = buildFourthPhaseDrivePile(balancedDeck, 20260711, 0);
+const openingPileB = buildFourthPhaseDrivePile(balancedDeck, 20260711, 0);
+const counterPile = buildFourthPhaseDrivePile(balancedDeck, 20260711, 1);
+const closingPile = buildFourthPhaseDrivePile(balancedDeck, 20260711, 2);
+assert('drive-aware pile is deterministic', openingPileA.map((item) => item.id).join('|') === openingPileB.map((item) => item.id).join('|'), 'same seed, same order');
+assert('Opening Script cards lead Drive 1', openingPileA.slice(0, 3).every((item) => item.driveAct === 'opening'), openingPileA.slice(0, 3).map((item) => item.roleName).join(', '));
+assert('Counterpunch cards lead Drive 2', counterPile.slice(0, 3).every((item) => item.driveAct === 'counterpunch'), counterPile.slice(0, 3).map((item) => item.roleName).join(', '));
+assert('closing inserts cannot appear in Drives 1–2', [...openingPileA, ...counterPile].every((item) => item.driveAct !== 'closing'), `${openingPileA.length}/${counterPile.length} eligible cards`);
+assert('Closing Drive inserts unlock for Drive 3', closingPile.some((item) => item.driveAct === 'closing') && closingPile.slice(0, 3).every((item) => item.driveAct === 'closing'), closingPile.slice(0, 3).map((item) => item.roleName).join(', '));
 
 console.log('Situation recognizer priority ladder:');
 for (const test of SITUATION_TEST_CASES) {
@@ -276,6 +305,23 @@ for (const test of bossCases) {
 
 console.log('\nWar Room coach pick:');
 const coachOffers = generateFourthPhaseWarRoomOffers([{ id: 'twelfthMan' }], 20260701, 1, 'loudHouse', 'roadGame', 0, {});
+const loudDeckIds = new Set(prepareFourthPhaseTeamDeck('loudHouse').map((item) => item.id));
+assert('War Room deals two reserve cards', coachOffers.filter((offer) => offer.kind === 'card').length === 2, coachOffers.map((offer) => offer.kind).join(', '));
+assert('War Room card offers are outside the active deck', coachOffers.filter((offer) => offer.card).every((offer) => !loudDeckIds.has(offer.card!.id)), coachOffers.filter((offer) => offer.card).map((offer) => offer.card!.roleName).join(', '));
+assert('War Room keeps one joker and one game-plan drill', coachOffers.filter((offer) => offer.kind === 'joker').length === 1 && coachOffers.filter((offer) => offer.kind === 'practice').length === 1, coachOffers.map((offer) => offer.kind).join(', '));
+const coachedCard = coachOffers.find((offer) => offer.card)?.card;
+assert('one reserve offer matches the next Closing Drive act', coachOffers.some((offer) => offer.card?.driveAct === 'closing'), coachOffers.filter((offer) => offer.card).map((offer) => `${offer.card!.roleName}:${offer.card!.driveAct}`).join(', '));
+const installedOpening = coachedCard ? buildFourthPhaseDrivePile([...prepareFourthPhaseTeamDeck('loudHouse'), coachedCard], 20260711, 2) : [];
+assert('coached-up insert reaches the next eligible opening hand', Boolean(coachedCard && installedOpening.slice(0, 3).some((item) => item.id === coachedCard.id)), installedOpening.slice(0, 3).map((item) => item.roleName).join(', '));
+const coachedOffense = coachOffers.find((offer) => offer.card?.phase === 'offense')?.card;
+if (coachedOffense) {
+  const uninstalledOffense = { ...coachedOffense, value: coachedOffense.value - 7, installed: undefined };
+  const installedScore = scoreFourthPhasePlay([coachedOffense], { meter: BASE_METER, meterCap: BASE_METER_CAP });
+  const baseScore = scoreFourthPhasePlay([uninstalledOffense], { meter: BASE_METER, meterCap: BASE_METER_CAP });
+  assert('coached-up mutation improves the same call', installedScore.points > baseScore.points, `${installedScore.points} > ${baseScore.points}`);
+}
+const buildReceipt = fourthPhaseBuildIdentity(coachedCard ? [...prepareFourthPhaseTeamDeck('loudHouse'), coachedCard] : prepareFourthPhaseTeamDeck('loudHouse'), 'loudHouse');
+assert('build receipt names installed mutations', Boolean(coachedCard && buildReceipt.installedCount === 1 && buildReceipt.detail.includes(coachedCard.roleName)), buildReceipt.detail);
 const coachPickA = coachPickForWarRoom(coachOffers, 'loudHouse', 'roadGame');
 const coachPickB = coachPickForWarRoom(coachOffers, 'loudHouse', 'roadGame');
 assert('coach pick is deterministic for identical offers', JSON.stringify(coachPickA) === JSON.stringify(coachPickB), `${JSON.stringify(coachPickA)} vs ${JSON.stringify(coachPickB)}`);

@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Generated research catalog. Source calibration data stays under docs/reference;
+# licensed/raw catalog output must never move into the shipped public bundle.
+docs/reference/cfb27-offense-play-catalog.json

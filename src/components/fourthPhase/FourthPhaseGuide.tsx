@@ -165,7 +165,7 @@ export function HowToPlay({ defaultOpen = false }: { defaultOpen?: boolean }) {
           A game is <b>3 drives</b>. Each drive has a target. Hit it before you run out of calls. Clear all three to win.
         </Step>
         <Step n="2" head="Call a series">
-          Tap up to <b>5 cards</b> from your hand, then <b>Run Series</b>. The phases you combine form a <b>Situation</b> that decides the score.
+          Your cards are <b>playbook inserts</b>: offensive calls, defensive calls, special-teams calls, and crowd prompts. Tap up to <b>5</b>, then <b>Run Series</b>. The phases you combine form a <b>Situation</b> that decides the score.
         </Step>
         <Step n="3" head="The four phases">
           <div style={{ marginTop: 6 }}><PhaseLegend /></div>
@@ -181,6 +181,9 @@ export function HowToPlay({ defaultOpen = false }: { defaultOpen?: boolean }) {
         </Step>
         <Step n="5" head="Play script">
           Some calls become stronger in football order. A <b>Run</b> before <b>Play Action</b>, a <b>Takeaway</b> before a <b>Shot</b>, or three calls from one formation can light up a combo in the preview.
+        </Step>
+        <Step n="6" head="Build the game plan">
+          Each playbook starts with <b>28 cards</b>. Between drives, the War Room deals coached-up reserve inserts. Add up to 30, then cut cards to keep shaping the deck. Closing Drive calls stay out of the draw pool until Drive 3.
         </Step>
       </div>
     </Collapsible>

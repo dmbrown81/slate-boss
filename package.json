@@ -10,6 +10,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "icons": "node scripts/generateAppIcons.mjs",
+    "catalog:cfb": "node scripts/generateCfbPlayCatalog.mjs",
     "cap:add:ios": "cap add ios",
     "cap:add:android": "cap add android",
     "cap:sync": "npm run build:native && cap sync",
